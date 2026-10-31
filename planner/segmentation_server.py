@@ -26,8 +26,12 @@ from planner.segmentation_state import SegmentationConflict, SegmentationLedger
 _INFERENCE_GATE = threading.BoundedSemaphore(1)
 _MASK_CAP = 16 * 1024 * 1024
 _METADATA_CAP = 32768
-_KIND_ROLE = {"vessel": "vessel", "sam2": "aneurysm"}
-_KIND_PRODUCER = {"vessel": "owned_vessel", "sam2": "sam2_prompted_slice"}
+_KIND_ROLE = {"vessel": "vessel", "sam2": "aneurysm", "aneurysm": "aneurysm"}
+_KIND_PRODUCER = {
+    "vessel": "owned_vessel",
+    "sam2": "sam2_prompted_slice",
+    "aneurysm": "aneurysm_model",
+}
 
 
 def default_runner():
@@ -42,7 +46,7 @@ class SegmentationRequest(BaseModel):
 
     artifact_version: str = Field(min_length=1, max_length=20)
     reference_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
-    kind: Literal["vessel", "sam2"]
+    kind: Literal["vessel", "sam2", "aneurysm"]
     role: Literal["vessel", "aneurysm"]
     point_ras: list[StrictFloat] | None = None
     radius_voxels: StrictInt = Field(default=12, ge=2, le=40)
@@ -163,8 +167,8 @@ def register_segmentation_routes(
         if payload.role != _KIND_ROLE[payload.kind]:
             raise HTTPException(
                 422,
-                "Role must match kind: vessel model produces the vessel role; "
-                "SAM produces an aneurysm single-slice preview",
+                "Role must match kind: the vessel kind produces the vessel role; "
+                "sam2 and aneurysm kinds produce aneurysm previews",
             )
         if payload.kind == "sam2" and payload.point_ras is None:
             raise HTTPException(422, "SAM requests require point_ras")

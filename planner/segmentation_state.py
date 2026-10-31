@@ -91,7 +91,10 @@ class SegmentationLedger:
         if producer not in ("owned_vessel", "sam2_prompted_slice", "aneurysm_model"):
             raise ValueError("Unrecognized segmentation producer")
         role = role or ("vessel" if producer == "owned_vessel" else "aneurysm")
-        if role not in ("vessel", "aneurysm") or (producer == "owned_vessel" and role != "vessel"):
+        required_role = {"owned_vessel": "vessel", "sam2_prompted_slice": "aneurysm"}.get(
+            producer, "aneurysm"
+        )
+        if role not in ("vessel", "aneurysm") or role != required_role:
             raise ValueError("Producer/role mismatch")
         if not isinstance(provenance, dict):
             raise TypeError("Provenance must be a JSON object")

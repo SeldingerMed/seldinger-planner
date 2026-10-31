@@ -70,7 +70,7 @@ export default function SegmentationPanel(props: Props) {
     caseState.artifact_version,
     reference?.reference_revision,
   ]);
-  async function run(kind: "vessel" | "sam2") {
+  async function run(kind: "vessel" | "sam2" | "aneurysm") {
     if (!reference || disabled || running || (kind === "sam2" && !location))
       return;
     const ticket = epoch.current;
@@ -120,17 +120,20 @@ export default function SegmentationPanel(props: Props) {
         ),
       );
       if (epoch.current !== ticket) return;
-      setCandidate(null);
       if (decision === "accept") {
+        if (!entry.artifact_version)
+          throw new Error("Acceptance did not return the new case revision.");
+        setCandidate(null);
         setCurrent((prev) => [
           ...prev.filter((v) => v.role !== entry.role),
           entry,
         ]);
         callbacks.current.onOverlay(entry);
-        if (!entry.artifact_version)
-          throw new Error("Acceptance did not return the new case revision.");
         callbacks.current.onAccepted(entry.artifact_version);
-      } else callbacks.current.onOverlay(current[0] ?? null);
+      } else {
+        setCandidate(null);
+        callbacks.current.onOverlay(current[0] ?? null);
+      }
     } catch (error) {
       if (epoch.current === ticket) callbacks.current.onError(error);
     } finally {
@@ -154,6 +157,9 @@ export default function SegmentationPanel(props: Props) {
             <button disabled={locked} onClick={() => run("vessel")}>
               Run vessel model
             </button>
+            <button disabled={locked} onClick={() => run("aneurysm")}>
+              Run aneurysm model
+            </button>
             <button disabled={locked || !location} onClick={() => run("sam2")}>
               SAM at crosshair
             </button>
@@ -176,6 +182,8 @@ export default function SegmentationPanel(props: Props) {
           <p className="method-note">
             Vessel: trained binary model, not aneurysm detection. SAM:
             operator-prompted native axial slice, not a 3D sac segmentation.
+            Aneurysm: trained 3D segmentation within the selected context,
+            not independent full-head localization or validated morphometry.
           </p>
           {running && (
             <p role="status">
@@ -188,7 +196,9 @@ export default function SegmentationPanel(props: Props) {
               <p className="small">
                 {candidate.producer === "owned_vessel"
                   ? "Trained vessel candidate"
-                  : "SAM single-slice candidate"}
+                  : candidate.producer === "aneurysm_model"
+                    ? "Trained aneurysm candidate (3D context)"
+                    : "SAM single-slice candidate"}
               </p>
               <div className="point-row">
                 <button disabled={locked} onClick={() => decide("accept")}>

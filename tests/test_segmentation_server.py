@@ -463,3 +463,50 @@ def test_build_app_does_not_import_ml_worker_module(tmp_path):
     sys.modules.pop("planner.segmentation_worker", None)
     build_app(tmp_path / "ws.sqlite3", reference_dir=root)
     assert "planner.segmentation_worker" not in sys.modules
+
+
+def test_aneurysm_kind_produces_aneurysm_model_preview_and_keeps_vessel(tmp_path):
+    job_log = []
+    client, case, _, _ = _stage(tmp_path, job_log=job_log)
+    vessel = post_request(client, case).json()
+    client.post(
+        f"/api/cases/{case['case_id']}/segmentations/{vessel['candidate_id']}/decision",
+        json={
+            "artifact_version": case["artifact_version"],
+            "reference_revision": vessel["reference_revision"],
+            "decision": "accept",
+        },
+    )
+    case = client.get(f"/api/cases/{case['case_id']}").json()
+    response = post_request(client, case, kind="aneurysm", role="aneurysm")
+    assert response.status_code == 200, response.text
+    entry = response.json()
+    assert entry["producer"] == "aneurysm_model"
+    assert entry["role"] == "aneurysm"
+    assert entry["status"] == "preview"
+    job = job_log[-1]
+    assert job["kind"] == "aneurysm" and job["role"] == "aneurysm"
+    assert job["point_ras"] is None
+    assert job["image_sha256"] == case["image_sha256"]
+    listing = client.get(f"/api/cases/{case['case_id']}/segmentations").json()
+    assert client.get(entry["mask_url"]).status_code == 200
+    decision = client.post(
+        f"/api/cases/{case['case_id']}/segmentations/{entry['candidate_id']}/decision",
+        json={
+            "artifact_version": case["artifact_version"],
+            "reference_revision": entry["reference_revision"],
+            "decision": "accept",
+        },
+    )
+    assert decision.status_code == 200, decision.text
+    listing = client.get(f"/api/cases/{case['case_id']}/segmentations").json()
+    assert listing["current"]["vessel"]["candidate_id"] == vessel["candidate_id"]
+    assert listing["current"]["aneurysm"]["candidate_id"] == entry["candidate_id"]
+
+
+def test_aneurysm_kind_rejects_wrong_role_and_none_point_rules(tmp_path):
+    client, case, _, _ = _stage(tmp_path)
+    wrong = post_request(client, case, kind="aneurysm", role="vessel", point_ras=[1.0, 2.0, 3.0])
+    assert wrong.status_code == 422
+    ok = post_request(client, case, kind="aneurysm", role="aneurysm")
+    assert ok.status_code == 200

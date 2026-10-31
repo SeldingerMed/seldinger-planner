@@ -124,3 +124,43 @@ def test_candidate_is_owned_by_exact_case_and_decisions_are_final(tmp_path):
     ledger.decide(first["case_id"], item["candidate_id"], "1", "reject")
     with pytest.raises(SegmentationConflict):
         ledger.decide(first["case_id"], item["candidate_id"], "1", "accept")
+
+
+def test_wrong_role_producers_are_rejected_before_insert(tmp_path):
+    """RED first: ledger accepted sam2/aneurysm_model claiming the vessel role."""
+    db = tmp_path / "workspace.db"
+    client = TestClient(create_app(db))
+    case = _case(client)
+    ledger = SegmentationLedger(db)
+    for producer in ("sam2_prompted_slice", "aneurysm_model"):
+        with pytest.raises(ValueError):
+            ledger.preview(
+                case["case_id"],
+                "1",
+                reference_revision="b" * 64,
+                producer=producer,
+                role="vessel",
+                mask_sha256="c" * 64,
+                provenance={"fixture": True},
+            )
+        explicit = ledger.preview(
+            case["case_id"],
+            "1",
+            reference_revision="b" * 64,
+            producer=producer,
+            role="aneurysm",
+            mask_sha256="d" * 64,
+            provenance={"fixture": True},
+        )
+        assert explicit["role"] == "aneurysm"
+        assert explicit["producer"] == producer
+        with pytest.raises(ValueError):
+            ledger.preview(
+                case["case_id"],
+                "1",
+                reference_revision="b" * 64,
+                producer="owned_vessel",
+                role="aneurysm",
+                mask_sha256="e" * 64,
+                provenance={"fixture": True},
+            )

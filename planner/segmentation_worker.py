@@ -22,6 +22,25 @@ REFERENCE_IMAGE = REFERENCE_DIR / "reference-cta.nii.gz"
 VESSEL_CHECKPOINT = _REPO_ROOT / ".runtime" / "models" / "pooled-vessel-v1" / "checkpoint_best.pth"
 VESSEL_LANDMARKS = _REPO_ROOT / ".runtime" / "models" / "pooled-vessel-v1" / "landmarks.npz"
 SAM_CHECKPOINT = _REPO_ROOT / ".runtime" / "models" / "sam2.1-tiny" / "sam2.1_hiera_tiny.pt"
+ANEURYSM_PYTHON = _REPO_ROOT / ".runtime" / "aneurysm-runtime" / "bin" / "python"
+ANEURYSM_CHECKPOINT = (
+    _REPO_ROOT
+    / ".runtime"
+    / "models"
+    / "rsna-aneurysm-stage2-v2"
+    / "Dataset660_26classes_resize224_4661"
+    / "onlyMirror01_lr4e3_100epochs_ps224"
+    / "fold_0"
+    / "checkpoint_final.pth"
+)
+# Trusted interpreter constants selected only by the fixed job kind. Runtime
+# paths are never job inputs; requests cannot select runtime, device,
+# checkpoint, expected hash, model name or paths.
+_KIND_PYTHON = {
+    "vessel": ML_PYTHON,
+    "sam2": ML_PYTHON,
+    "aneurysm": ANEURYSM_PYTHON,
+}
 
 SUBPROCESS_TIMEOUT_SECONDS = 180
 _MAX_VOXELS = 8_000_000
@@ -93,6 +112,9 @@ def run_local_model(job, output_dir):
 
     if not isinstance(job, dict):
         raise TypeError("job must be a JSON object")
+    kind = job.get("kind")
+    if kind not in _KIND_PYTHON:
+        raise ValueError("Unsupported segmentation kind")
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
@@ -101,7 +123,7 @@ def run_local_model(job, output_dir):
     env["OMP_NUM_THREADS"] = str(_CPU_THREADS)
     env["MKL_NUM_THREADS"] = str(_CPU_THREADS)
     command = [
-        str(ML_PYTHON),
+        str(_KIND_PYTHON[kind]),
         "-m",
         "planner.segmentation_worker",
         str(output_dir),
@@ -154,7 +176,7 @@ def _run_job(job, output_dir):
     if not isinstance(job, dict):
         raise TypeError("job must be a JSON object")
     kind = job.get("kind")
-    if kind not in ("vessel", "sam2"):
+    if kind not in ("vessel", "sam2", "aneurysm"):
         raise ValueError("Unsupported segmentation kind")
     case_id = job.get("case_id")
     image_sha256 = job.get("image_sha256")
@@ -214,7 +236,7 @@ def _run_job(job, output_dir):
         slice_index = None
         segmentation_extent = "full_volume"
         prompt_provenance = None
-    else:
+    elif kind == "sam2":
         from planner.sam_refinement import refine_slice
 
         if job.get("role") != "aneurysm":
@@ -243,6 +265,18 @@ def _run_job(job, output_dir):
         slice_index = k
         segmentation_extent = "single_native_axial_slice"
         prompt_provenance = "operator_entered"
+    else:
+        if job.get("role") != "aneurysm":
+            raise ValueError("aneurysm requires the aneurysm role")
+        # Lazily import the parent-owned helper; only the fixed installed
+        # checkpoint constant is passed, never a job-supplied path.
+        from planner.aneurysm_inference import predict_aneurysm
+
+        result = predict_aneurysm(data, source.affine, checkpoint_path=ANEURYSM_CHECKPOINT)
+        mask_xyz = np.asarray(result["mask"], dtype=np.uint8)
+        slice_index = None
+        segmentation_extent = "full_context_roi"
+        prompt_provenance = None
 
     if mask_xyz.shape != native_shape or not np.isin(mask_xyz, [0, 1]).all():
         raise ValueError("Candidate mask is not a binary volume of the source shape")
@@ -264,8 +298,13 @@ def _run_job(job, output_dir):
         raise ValueError("Saved mask is not binary uint8 data")
 
     provenance = {key: value for key, value in result.items() if key != "mask"}
+    producer = {
+        "vessel": "owned_vessel",
+        "sam2": "sam2_prompted_slice",
+        "aneurysm": "aneurysm_model",
+    }[kind]
     metadata = {
-        "producer": "owned_vessel" if kind == "vessel" else "sam2_prompted_slice",
+        "producer": producer,
         "role": "vessel" if kind == "vessel" else "aneurysm",
         "provenance": provenance,
         "case_id": case_id,
@@ -280,9 +319,16 @@ def _run_job(job, output_dir):
         "segmentation_extent": segmentation_extent,
         "volumetric_morphometry_eligible": segmentation_extent == "full_volume",
         "automatic_aneurysm_detection": False,
+        # Only the fixed aneurysm mode performs in-context segmentation; no
+        # independent full-head localization is claimed for any mode.
+        "automatic_aneurysm_segmentation_within_selected_context": kind == "aneurysm",
         "clinical_validation": "none",
     }
-    if slice_index is not None:
+    if kind == "aneurysm":
+        metadata["input_context"] = "server_installed_curated_reference_selected_roi"
+        metadata["slice_index"] = None
+        metadata["prompt_provenance"] = None
+    elif slice_index is not None:
         metadata["slice_index"] = slice_index
         metadata["prompt_provenance"] = prompt_provenance
         metadata["prompt_context"] = "curated_reference_case; crosshair may be reference-informed"

@@ -285,6 +285,178 @@ def test_run_local_model_sam2_prompted_slice_end_to_end(tmp_path):
     assert round_tripped == metadata
 
 
+# ---------------------------------------------------------------------------
+# Aneurysm kind: interpreter selection, unknown kinds, synthetic helper result
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_python"),
+    [
+        ("aneurysm", str(ROOT / ".runtime/aneurysm-runtime/bin/python")),
+        ("vessel", str(ROOT / ".runtime/ml-runtime/bin/python")),
+        ("sam2", str(ROOT / ".runtime/ml-runtime/bin/python")),
+    ],
+)
+def test_run_local_model_selects_trusted_interpreter_only_by_kind(
+    tmp_path, monkeypatch, kind, expected_python
+):
+    import planner.segmentation_worker as worker
+
+    recorded = {}
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = b""
+        stderr = b""
+
+    def fake_run(cmd, **kwargs):
+        recorded["cmd"] = cmd
+        recorded["kwargs"] = kwargs
+        (tmp_path / "mask.nii.gz").write_bytes(b"synthetic artifact")
+        (tmp_path / "metadata.json").write_text(json.dumps({"foreground_count": 0}))
+        return FakeCompleted()
+
+    monkeypatch.setattr(worker.subprocess, "run", fake_run)
+    job = {
+        "kind": kind,
+        "case_id": "case-1",
+        "interpreter": "/usr/bin/evil-python",
+        "python_path": "/usr/bin/evil-python",
+        "checkpoint_path": "/tmp/evil.pth",
+    }
+    worker.run_local_model(job, tmp_path)
+    assert recorded["cmd"][0] == expected_python
+    assert recorded["cmd"][1:3] == ["-m", "planner.segmentation_worker"]
+    assert recorded["kwargs"]["shell"] is False
+    assert recorded["kwargs"]["timeout"] == 180
+
+
+def test_run_local_model_rejects_unknown_kind_before_subprocess(tmp_path, monkeypatch):
+    import planner.segmentation_worker as worker
+
+    def forbidden_run(*args, **kwargs):
+        raise AssertionError("subprocess must not run for an unknown kind")
+
+    monkeypatch.setattr(worker.subprocess, "run", forbidden_run)
+    with pytest.raises((ValueError, RuntimeError), match="[Kk]ind"):
+        worker.run_local_model({"kind": "vessel2", "case_id": "case-1"}, tmp_path)
+
+
+def test_aneurysm_role_mismatch_is_rejected_before_helper_invocation(tmp_path, monkeypatch):
+    import planner.aneurysm_inference as inference
+    import planner.segmentation_worker as worker
+
+    def forbidden_helper(*args, **kwargs):
+        raise AssertionError("helper must not run for a role mismatch")
+
+    monkeypatch.setattr(inference, "predict_aneurysm", forbidden_helper, raising=False)
+    job = _identity_job("aneurysm", role="vessel")
+    with pytest.raises(ValueError, match="role"):
+        worker._run_job(job, tmp_path)
+    assert not (tmp_path / "mask.nii.gz").exists()
+
+
+def test_aneurysm_run_job_saves_synthetic_helper_result_with_exact_metadata(tmp_path, monkeypatch):
+    import nibabel as nib
+    import numpy as np
+
+    import planner.aneurysm_inference as inference
+    import planner.segmentation_worker as worker
+
+    source = nib.load(str(REFERENCE_IMAGE))
+    shape = tuple(int(v) for v in source.shape)
+    synthetic_mask = np.zeros(shape, dtype=np.uint8)
+    synthetic_mask[5:9, 5:9, 5:9] = 1
+    calls = {}
+
+    def fake_predict_aneurysm(image_xyz, affine, *, checkpoint_path):
+        calls["image_xyz"] = np.asarray(image_xyz)
+        calls["affine"] = np.asarray(affine)
+        calls["checkpoint_path"] = checkpoint_path
+        return {
+            "mask": synthetic_mask,
+            "provenance_note": "synthetic-test-array-not-model-output",
+            "foreground_count": int(synthetic_mask.sum()),
+        }
+
+    monkeypatch.setattr(inference, "predict_aneurysm", fake_predict_aneurysm, raising=False)
+    job = _identity_job("aneurysm", role="aneurysm")
+    metadata = worker._run_job(job, tmp_path)
+
+    assert calls["checkpoint_path"] == worker.ANEURYSM_CHECKPOINT
+    assert np.allclose(calls["affine"], source.affine)
+    assert calls["image_xyz"].shape == shape
+    # Saved artifact keeps source geometry, units, dtype, and binary values.
+    saved = nib.load(str(tmp_path / "mask.nii.gz"))
+    saved_data = np.asanyarray(saved.dataobj)
+    assert saved.shape == source.shape
+    assert np.allclose(saved.affine, source.affine)
+    assert saved.header.get_xyzt_units() == source.header.get_xyzt_units()
+    assert saved.get_data_dtype() == np.uint8
+    assert set(np.unique(saved_data)).issubset({0, 1})
+    assert np.array_equal(saved_data, synthetic_mask)
+
+    assert metadata["producer"] == "aneurysm_model"
+    assert metadata["role"] == "aneurysm"
+    assert metadata["segmentation_extent"] == "full_context_roi"
+    assert metadata["input_context"] == "server_installed_curated_reference_selected_roi"
+    assert metadata["volumetric_morphometry_eligible"] is False
+    assert metadata["automatic_aneurysm_detection"] is False
+    assert metadata["automatic_aneurysm_segmentation_within_selected_context"] is True
+    assert metadata["clinical_validation"] == "none"
+    assert metadata["slice_index"] is None
+    assert metadata["prompt_provenance"] is None
+    assert metadata["foreground_count"] == int((saved_data == 1).sum())
+    # The synthetic array stays distinguishable from real model output.
+    assert metadata["provenance"]["provenance_note"] == "synthetic-test-array-not-model-output"
+    assert "mask" not in metadata["provenance"]
+    round_tripped = json.loads(json.dumps(metadata, allow_nan=False))
+    assert round_tripped == metadata
+
+
+def test_existing_modes_declare_no_automatic_in_context_aneurysm_segmentation(
+    tmp_path, monkeypatch
+):
+    import nibabel as nib
+    import numpy as np
+
+    import planner.segmentation_worker as worker
+
+    source = nib.load(str(REFERENCE_IMAGE))
+    shape = tuple(int(v) for v in source.shape)
+
+    def fake_predict_vessel(data, spacing_xyz, *, checkpoint_path, landmarks_path):
+        return {"mask": np.zeros(shape, dtype=np.uint8), "note": "synthetic-test-array"}
+
+    import planner.vessel_inference as vessel
+
+    monkeypatch.setattr(vessel, "predict_vessel", fake_predict_vessel)
+    metadata = worker._run_job(_identity_job("vessel"), tmp_path)
+    assert metadata["automatic_aneurysm_segmentation_within_selected_context"] is False
+    assert metadata["segmentation_extent"] == "full_volume"
+    assert metadata["volumetric_morphometry_eligible"] is True
+    assert metadata["producer"] == "owned_vessel"
+    assert metadata["role"] == "vessel"
+
+
+def _identity_job(kind, role=None):
+    manifest = json.loads((ROOT / ".runtime/public-reference/manifest.json").read_text())
+    revision = hashlib.sha256(
+        (ROOT / ".runtime/public-reference/manifest.json").read_bytes()
+    ).hexdigest()
+    job = {
+        "case_id": "public-reference-case",
+        "image_sha256": manifest["image"]["sha256"],
+        "reference_revision": revision,
+        "kind": kind,
+        "display_window": [0, 600],
+    }
+    if role is not None:
+        job["role"] = role
+    return job
+
+
 def test_worker_rejects_jobs_that_do_not_match_the_installed_reference(tmp_path):
     from planner.segmentation_worker import run_local_model
 
