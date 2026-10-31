@@ -1,6 +1,6 @@
 # Initial workspace review reconciliation
 
-Scope: the fresh local workspace introduced in PR #1. This is source/test review, not real-image browser validation or clinical validation.
+Scope: the fresh local workspace introduced in PR #1. This records source/test review and the subsequent local browser functional smoke, not clinical validation.
 
 ## Atomic revisions
 
@@ -29,8 +29,9 @@ The asynchronous load no longer replaces the selected display range with 0..600.
 
 The app clears image identity, digest, case state, endpoints, coordinates, confirmation and old model output after a volume error. The file chooser is reset to allow retrying the same file. WebGL initialization failure is reported once with a distinct message rather than being overwritten by a generic NIfTI error. Cleanup accesses the nullable underlying GL context instead of the getter that throws when initialization failed. Synthetic lifecycle tests exercise these paths.
 
-## Remaining gates
+## Browser verification and remaining gates
 
-- Real-image rendering and image-linked interaction smoke test in an authorized, reachable browser.
+- Real-image browser smoke is now exercised: the actual public CMHA crop renders in all five layouts, with crosshair/preset changes and 3D camera motion. Notes survive reopening the same image; the exported brief and live Muse tool result reflect the saved case.
+- The measurement UI separately saved a RAS point-to-point distance from an explicitly synthetic, millimeter-declared NIfTI fixture. This is functional/geometry smoke evidence, not clinical morphometry validation. See `docs/verification/browser-smoke.md`.
 - The local public CMHA sample has sform_code 2 and unspecified spatial units; millimeter measurement creation remains disabled for it pending unit corroboration.
 - No segmentation inference, aneurysm morphometry, device compatibility, treatment efficacy or clinical validity is established by these tests.

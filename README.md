@@ -64,4 +64,6 @@ The probe sends no imaging and saves sanitized local results in ignored `artifac
 
 ## Evidence boundary
 
-Backend persistence, stale-write rejection, brief export and the live Muse read-tool round trip have been exercised with explicitly synthetic metadata. The real public CTA was parsed locally and its served bytes verified by SHA-256. Those are separate checks from browser rendering: the real-image visual smoke check remains incomplete because the automation route could not open localhost. Successful builds and infrastructure tests are not clinical validation.
+Backend persistence, stale-write rejection, brief export and the live Muse read-tool round trip have been exercised with explicitly synthetic metadata. The real public CMHA crop has also been exercised in an attached browser: all five layouts, crosshair and display-preset changes, 3D camera motion, saved-note persistence after reopening, brief export, and a live Muse call reading the saved public-case metadata and notes.
+
+The measurement UI separately saved a physical-RAS point-to-point distance from an explicitly synthetic, millimeter-declared NIfTI geometry fixture. The real CMHA crop still has unknown spatial units and its millimeter measurement controls remain disabled. These are functional/rendering checks, not segmentation, morphometry, device-sizing or clinical validation. See [browser verification](docs/verification/browser-smoke.md) for the precise evidence boundary.
