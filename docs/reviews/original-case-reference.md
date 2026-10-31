@@ -1,0 +1,13 @@
+# Original-case reference review reconciliation
+
+Scope: independent read-only review of the uncommitted reference slice atop `ae927c8f9e25c2c4260a586c5cae2f99576c8a59`, followed by parent checks and narrowly scoped hardening. This is not clinical clearance or an exact-head automated review-app approval.
+
+The reviewer reported no blockers within the research-preview scope and observed 26 source/API tests plus 10 reference/viewer tests passing before follow-up hardening. Parent broader checks were separate.
+
+## Findings
+
+1. **Claim of inward normals from an orientation-reversing transform: rejected.** The actual matrix is `diag(-1, -1, 1)`, whose determinant is +1, not -1. It is a proper rotation, not a reflection. Recomputing cross products from the transformed vertex order therefore preserves winding orientation. Parent computed the determinant with Python and checked the existing output-normal regression. Negating normals as suggested would introduce a defect. This does not independently establish that the publisher's original winding is outward.
+2. **Non-finite scaling: hardened.** Added six parameterized rejection tests for NaN/+infinity/-infinity in source slope/intercept and six for installed manifest scaling. All 12 reproduced acceptance before the fix. The narrow preparer now rejects unsupported non-finite scaling before creating output; the reference store rejects it with 503. Valid original source scaling is unchanged. The review's proposed browser JSON failure was not reproduced: source_header is deliberately excluded from public metadata. The actual defect was acceptance of invalid/non-finite provenance fields, not that claimed browser path.
+3. **Hash-validation/FileResponse reopening race: retained prototype limitation.** Files live in the fixed, local-controlled runtime directory and must not be concurrently replaced or edited. FileResponse reopens by path after verification. The browser independently checks the received bytes against the requested hashes before attaching them, so a changed response fails that client check. This does not provide server-side immutability against a local attacker and is not a multiuser/security deployment clearance. No such deployment is authorized.
+
+Parent follow-up: focused source/API suite 38 passed; full backend suite 129 passed. Frontend remained unchanged by this scaling hardening, with its preceding 27-test pass, TypeScript/build/format checks and real public-asset browser verification recorded separately. Ruff checks/formatting and diff checks passed after follow-up. Test artifacts, screenshots and dataset files remain ignored.

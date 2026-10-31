@@ -9,6 +9,12 @@ import AneurysmWorksheet from "./AneurysmWorksheet";
 import type { AneurysmPlan } from "./planning";
 import type { Point3 } from "./geometry";
 import type { VolumeInfo } from "./Viewer";
+import {
+  findCaseReference,
+  loadReferenceVolume,
+  type CaseReference,
+  type ReferenceMetadata,
+} from "./reference";
 const Viewer = lazy(() => import("./Viewer"));
 const coordinate = (p: Point3 | null) =>
   p ? p.map((v) => v.toFixed(1)).join(" / ") : "Select a location in the scan";
@@ -31,6 +37,13 @@ export default function App() {
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [reloadEpoch, setReloadEpoch] = useState(0);
+  const [requestedReference, setRequestedReference] =
+    useState<ReferenceMetadata | null>(null);
+  const [reference, setReference] = useState<CaseReference | null>(null);
+  const [showReference, setShowReference] = useState(true);
+  const [referenceStatus, setReferenceStatus] = useState<
+    "off" | "loading" | "ready" | "error"
+  >("off");
   const [question, setQuestion] = useState(
     "Summarize the measured anatomy, distinguish what remains unknown, and list the information needed to compare treatment options.",
   );
@@ -51,6 +64,8 @@ export default function App() {
     if (dirty) setAnswer(null);
   }, []);
   function failVolume(message: string) {
+    setReference(null);
+    setRequestedReference(null);
     setConflict(false);
     setPlanDirty(false);
     setFile(null);
@@ -67,7 +82,11 @@ export default function App() {
     setBusy(false);
     setError(message);
   }
-  async function acceptFile(next: File, sourceURL = caseState ? "" : source) {
+  async function acceptFile(
+    next: File,
+    sourceURL = caseState ? "" : source,
+    requested: ReferenceMetadata | null = null,
+  ) {
     if (!/\.nii(\.gz)?$/i.test(next.name) || next.size > 200 * 1024 * 1024) {
       setError("Choose a NIfTI .nii or .nii.gz file smaller than 200 MB.");
       return;
@@ -81,6 +100,11 @@ export default function App() {
     setFocus(null);
     setConfirmed(false);
     setSource(sourceURL);
+    setReference(null);
+    setRequestedReference(requested);
+    setShowReference(true);
+    setReferenceStatus("off");
+    setMode("linked");
     setAnswer(null);
     setNotes("");
     setPlanDirty(false);
@@ -104,15 +128,25 @@ export default function App() {
     try {
       const result = await restoreOrCreateCase({
         title:
+          requestedReference?.case_label ||
           file?.name.replace(/\.nii(\.gz)?$/i, "").slice(0, 100) ||
           "CTA workspace",
         image_sha256: digest,
         source_url: source || null,
         ...info,
       });
+      if (requestedReference && result.spatial_units !== "unknown")
+        throw new Error(
+          "Saved reference unit declaration does not match the source.",
+        );
       setCase(result);
       setNotes(result.notes);
       setSource(result.source_url || "");
+      if (requestedReference) {
+        const verified = await findCaseReference(result.case_id, digest);
+        setReference(verified);
+        if (verified) setFocus([...verified.focus_ras]);
+      }
     } catch (e) {
       reportRequestError(e);
     } finally {
@@ -139,6 +173,8 @@ export default function App() {
         throw new Error("Saved case identity does not match the loaded image.");
       setCase(latest);
       setNotes(latest.notes);
+      if (requestedReference)
+        setReference(await findCaseReference(latest.case_id, digest));
       setReloadEpoch((value) => value + 1);
       setA(null);
       setB(null);
@@ -150,6 +186,21 @@ export default function App() {
     } catch (e) {
       reportRequestError(e);
     } finally {
+      setBusy(false);
+    }
+  }
+  async function openReference() {
+    setBusy(true);
+    setError("");
+    try {
+      const loaded = await loadReferenceVolume();
+      await acceptFile(
+        loaded.file,
+        loaded.metadata.source_url,
+        loaded.metadata,
+      );
+    } catch (e) {
+      reportRequestError(e);
       setBusy(false);
     }
   }
@@ -280,6 +331,9 @@ export default function App() {
         </div>
         <span className="build-tag">RESEARCH BUILD / 01</span>
         <div className="top-actions">
+          <button onClick={openReference} disabled={busy}>
+            Open reference CTA
+          </button>
           <button onClick={publicSample} disabled={busy}>
             Open public CTA
           </button>
@@ -325,6 +379,35 @@ export default function App() {
               onChange={(e) => setSource(e.target.value)}
             />
           </label>
+          {reference && (
+            <section className="reference-card">
+              <strong>Curated dataset reference</strong>
+              <small>Candidate alignment · source units unspecified</small>
+              <small className="reference-legend">
+                Coral: aneurysm · Teal: artery + aneurysm
+              </small>
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label="Show curated references"
+                  checked={showReference}
+                  onChange={(e) => {
+                    setShowReference(e.target.checked);
+                    if (!e.target.checked && mode === "reference")
+                      setMode("volume");
+                  }}
+                />
+                Show references
+              </label>
+              <button
+                onClick={() => setFocus([...reference.focus_ras])}
+                disabled={busy}
+              >
+                Focus reference target
+              </button>
+              <small aria-live="polite">References {referenceStatus}</small>
+            </section>
+          )}
           {caseState && (
             <dl>
               <dt>Image grid</dt>
@@ -393,6 +476,15 @@ export default function App() {
               </span>
             </div>
             <nav aria-label="Viewer layout">
+              {reference && (
+                <button
+                  className={mode === "reference" ? "active" : ""}
+                  onClick={() => setMode("reference")}
+                  disabled={!showReference || referenceStatus !== "ready"}
+                >
+                  Reference 3D
+                </button>
+              )}
               {[
                 ["linked", "Linked"],
                 ["axial", "Axial"],
@@ -435,6 +527,12 @@ export default function App() {
                   onLocation={setLocation}
                   onLoaded={loaded}
                   onError={failVolume}
+                  reference={showReference ? reference : null}
+                  onReferenceStatus={setReferenceStatus}
+                  onReferenceError={(message) => {
+                    setError(message);
+                    setMode("linked");
+                  }}
                 />
               </Suspense>
             ) : (

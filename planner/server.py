@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from planner.agent import AgentError, BoundedAgent, CaseContext, ToolSpec
 from planner.planning_sources import PLANNING_SOURCE_BUNDLE
 from planner.providers import ModelClient, ProviderError, ProviderSettings
+from planner.reference_server import ReferenceStore, register_reference_routes
 from planner.workspace import _connect, _get_case, create_app
 
 
@@ -23,8 +24,17 @@ class AgentRequest(BaseModel):
     public_data_confirmed: Literal[True]
 
 
-def build_app(db_path: Path, *, client_factory=None, sample_dir: Path | None = None):
+def build_app(
+    db_path: Path,
+    *,
+    client_factory=None,
+    sample_dir: Path | None = None,
+    reference_dir: Path | None = None,
+):
     app = create_app(db_path)
+    references = ReferenceStore(
+        reference_dir or Path(__file__).resolve().parents[1] / ".runtime" / "public-reference"
+    )
     sample_dir = (
         sample_dir or Path(__file__).resolve().parents[1] / ".runtime" / "approved-public-sample"
     )
@@ -64,7 +74,10 @@ def build_app(db_path: Path, *, client_factory=None, sample_dir: Path | None = N
             case = _get_case(conn, case_id)
         if case is None:
             raise HTTPException(404, "Case not found")
+        case["reference_annotation"] = references.optional_for_case(case)
         return case
+
+    register_reference_routes(app, references, read_case)
 
     def default_client():
         env = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
@@ -119,8 +132,17 @@ def build_app(db_path: Path, *, client_factory=None, sample_dir: Path | None = N
             raise HTTPException(
                 502, "Model request failed; no planning state was changed"
             ) from None
-        if read_case(case_id)["artifact_version"] != payload.artifact_version:
-            raise HTTPException(409, "Case changed during model request; result discarded")
+        latest = read_case(case_id)
+
+        def reference_revision(case):
+            return (case.get("reference_annotation") or {}).get("reference_revision")
+
+        if latest["artifact_version"] != payload.artifact_version or reference_revision(
+            latest
+        ) != reference_revision(snapshot):
+            raise HTTPException(
+                409, "Case or reference changed during model request; result discarded"
+            )
         if "read_case_plan" not in result.tool_names:
             raise HTTPException(502, "Model did not inspect the case plan")
         if sources_required and "read_planning_sources" not in result.tool_names:
@@ -151,7 +173,13 @@ def main(*, runtime_dir: Path | None = None):
     database.touch(mode=0o600, exist_ok=True)
     database.chmod(0o600)
     uvicorn.run(
-        build_app(database, sample_dir=root / "approved-public-sample"), host="127.0.0.1", port=8765
+        build_app(
+            database,
+            sample_dir=root / "approved-public-sample",
+            reference_dir=root / "public-reference",
+        ),
+        host="127.0.0.1",
+        port=8765,
     )
 
 

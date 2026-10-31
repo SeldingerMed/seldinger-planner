@@ -11,6 +11,8 @@ vi.mock("./Viewer", () => ({
     onLoaded: (v: unknown) => void;
     onLocation: (v: number[]) => void;
     focus: number[] | null;
+    file: File;
+    reference?: { case_id: string } | null;
   }) => (
     <div>
       <button
@@ -18,7 +20,8 @@ vi.mock("./Viewer", () => ({
           p.onLoaded({
             dimensions: [16, 16, 16],
             spacing_mm: [1, 1, 1],
-            spatial_units: "mm",
+            spatial_units:
+              p.file.name === "reference-cta.nii.gz" ? "unknown" : "mm",
           })
         }
       >
@@ -28,14 +31,111 @@ vi.mock("./Viewer", () => ({
         Choose test target
       </button>
       {p.focus && <span>Focused {p.focus.join(",")}</span>}
+      <span data-testid="reference-scope">
+        {p.reference?.case_id ?? "none"}
+      </span>
     </div>
   ),
 }));
 import App from "./App";
+import * as referenceFunctions from "./reference";
 afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+test("opens a scoped curated reference and clears it on another volume", async () => {
+  const metadata: referenceFunctions.ReferenceMetadata = {
+    case_label: "CMHA AHMU1218001",
+    source_url: "https://doi.org/10.6084/m9.figshare.26965450.v1",
+    license_url: "https://creativecommons.org/licenses/by/4.0/",
+    citation: "Synthetic contract test",
+    image_sha256: "0".repeat(64),
+    image_url: "/api/reference-volume",
+    reference_revision: "a".repeat(64),
+    spatial_units: "unknown",
+    alignment_status: "candidate_image_consistent",
+    method: "curated_dataset_annotation",
+    focus_ras: [-1, 2, 3],
+  };
+  const file = Object.assign(new File(["synthetic"], "reference-cta.nii.gz"), {
+    arrayBuffer: async () => new ArrayBuffer(1),
+  });
+  vi.spyOn(referenceFunctions, "loadReferenceVolume").mockResolvedValue({
+    file,
+    metadata,
+  });
+  vi.stubGlobal("crypto", {
+    subtle: {
+      digest: vi
+        .fn()
+        .mockResolvedValueOnce(new Uint8Array(32).buffer)
+        .mockResolvedValueOnce(new Uint8Array(32).fill(1).buffer),
+    },
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/reference"))
+        return new Response(
+          JSON.stringify({
+            ...metadata,
+            case_id: "reference-case",
+            annotations: ["aneurysm", "artery"].map((id) => ({
+              id,
+              sha256: "b".repeat(64),
+              triangle_count: 1,
+              url: `/api/cases/reference-case/reference/${"a".repeat(64)}/${id}.stl`,
+            })),
+          }),
+        );
+      const body = JSON.parse(String(init?.body));
+      return new Response(
+        JSON.stringify({
+          ...body,
+          case_id: body.image_sha256.startsWith("00")
+            ? "reference-case"
+            : "other-case",
+          artifact_version: "1",
+          notes: "",
+          measurements: [],
+          aneurysm_plan: null,
+        }),
+      );
+    }),
+  );
+  render(<App />);
+  fireEvent.click(screen.getByRole("button", { name: "Open reference CTA" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Load geometry test" }),
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId("reference-scope")).toHaveTextContent(
+      "reference-case",
+    ),
+  );
+  expect(screen.getByText("Curated dataset reference")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Set point A" })).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Focus reference target" }),
+  );
+  expect(screen.getByText("Focused -1,2,3")).toBeInTheDocument();
+  const other = Object.assign(new File(["synthetic"], "other.nii"), {
+    arrayBuffer: async () => new ArrayBuffer(1),
+  });
+  fireEvent.change(screen.getByLabelText("Open CTA volume"), {
+    target: { files: [other] },
+  });
+  await screen.findByText("other.nii");
+  fireEvent.click(screen.getByRole("button", { name: "Load geometry test" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("reference-scope")).toHaveTextContent("none"),
+  );
+  expect(
+    screen.queryByText("Curated dataset reference"),
+  ).not.toBeInTheDocument();
 });
 
 test("saves an image-linked worksheet and gates Muse on the saved revision", async () => {

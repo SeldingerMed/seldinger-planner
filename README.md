@@ -11,6 +11,7 @@ A new CTA-first neurovascular planning research prototype. This repository conta
 - An editable aneurysm worksheet: operator-marked image target, lesion/context fields, user-assigned manual measurement roles, discussion candidates and planning questions. Saving is revision-bound and reopening the same image restores it.
 - Baseten Muse Spark Open reads the server-bound case/worksheet snapshot through a bounded tool loop. Selected-option discussion also requires a fixed primary-source bundle, with source population and coverage limits visible. The model cannot select a different case, write planning state, execute shell commands, or fetch arbitrary files or URLs.
 - Direct Meta model adapter for separate infrastructure tests.
+- Original-public-case reference preview: a hash-checked context CTA crop and paired curated 3D surfaces, fixed case-bound asset routes, browser-side asset verification, reference-target navigation and a dedicated surface view. This is dataset-provided geometry, not a new segmentation result.
 
 This is not yet the proposed end-to-end aneurysm planner. Segmentation inference, validated sac/neck morphometry, orthogonal landing-zone diameters, sourced device sizing and SAM correction are not implemented. The worksheet supports user-assigned manual point-pair roles and non-prescriptive discussion of selected options, not clinical suitability ranking or treatment recommendations.
 
@@ -34,6 +35,8 @@ Open `http://127.0.0.1:5173`. The API binds only to `127.0.0.1:8765`; Vite proxi
 Open an authorized `.nii` or `.nii.gz` volume smaller than 200 MB. NIfTI headers must declare millimeter units before the UI and API allow millimeter measurement creation. Unspecified or unsupported units remain flagged rather than silently relabeled. A point-to-point distance is not a validated vessel diameter or device size.
 
 The optional **Open public CTA** action reads an already installed local sample from ignored `.runtime/approved-public-sample/`, requiring `public-cta.nii.gz` and `public-cta.json` with source and license provenance. No volume is distributed in this repository. The locally exercised source is an existing CMHA CTA crop, credited to Song et al. (2024), [dataset DOI](https://doi.org/10.6084/m9.figshare.26965450.v1), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Its source NIfTI has unspecified spatial units, so millimeter measurements are disabled for that sample pending independent unit corroboration. No new segmentation inference is claimed.
+
+The separate **Open reference CTA** action reads an installed bundle from ignored `.runtime/public-reference/`. The exercised case is CMHA `AHMU1218001`, acquired directly from the original public distribution. A fresh stdlib adapter preserves raw crop voxels, intensity scaling and the unspecified source-unit declaration. The paired curated STLs use an explicit candidate x/y sign transform. The interface labels that uncertainty, keeps millimeter measurements disabled, and renders references only in 3D, not as projected whole-mesh shapes on slice images. See [original-case verification and preparation](docs/verification/original-case-reference.md). Neither dataset assets nor model weights are included in git.
 
 ## Credentials and data
 
