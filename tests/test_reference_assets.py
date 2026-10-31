@@ -139,6 +139,20 @@ def run_prepare(tmp_path, start=(1, 1, 1), stop=(3, 4, 5), **kwargs):
     return manifest, out, fixes
 
 
+@pytest.mark.parametrize("offset", [352.5, float("nan"), float("inf"), -float("inf"), float(2**31)])
+def test_invalid_payload_offset_is_not_silently_truncated(tmp_path, offset):
+    fixes = make_fixtures(tmp_path)
+    raw = bytearray(gzip.decompress(fixes["cta_path"].read_bytes()))
+    struct.pack_into("<f", raw, 108, offset)
+    fixes["cta_path"].write_bytes(gzip.compress(raw, mtime=0))
+    fixes["expected_sha256"]["cta"] = sha256_file(fixes["cta_path"])
+    with pytest.raises(ReferencePreparationError, match="offset"):
+        prepare_reference(
+            **fixes, output_dir=tmp_path / "out", ijk_start=(1, 1, 1), ijk_stop=(3, 4, 5)
+        )
+    assert not (tmp_path / "out").exists()
+
+
 def test_singleton_inactive_dimensions_are_valid_3d(tmp_path):
     from planner.reference_assets import _parse_nifti_header
 
@@ -195,6 +209,13 @@ def test_unit_byte_uses_nifti1_offset_123():
     raw = gzip.decompress(build_nifti_bytes((4, 5, 6), (2, 3, 5), (7, -4, 11)))
     assert raw[123] == 2
     assert _parse_nifti_header(raw[:352], "synthetic")["xyzt_units"] == 2
+
+
+def test_manifest_affine_matches_serialized_float32_header_exactly(tmp_path):
+    manifest, out, _ = run_prepare(tmp_path, spacing=(0.1, 0.2, 0.3), translation=(0.4, -0.6, 0.8))
+    raw = gzip.decompress((out / "reference-cta.nii.gz").read_bytes())
+    actual = [list(struct.unpack_from("<4f", raw, 280 + 16 * r)) for r in range(3)]
+    assert manifest["crop"]["cropped_affine"] == actual
 
 
 def test_crop_origin_uses_signed_sform_not_absolute_spacing(tmp_path):
@@ -308,6 +329,19 @@ def test_deterministic_outputs(tmp_path):
     assert m1 == m2
 
 
+def test_binary_stl_with_solid_facet_header_is_not_misclassified(tmp_path):
+    fixes = make_fixtures(tmp_path)
+    source = fixes["aneurysm_path"].read_bytes()
+    fixes["aneurysm_path"].write_bytes(
+        b"solid facet binary producer header".ljust(80, b" ") + source[80:]
+    )
+    fixes["expected_sha256"]["aneurysm"] = sha256_file(fixes["aneurysm_path"])
+    manifest = prepare_reference(
+        **fixes, output_dir=tmp_path / "out", ijk_start=(1, 1, 1), ijk_stop=(3, 4, 5)
+    )
+    assert manifest["annotations"][0]["triangle_count"] == 1
+
+
 def test_binary_stl_transform_recomputes_normals(tmp_path):
     _, out, _ = run_prepare(tmp_path)
     raw = (out / "reference-aneurysm.stl").read_bytes()
@@ -328,6 +362,39 @@ def test_ascii_stl_input_transformed_to_binary(tmp_path):
     assert struct.unpack_from("<I", raw, 80)[0] == 1
     verts = [struct.unpack_from("<3f", raw, 96 + 12 * i) for i in range(3)]
     assert verts[1] == (-2.0, 0.0, 0.0)
+
+
+@pytest.mark.parametrize("failure", ["mesh", "manifest"])
+def test_failed_preparation_cleans_its_outputs_and_allows_corrected_retry(
+    tmp_path, monkeypatch, failure
+):
+    from pathlib import Path
+
+    fixes = make_fixtures(tmp_path)
+    out = tmp_path / "out"
+    original_mesh = fixes["artery_path"].read_bytes()
+    write_text = Path.write_text
+    if failure == "mesh":
+        fixes["artery_path"].write_bytes(b"invalid synthetic STL")
+        fixes["expected_sha256"]["artery"] = sha256_file(fixes["artery_path"])
+    else:
+
+        def fail_manifest(path, *args, **kwargs):
+            if path == out / "manifest.json":
+                path.write_bytes(b"{partial synthetic failure")
+                raise OSError("synthetic manifest write failure")
+            return write_text(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", fail_manifest)
+    expected = ReferencePreparationError if failure == "mesh" else OSError
+    with pytest.raises(expected):
+        prepare_reference(**fixes, output_dir=out, ijk_start=(1, 1, 1), ijk_stop=(3, 4, 5))
+    assert list(out.iterdir()) == []
+    fixes["artery_path"].write_bytes(original_mesh)
+    fixes["expected_sha256"]["artery"] = sha256_file(fixes["artery_path"])
+    monkeypatch.setattr(Path, "write_text", write_text)
+    prepare_reference(**fixes, output_dir=out, ijk_start=(1, 1, 1), ijk_stop=(3, 4, 5))
+    assert (out / "manifest.json").is_file()
 
 
 def test_hash_mismatch_rejected_no_manifest(tmp_path):

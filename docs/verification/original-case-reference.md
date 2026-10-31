@@ -16,6 +16,7 @@ Source: Song et al., CMHA (2024), [dataset version 1](https://doi.org/10.6084/m9
 - Output curated surfaces retain 382 and 5,312 triangles, respectively.
 - Three independently sought native/cropped float64 samples matched byte-for-byte, including the first and last crop voxels. Source-to-crop world-coordinate discrepancy was at most `6.258487701416016e-07` source units at those probes, from float32 NIfTI header rounding. This is a crop-coordinate check, not a registration-accuracy estimate.
 - Source `xyzt_units=0`, scalar scaling and raw crop voxel bytes were preserved. The explicit candidate STL transform is `diag(-1, -1, 1)`.
+- Hardened preparation was rerun on the actual original source in 8.169756500050426 seconds. All three output asset hashes were unchanged; the manifest now records the exact float32 affine stored in the image, rather than intermediate float64 arithmetic. The refreshed local reference revision is `8b6b5a3a45243084cd6a39b5d2b19e758d6dfb63112eb30feaafc470b47e5f3a`. Both refreshed surface routes returned hash-matching bytes and the prior-revision route returned 409.
 
 The stdlib preparer streams the source rather than allocating the full volume. It checks expected input hashes, source-size caps, declared payload length, uncropped tail and gzip integrity. It has cooperative elapsed-time checks during crop streaming, not process-level I/O preemption. Synthetic tests exercise deterministic gzip output, payload offsets, signed affine translation, scalar/unit preservation, binary/ASCII STL input and rejected inputs.
 
@@ -74,7 +75,7 @@ Run the normal API/frontend commands in the README, then choose **Open reference
 
 ## Automated checks observed
 
-`uv run pytest -q`: **129 passed**. Frontend Vitest: **27 passed**. Ruff checks/formatting, TypeScript, Vite production build, frontend formatting and diff checks passed. Production npm audit reported zero vulnerabilities. Existing warnings remain: NiiVue intentionally warns about zero-filled/oblique geometry fixtures, and Vite reports large library chunks. These checks do not establish clinical performance.
+`uv run pytest -q`: **139 passed**. Frontend Vitest: **27 passed**. Ruff checks/formatting, TypeScript, Vite production build, frontend formatting and diff checks passed. Production npm audit reported zero vulnerabilities. Existing warnings remain: NiiVue intentionally warns about zero-filled/oblique geometry fixtures, and Vite reports large library chunks. These checks do not establish clinical performance.
 
 ## Evidence boundary
 

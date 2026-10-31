@@ -25,7 +25,8 @@ CITATION = (
 )
 IMAGE_FILENAME = "reference-cta.nii.gz"
 ANNOTATION_FILES = {"aneurysm": "reference-aneurysm.stl", "artery": "reference-artery.stl"}
-# Explicit candidate only: diagonal image flip in x/y, z preserved.
+# Candidate STL coordinate rotation about the world origin, not a voxel-array
+# flip. The CTA affine is untouched except for its crop-origin translation.
 TRANSFORM = [[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]]
 TRANSFORM_STATUS = "candidate_image_consistent"
 
@@ -138,7 +139,11 @@ def _parse_nifti_header(raw: bytes, label: str) -> dict:
         if srow[r][r] == 0.0 or not math.isfinite(srow[r][r]):
             raise ReferencePreparationError(f"{label}: singular sform")
     vox_offset = struct.unpack_from("<f", raw, 108)[0]
-    if vox_offset < 352:
+    if (
+        not math.isfinite(vox_offset)
+        or not vox_offset.is_integer()
+        or not 352 <= vox_offset <= MAX_DECLARED_BYTES
+    ):
         raise ReferencePreparationError(f"{label}: invalid vox_offset {vox_offset}")
     if raw[348:352] != b"\x00\x00\x00\x00":
         raise ReferencePreparationError(f"{label}: extensions not supported")
@@ -227,6 +232,7 @@ def _write_cropped_image(header, source_path, output_path, origin, size, deadlin
         for r in range(3):
             srow[r][3] += sum(header["srow"][r][c] * origin[c] for c in range(3))
             struct.pack_into("<4f", buf, 280 + 16 * r, *srow[r])
+            srow[r] = list(struct.unpack_from("<4f", buf, 280 + 16 * r))
         new_header = bytes(buf)
 
     writer = None
@@ -292,6 +298,8 @@ def _read_stl(path: Path, label: str):
     if size > MAX_STL_BYTES:
         raise ReferencePreparationError(f"{label}: mesh input {size} bytes exceeds cap")
     data = path.read_bytes()
+    if len(data) >= 84 and len(data) == 84 + 50 * struct.unpack_from("<I", data, 80)[0]:
+        return _stl_triangles_from_binary(data, label)
     if data[:5].lower() == b"solid" and b"facet" in data[:4096]:
         try:
             return _stl_triangles_from_ascii(data.decode("ascii"), label)
@@ -395,39 +403,41 @@ def prepare_reference(
             )
             if ann_id == "aneurysm":
                 focus_ras = _bbox_center(transformed)
+
+        srow = header["srow"]
+        manifest = {
+            "schema_version": SCHEMA_VERSION,
+            "case_label": CASE_LABEL,
+            "source_url": SOURCE_URL,
+            "license_url": LICENSE_URL,
+            "citation": CITATION,
+            "image": {"filename": IMAGE_FILENAME, "sha256": image_sha},
+            "annotations": annotations,
+            "focus_ras": focus_ras,
+            "source_sha256": dict(expected_sha256),
+            "transform": {"matrix": TRANSFORM, "status": TRANSFORM_STATUS},
+            "source_header": {
+                "xyzt_units": header["xyzt_units"],
+                "scl_slope": header["slope"],
+                "scl_inter": header["inter"],
+                "spacing": list(header["spacing"]),
+            },
+            "crop": {
+                "origin_ijk": list(origin),
+                "size_voxels": list(size),
+                "source_affine": [list(row) for row in srow],
+                "cropped_affine": cropped_srow,
+            },
+        }
+        if focus_ras is None or not all(math.isfinite(v) for v in focus_ras):
+            raise ReferencePreparationError("focus_ras is not finite")
+        (output_dir / "manifest.json").write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return manifest
     except Exception:
-        image_sha = None
+        # This directory was verified absent/empty. Remove only this attempt's
+        # fixed output names, never source files or unrelated directory entries.
+        for name in (IMAGE_FILENAME, *ANNOTATION_FILES.values(), "manifest.json"):
+            (output_dir / name).unlink(missing_ok=True)
         raise
-
-    srow = header["srow"]
-
-    manifest = {
-        "schema_version": SCHEMA_VERSION,
-        "case_label": CASE_LABEL,
-        "source_url": SOURCE_URL,
-        "license_url": LICENSE_URL,
-        "citation": CITATION,
-        "image": {"filename": IMAGE_FILENAME, "sha256": image_sha},
-        "annotations": annotations,
-        "focus_ras": focus_ras,
-        "source_sha256": dict(expected_sha256),
-        "transform": {"matrix": TRANSFORM, "status": TRANSFORM_STATUS},
-        "source_header": {
-            "xyzt_units": header["xyzt_units"],
-            "scl_slope": header["slope"],
-            "scl_inter": header["inter"],
-            "spacing": list(header["spacing"]),
-        },
-        "crop": {
-            "origin_ijk": list(origin),
-            "size_voxels": list(size),
-            "source_affine": [list(row) for row in srow],
-            "cropped_affine": cropped_srow,
-        },
-    }
-    if not all(math.isfinite(v) for v in focus_ras):
-        raise ReferencePreparationError("focus_ras is not finite")
-    (output_dir / "manifest.json").write_text(
-        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
-    return manifest

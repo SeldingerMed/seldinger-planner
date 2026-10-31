@@ -90,6 +90,10 @@ def build_app(
             raise HTTPException(409, "Case revision changed")
         snapshot["measurement_count"] = len(snapshot["measurements"])
         snapshot["measurements"] = snapshot["measurements"][:100]
+        snapshot["measurements_returned"] = len(snapshot["measurements"])
+        snapshot["measurements_truncated"] = (
+            snapshot["measurements_returned"] < snapshot["measurement_count"]
+        )
         schema = {
             "type": "object",
             "properties": {},
@@ -100,7 +104,9 @@ def build_app(
             "read_case_plan",
             "Read the persisted case plan, operator-entered aneurysm worksheet, provenance, notes and manual point-pair evidence. "
             "Call with an empty JSON object. Scope is fixed by the server; do not supply case identifiers. "
-            "Call this before answering. The measurements are not validated vessel diameters or device sizes.",
+            "Call this before answering. At most 100 measurements are returned; measurement_count is the total, "
+            "measurements_returned is the visible count, and measurements_truncated marks omitted rows. "
+            "The measurements are not validated vessel diameters or device sizes.",
             schema,
             lambda context, args: deepcopy(snapshot),
         )
