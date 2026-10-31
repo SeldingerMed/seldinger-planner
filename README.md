@@ -1,37 +1,67 @@
 # Seldinger Planner
 
-New CTA-first aneurysm planning application, built separately from `seldinger-app` and `seldinger-ml`.
+A new CTA-first neurovascular planning research prototype. This repository contains the new application, not a wholesale port of the earlier Seldinger app.
 
-## Current exercised slice
+## Implemented
 
-- Fixed-endpoint Meta and Baseten clients.
-- Baseten model: `meta-models/muse-spark-open-1026` (the unversioned catalog alias returned HTTP 403 on the supplied account; this dated model succeeded).
-- Direct Meta model: `muse-spark-1.3`, Standard mode.
-- Bounded, schema-validated tool loop with server-selected case/version checks.
-- Nonclinical live conformance test that reads source-file existence and returns a fresh nonce through an actual tool call.
+- React/TypeScript workspace with upstream NiiVue: linked slices and 3D volume view, display presets, crosshair location, and measurement evidence links.
+- Browser-local NIfTI loading. Image bytes are not uploaded to the workspace server or included in Muse requests.
+- FastAPI and local SQLite case state, notes, point-to-point distances, optimistic revision checks, and Markdown brief export.
+- Case reopening by image fingerprint preserves saved notes and measurements in the same browser/server workspace.
+- Baseten Muse Spark Open reads a server-bound snapshot through a bounded tool loop. The model cannot select a different case, write planning state, execute shell commands, or fetch arbitrary files or URLs.
+- Direct Meta model adapter for separate infrastructure tests.
 
-This is infrastructure, not yet a viewer or clinical planning workflow. No segmentation inference or aneurysm detection is claimed by this slice.
+This is not yet the proposed end-to-end aneurysm planner. Segmentation inference, sac/neck measurements, orthogonal landing-zone diameters, sourced device sizing, treatment comparison and SAM correction are not implemented.
 
-## Run
+## Run locally
 
 ```sh
 uv sync --group dev
+uv run python -m planner.server
+```
+
+In a second terminal:
+
+```sh
+cd web
+npm ci
+npm run dev
+```
+
+Open `http://127.0.0.1:5173`. The API binds only to `127.0.0.1:8765`; Vite proxies `/api`. This prototype is not configured for public deployment or multiuser access.
+
+Open an authorized `.nii` or `.nii.gz` volume smaller than 200 MB. NIfTI headers must declare millimeter units before the UI and API allow millimeter measurement creation. Unspecified or unsupported units remain flagged rather than silently relabeled. A point-to-point distance is not a validated vessel diameter or device size.
+
+The optional **Open public CTA** action reads an already installed local sample from ignored `.runtime/approved-public-sample/`, requiring `public-cta.nii.gz` and `public-cta.json` with source and license provenance. No volume is distributed in this repository. The locally exercised source is an existing CMHA CTA crop, credited to Song et al. (2024), [dataset DOI](https://doi.org/10.6084/m9.figshare.26965450.v1), [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Its source NIfTI has unspecified spatial units, so millimeter measurements are disabled for that sample pending independent unit corroboration. No new segmentation inference is claimed.
+
+## Credentials and data
+
+Copy `.env.example` to an ignored `.env` and set `MODEL_API_KEY` and `BASETEN_API_KEY`. Restrict that file to mode `0600`. Never put provider keys in frontend environment variables.
+
+Baseten uses `meta-models/muse-spark-open-1026`. Meta infrastructure tests use `muse-spark-1.3`. Live model calls require explicit user action and incur API usage. Do not submit private, patient, partner or unapproved case information. The UI requires public/synthetic-data confirmation, reset on every volume change, before sending case metadata and notes to Muse.
+
+Runtime state, local images, weights, build outputs, and credentials stay out of git. The application does not confer rights to redistribute datasets or model artifacts.
+
+## Verify
+
+```sh
 uv run pytest -q
 uv run ruff check .
 uv run ruff format --check .
+cd web
+npm test
+npm run build
+npm audit --omit=dev
+```
+
+Paid, nonclinical provider conformance probe, run separately from offline tests:
+
+```sh
 uv run python -m planner.probe --provider both
 ```
 
-The last command incurs a small number of real API calls. It uses no imaging and writes sanitized results to ignored `artifacts/provider-smoke.json`. The supplied credentials live in ignored `.env` with mode 0600. Never put provider keys in frontend environment variables.
+The probe sends no imaging and saves sanitized local results in ignored `artifacts/`. Model/tool call counts and output tokens are capped; elapsed time is checked at operation boundaries. Blocking tools do not yet have process-level preemption. No automatic retries or fallback providers are enabled.
 
-The runner caps model/tool counts and checks elapsed time between operations; HTTP connect/read/write/pool operations have finite timeouts. This is not process-level preemption of a blocking tool. Add job-level isolation/timeouts before exposing expensive segmentation handlers. No automatic retries or provider fallbacks are enabled.
+## Evidence boundary
 
-## Next product slices
-
-1. Typed case/artifact manifests and read-only adapter to the existing public CTA library.
-2. New linked 2D/3D viewer.
-3. Seldinger segmentation adapter preserving checkpoint/preprocessing/coordinate semantics.
-4. Aneurysm-localized SAM proposal/acceptance loop and measurement invalidation.
-5. Source-grounded sizing and treatment-option worksheet with image-linked Muse tool calls.
-
-Keep automatic aneurysm detection distinct from curated lesion annotations and clinician selection.
+Backend persistence, stale-write rejection, brief export and the live Muse read-tool round trip have been exercised with explicitly synthetic metadata. The real public CTA was parsed locally and its served bytes verified by SHA-256. Those are separate checks from browser rendering: the real-image visual smoke check remains incomplete because the automation route could not open localhost. Successful builds and infrastructure tests are not clinical validation.

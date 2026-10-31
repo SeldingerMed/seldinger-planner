@@ -1,0 +1,544 @@
+import { lazy, Suspense, useState } from "react";
+import { api, restoreOrCreateCase, type CaseState } from "./api";
+import type { Point3 } from "./geometry";
+import type { VolumeInfo } from "./Viewer";
+const Viewer = lazy(() => import("./Viewer"));
+const coordinate = (p: Point3 | null) =>
+  p ? p.map((v) => v.toFixed(1)).join(" / ") : "Select a location in the scan";
+export default function App() {
+  const [file, setFile] = useState<File | null>(null);
+  const [digest, setDigest] = useState("");
+  const [caseState, setCase] = useState<CaseState | null>(null);
+  const [mode, setMode] = useState("linked");
+  const [windowRange, setWindow] = useState<[number, number]>([0, 600]);
+  const [location, setLocation] = useState<Point3 | null>(null);
+  const [focus, setFocus] = useState<Point3 | null>(null);
+  const [pointA, setA] = useState<Point3 | null>(null);
+  const [pointB, setB] = useState<Point3 | null>(null);
+  const [label, setLabel] = useState("Point-to-point distance");
+  const [notes, setNotes] = useState("");
+  const [source, setSource] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [question, setQuestion] = useState(
+    "Summarize the measured anatomy, distinguish what remains unknown, and list the information needed to compare treatment options.",
+  );
+  const [answer, setAnswer] = useState<{
+    answer: string;
+    tool_names: string[];
+    artifact_version: string;
+  } | null>(null);
+  async function acceptFile(next: File, sourceURL = caseState ? "" : source) {
+    if (!/\.nii(\.gz)?$/i.test(next.name) || next.size > 200 * 1024 * 1024) {
+      setError("Choose a NIfTI .nii or .nii.gz file smaller than 200 MB.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setCase(null);
+    setA(null);
+    setB(null);
+    setLocation(null);
+    setFocus(null);
+    setConfirmed(false);
+    setSource(sourceURL);
+    setAnswer(null);
+    setNotes("");
+    try {
+      const bytes = await crypto.subtle.digest(
+        "SHA-256",
+        await next.arrayBuffer(),
+      );
+      setDigest(
+        Array.from(new Uint8Array(bytes))
+          .map((b) => b.toString(16).padStart(2, "0"))
+          .join(""),
+      );
+      setFile(next);
+    } catch {
+      setBusy(false);
+      setError("Could not read the selected volume.");
+    }
+  }
+  async function loaded(info: VolumeInfo) {
+    try {
+      const result = await restoreOrCreateCase({
+        title:
+          file?.name.replace(/\.nii(\.gz)?$/i, "").slice(0, 100) ||
+          "CTA workspace",
+        image_sha256: digest,
+        source_url: source || null,
+        ...info,
+      });
+      setCase(result);
+      setNotes(result.notes);
+      setSource(result.source_url || "");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveMeasurement() {
+    if (!caseState || caseState.spatial_units !== "mm" || !pointA || !pointB)
+      return;
+    setBusy(true);
+    setError("");
+    try {
+      setCase(
+        await api<CaseState>(`/cases/${caseState.case_id}/measurements`, {
+          artifact_version: caseState.artifact_version,
+          label,
+          point_a_mm: pointA,
+          point_b_mm: pointB,
+        }),
+      );
+      setA(null);
+      setB(null);
+      setAnswer(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveNotes() {
+    if (!caseState) return;
+    setBusy(true);
+    setError("");
+    try {
+      setCase(
+        await api<CaseState>(
+          `/cases/${caseState.case_id}/notes`,
+          { artifact_version: caseState.artifact_version, notes },
+          "PATCH",
+        ),
+      );
+      setAnswer(null);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function askMuse() {
+    if (!caseState || !confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      setAnswer(
+        await api(`/cases/${caseState.case_id}/agent`, {
+          artifact_version: caseState.artifact_version,
+          question,
+          public_data_confirmed: confirmed,
+        }),
+      );
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function publicSample() {
+    setBusy(true);
+    setError("");
+    try {
+      const meta = await api<{ source_url: string; filename: string }>(
+        "/sample",
+      );
+      const response = await fetch("/api/sample-volume");
+      if (!response.ok) throw new Error();
+      await acceptFile(
+        new File([await response.blob()], meta.filename),
+        meta.source_url,
+      );
+    } catch {
+      setBusy(false);
+      setError(
+        "Public sample is not installed. Open an authorized local NIfTI volume instead.",
+      );
+    }
+  }
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand-mark">
+          S<span>/</span>
+        </div>
+        <div className="brand">
+          <h1>Seldinger Planner</h1>
+          <span>NEUROVASCULAR WORKSPACE</span>
+        </div>
+        <span className="build-tag">RESEARCH BUILD / 01</span>
+        <div className="top-actions">
+          <button onClick={publicSample} disabled={busy}>
+            Open public CTA
+          </button>
+          <label className="file-button">
+            Open volume
+            <input
+              aria-label="Open CTA volume"
+              type="file"
+              accept=".nii,.nii.gz"
+              disabled={busy}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void acceptFile(f);
+              }}
+            />
+          </label>
+        </div>
+      </header>
+      <div className="workspace-grid">
+        <aside className="case-rail">
+          <div className="eyebrow">01 / CASE</div>
+          <h2>{caseState?.title || "A new perspective"}</h2>
+          <p className="muted">
+            CTA-first planning. Image-linked evidence. One coherent workspace.
+          </p>
+          <div className="case-meta">
+            <span className="status-dot" />
+            {caseState
+              ? "Workspace connected"
+              : busy
+                ? "Opening volume"
+                : "Local workspace"}
+          </div>
+          <label className="field-label">
+            Public source URL
+            <input
+              aria-label="Public source URL"
+              value={source}
+              type="url"
+              placeholder="https://original-dataset.org/case"
+              disabled={!!caseState || busy}
+              onChange={(e) => setSource(e.target.value)}
+            />
+          </label>
+          {caseState && (
+            <dl>
+              <dt>Image grid</dt>
+              <dd>{caseState.dimensions.join(" × ")}</dd>
+              <dt>Voxel spacing</dt>
+              <dd>
+                {caseState.spacing_mm.map((v) => v.toFixed(3)).join(" × ")}{" "}
+                {caseState.spatial_units === "mm"
+                  ? "mm"
+                  : "(units unspecified)"}
+              </dd>
+              <dt>Workspace revision</dt>
+              <dd>v{caseState.artifact_version}</dd>
+              <dt>Image fingerprint</dt>
+              <dd className="mono">{caseState.image_sha256.slice(0, 16)}…</dd>
+            </dl>
+          )}
+          <div className="section-rule" />
+          <div className="eyebrow">DISPLAY</div>
+          <div className="preset-stack">
+            {[
+              ["CTA", "0", "600"],
+              ["Soft tissue", "0", "100"],
+              ["Bone", "200", "1800"],
+            ].map(([name, min, max]) => (
+              <button
+                key={name}
+                className={
+                  windowRange[0] === +min && windowRange[1] === +max
+                    ? "selected"
+                    : ""
+                }
+                onClick={() => setWindow([+min, +max])}
+              >
+                {name}
+                <span>
+                  {min}–{max}
+                </span>
+              </button>
+            ))}
+          </div>
+          {source === "https://doi.org/10.6084/m9.figshare.26965450.v1" && (
+            <p className="method-note">
+              Source: Song et al., CMHA (2024).{" "}
+              <a
+                href="https://creativecommons.org/licenses/by/4.0/"
+                target="_blank"
+                rel="noreferrer"
+              >
+                CC BY 4.0
+              </a>
+              . Public sample is a source-intensity-preserving crop.
+            </p>
+          )}
+          <div className="rail-note">
+            Volumes render in this browser. Images are not uploaded to the
+            workspace server or Muse.
+          </div>
+        </aside>
+        <section className="imaging-panel">
+          <div className="imaging-toolbar">
+            <div>
+              <span className="eyebrow">02 / ANATOMY</span>
+              <span className="scan-label">
+                {file?.name || "No volume loaded"}
+              </span>
+            </div>
+            <nav aria-label="Viewer layout">
+              {[
+                ["linked", "Linked"],
+                ["axial", "Axial"],
+                ["coronal", "Coronal"],
+                ["sagittal", "Sagittal"],
+                ["volume", "3D"],
+              ].map(([id, name]) => (
+                <button
+                  key={id}
+                  className={mode === id ? "active" : ""}
+                  onClick={() => setMode(id)}
+                >
+                  {name}
+                </button>
+              ))}
+            </nav>
+          </div>
+          <div className="canvas-wrap">
+            {file ? (
+              <Suspense
+                fallback={
+                  <div className="empty-view">Preparing imaging engine…</div>
+                }
+              >
+                <Viewer
+                  file={file}
+                  mode={mode}
+                  windowRange={windowRange}
+                  focus={focus}
+                  onLocation={setLocation}
+                  onLoaded={loaded}
+                  onError={(message) => {
+                    setError(message);
+                    setBusy(false);
+                  }}
+                />
+              </Suspense>
+            ) : (
+              <div className="empty-view">
+                <div className="crosshair-art">
+                  <i />
+                  <b />
+                </div>
+                <div className="eyebrow">START WITH THE ANATOMY</div>
+                <h2>Your scan. A clear plan.</h2>
+                <p>
+                  Open an authorized CTA volume to explore linked
+                  <br />
+                  2D slices and a 3D reconstruction.
+                </p>
+                <button onClick={publicSample}>
+                  Open public CTA <span>↗</span>
+                </button>
+                <small>
+                  NIfTI · physical-space coordinates · browser-local rendering
+                </small>
+              </div>
+            )}
+            {busy && (
+              <div className="progress-pill" role="status">
+                Working…
+              </div>
+            )}
+          </div>
+          <footer className="viewer-footer">
+            <span className="mono">
+              RAS {caseState?.spatial_units === "mm" ? "mm" : "source units"}
+              &nbsp; {coordinate(location)}
+            </span>
+            <span>
+              Click to locate · Scroll through slices · Drag to rotate 3D
+            </span>
+          </footer>
+          {error && (
+            <div className="error-banner" role="alert">
+              {error}
+            </div>
+          )}
+        </section>
+        <aside className="planning-panel">
+          <div className="eyebrow">03 / PLANNING</div>
+          <h2>Evidence before decisions.</h2>
+          <section className="planning-section">
+            <h3>
+              Measurements <span>{caseState?.measurements.length || 0}</span>
+            </h3>
+            <p className="muted small">
+              Select endpoints in the linked scan. Distances use physical RAS
+              coordinates.
+            </p>
+            <div className="point-row">
+              <button
+                disabled={
+                  !location ||
+                  !caseState ||
+                  caseState.spatial_units !== "mm" ||
+                  busy
+                }
+                onClick={() => setA(location && [...location])}
+              >
+                Set point A
+              </button>
+              <button
+                disabled={
+                  !location ||
+                  !caseState ||
+                  caseState.spatial_units !== "mm" ||
+                  busy
+                }
+                onClick={() => setB(location && [...location])}
+              >
+                Set point B
+              </button>
+            </div>
+            {(pointA || pointB) && (
+              <div className="point-readout mono">
+                A {coordinate(pointA)}
+                <br />B {coordinate(pointB)}
+              </div>
+            )}
+            <div className="measurement-form">
+              <input
+                aria-label="Measurement label"
+                value={label}
+                maxLength={80}
+                onChange={(e) => setLabel(e.target.value)}
+              />
+              <button
+                disabled={
+                  !pointA ||
+                  !pointB ||
+                  !caseState ||
+                  caseState.spatial_units !== "mm" ||
+                  busy
+                }
+                onClick={saveMeasurement}
+              >
+                Save
+              </button>
+            </div>
+            {caseState?.spatial_units === "unknown" && (
+              <p className="method-note">
+                Spatial units are not declared in this source. Millimeter
+                measurements are disabled.
+              </p>
+            )}
+            <div className="measurement-list">
+              {caseState?.measurements.map((m, index) => (
+                <button
+                  key={m.measurement_id}
+                  onClick={() => setFocus([...m.point_a_mm])}
+                >
+                  <span className="measure-index">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+                  <span>
+                    {m.label}
+                    <small>Point-to-point / RAS</small>
+                  </span>
+                  <strong>
+                    {m.distance_mm.toFixed(2)}
+                    <small>mm</small>
+                  </strong>
+                </button>
+              ))}
+            </div>
+            <small className="method-note">
+              Point-to-point distance is not an orthogonal vessel diameter or
+              validated device-sizing measurement.
+            </small>
+          </section>
+          <section className="planning-section">
+            <h3>Case notes</h3>
+            <textarea
+              aria-label="Case planning notes"
+              value={notes}
+              maxLength={8000}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Lesion location, questions, options to discuss, missing clinical context…"
+            />
+            <div className="section-actions">
+              <button
+                onClick={saveNotes}
+                disabled={!caseState || busy || notes === caseState.notes}
+              >
+                Save notes
+              </button>
+              {caseState && (
+                <a
+                  href={`/api/cases/${caseState.case_id}/brief`}
+                  download="planning-brief.md"
+                >
+                  Export brief ↗
+                </a>
+              )}
+            </div>
+          </section>
+          <section className="planning-section muse-section">
+            <h3>
+              <span className="muse-spark">✳</span> Muse{" "}
+              <small>SPARK OPEN / BASETEN</small>
+            </h3>
+            <textarea
+              aria-label="Question for Muse"
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              maxLength={4000}
+            />
+            <label className="confirm-label">
+              <input
+                type="checkbox"
+                aria-label="Public or synthetic data only"
+                checked={confirmed}
+                onChange={(e) => setConfirmed(e.target.checked)}
+              />
+              This case and my notes contain only public or synthetic data.
+            </label>
+            <button
+              aria-label="Ask Muse"
+              className="primary"
+              disabled={
+                !caseState ||
+                !confirmed ||
+                busy ||
+                !question.trim() ||
+                notes !== caseState.notes
+              }
+              onClick={askMuse}
+            >
+              Ask Muse <span>↗</span>
+            </button>
+            {notes !== caseState?.notes && caseState && (
+              <small className="method-note">
+                Save notes before asking Muse.
+              </small>
+            )}
+            {answer && (
+              <div className="agent-answer">
+                <div className="eyebrow">
+                  CASE STATE v{answer.artifact_version} ·{" "}
+                  {answer.tool_names.join(" → ")}
+                </div>
+                <p>{answer.answer}</p>
+              </div>
+            )}
+          </section>
+        </aside>
+      </div>
+      <footer className="app-footer">
+        <span>SELDINGER / PREOPERATIVE INTELLIGENCE</span>
+        <span>
+          Research prototype. Measurements and model output require independent
+          review.
+        </span>
+      </footer>
+    </div>
+  );
+}
