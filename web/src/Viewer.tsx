@@ -22,9 +22,11 @@ export default function Viewer({
 }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<Niivue | null>(null);
-  const ready = useRef<Promise<Niivue> | null>(null);
+  const ready = useRef<Promise<Niivue | null> | null>(null);
   const callbacks = useRef({ onLocation, onLoaded, onError });
   callbacks.current = { onLocation, onLoaded, onError };
+  const display = useRef(windowRange);
+  display.current = windowRange;
   useEffect(() => {
     if (!canvas.current) return;
     const nv = new Niivue({
@@ -40,18 +42,21 @@ export default function Viewer({
       const p = point3((location as { mm?: unknown })?.mm);
       if (p) callbacks.current.onLocation(p);
     };
-    ready.current = nv.attachToCanvas(canvas.current).then(() => {
-      nv.setSliceType(SLICE_TYPE.MULTIPLANAR);
-      return nv;
-    });
-    ready.current.catch(() =>
-      callbacks.current.onError(
-        "WebGL 2 is unavailable. Open this workspace in a WebGL-capable browser.",
-      ),
-    );
+    ready.current = nv
+      .attachToCanvas(canvas.current)
+      .then(() => {
+        nv.setSliceType(SLICE_TYPE.MULTIPLANAR);
+        return nv;
+      })
+      .catch(() => {
+        callbacks.current.onError(
+          "WebGL 2 is unavailable. Open this workspace in a WebGL-capable browser.",
+        );
+        return null;
+      });
     return () => {
       nv.onLocationChange = () => {};
-      nv.gl?.getExtension("WEBGL_lose_context")?.loseContext();
+      nv._gl?.getExtension("WEBGL_lose_context")?.loseContext();
       viewer.current = null;
     };
   }, []);
@@ -68,11 +73,11 @@ export default function Viewer({
         const vol = nv.volumes[0];
         if (!vol?.hdr) throw new Error("No readable 3D NIfTI image");
         const info = volumeMetadata(vol.hdr);
-        vol.cal_min = 0;
-        vol.cal_max = 600;
+        vol.cal_min = display.current[0];
+        vol.cal_max = display.current[1];
         nv.updateGLVolume();
         callbacks.current.onLoaded(info);
-        const center = point3(nv.frac2mm(nv.scene.crosshairPos));
+        const center = point3(nv.frac2mm(nv.scene.crosshairPos, 0, true));
         if (center) callbacks.current.onLocation(center);
       } catch {
         if (active)
@@ -108,7 +113,7 @@ export default function Viewer({
   useEffect(() => {
     const nv = viewer.current;
     if (!focus || !nv?.volumes.length) return;
-    nv.scene.crosshairPos = nv.mm2frac(focus);
+    nv.scene.crosshairPos = nv.mm2frac(focus, 0, true);
     nv.drawScene();
   }, [focus]);
   return <canvas ref={canvas} aria-label="Linked CTA slices and 3D volume" />;

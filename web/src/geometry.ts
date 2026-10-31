@@ -10,6 +10,8 @@ export function volumeMetadata(hdr: {
   dims: ArrayLike<number>;
   pixDims: ArrayLike<number>;
   xyzt_units?: number;
+  qform_code?: number;
+  sform_code?: number;
 }) {
   const dimensions = Array.from(hdr.dims).slice(1, 4);
   const spacing_mm = Array.from(hdr.pixDims).slice(1, 4).map(Math.abs);
@@ -22,5 +24,10 @@ export function volumeMetadata(hdr: {
     throw new Error("Unsupported image geometry");
   const spatial_units: "mm" | "unknown" =
     ((hdr.xyzt_units ?? 0) & 7) === 2 ? "mm" : "unknown";
+  if (
+    !(Number.isFinite(hdr.qform_code) && hdr.qform_code! > 0) &&
+    !(Number.isFinite(hdr.sform_code) && hdr.sform_code! > 0)
+  )
+    throw new Error("Source spatial orientation is not declared");
   return { dimensions, spacing_mm, spatial_units };
 }

@@ -29,6 +29,21 @@ export default function App() {
     tool_names: string[];
     artifact_version: string;
   } | null>(null);
+  function failVolume(message: string) {
+    setFile(null);
+    setDigest("");
+    setCase(null);
+    setNotes("");
+    setA(null);
+    setB(null);
+    setLocation(null);
+    setFocus(null);
+    setConfirmed(false);
+    setAnswer(null);
+    setSource("");
+    setBusy(false);
+    setError(message);
+  }
   async function acceptFile(next: File, sourceURL = caseState ? "" : source) {
     if (!/\.nii(\.gz)?$/i.test(next.name) || next.size > 200 * 1024 * 1024) {
       setError("Choose a NIfTI .nii or .nii.gz file smaller than 200 MB.");
@@ -57,8 +72,7 @@ export default function App() {
       );
       setFile(next);
     } catch {
-      setBusy(false);
-      setError("Could not read the selected volume.");
+      failVolume("Could not read the selected volume.");
     }
   }
   async function loaded(info: VolumeInfo) {
@@ -184,6 +198,7 @@ export default function App() {
               disabled={busy}
               onChange={(e) => {
                 const f = e.target.files?.[0];
+                e.target.value = "";
                 if (f) void acceptFile(f);
               }}
             />
@@ -315,10 +330,7 @@ export default function App() {
                   focus={focus}
                   onLocation={setLocation}
                   onLoaded={loaded}
-                  onError={(message) => {
-                    setError(message);
-                    setBusy(false);
-                  }}
+                  onError={failVolume}
                 />
               </Suspense>
             ) : (
