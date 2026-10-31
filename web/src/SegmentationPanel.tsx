@@ -22,8 +22,13 @@ export default function SegmentationPanel(props: Props) {
   const [running, setRunning] = useState(false);
   const [candidate, setCandidate] = useState<SegmentationEntry | null>(null);
   const [current, setCurrent] = useState<SegmentationEntry[]>([]);
+  const [currentLoaded, setCurrentLoaded] = useState(false);
   const [visible, setVisible] = useState(true);
   const [radius, setRadius] = useState(12);
+  const [pointAction, setPointAction] = useState(1);
+  const acceptedAneurysm = current.find(
+    (entry) => entry.role === "aneurysm" && entry.status === "accepted",
+  );
   function bound(entry: SegmentationEntry) {
     if (
       entry.case_id !== caseState.case_id ||
@@ -39,6 +44,7 @@ export default function SegmentationPanel(props: Props) {
     const ticket = ++epoch.current;
     setCandidate(null);
     setCurrent([]);
+    setCurrentLoaded(false);
     setRunning(false);
     setVisible(true);
     callbacks.current.onOverlay(null);
@@ -56,6 +62,7 @@ export default function SegmentationPanel(props: Props) {
             .map(bound);
           setCurrent(entries);
           callbacks.current.onOverlay(entries[0] ?? null);
+          setCurrentLoaded(true);
         })
         .catch((error) => {
           if (epoch.current === ticket) callbacks.current.onError(error);
@@ -70,9 +77,18 @@ export default function SegmentationPanel(props: Props) {
     caseState.artifact_version,
     reference?.reference_revision,
   ]);
-  async function run(kind: "vessel" | "sam2" | "aneurysm") {
-    if (!reference || disabled || running || (kind === "sam2" && !location))
+  async function run(kind: "vessel" | "sam2" | "aneurysm", correction = false) {
+    if (
+      !reference ||
+      disabled ||
+      running ||
+      !currentLoaded ||
+      candidate ||
+      (kind === "sam2" && !location)
+    )
       return;
+    if (correction && (kind !== "sam2" || !acceptedAneurysm)) return;
+    if (kind === "sam2" && acceptedAneurysm && !correction) return;
     const ticket = epoch.current;
     setRunning(true);
     try {
@@ -89,6 +105,10 @@ export default function SegmentationPanel(props: Props) {
                   point_ras: location,
                   radius_voxels: radius,
                   display_window: windowRange,
+                  point_label: pointAction,
+                  ...(correction
+                    ? { base_candidate_id: acceptedAneurysm!.candidate_id }
+                    : {}),
                 }
               : {}),
           },
@@ -140,7 +160,8 @@ export default function SegmentationPanel(props: Props) {
       if (epoch.current === ticket) setRunning(false);
     }
   }
-  const locked = disabled || running || !reference;
+  const locked = disabled || running || !reference || !currentLoaded;
+  const inferenceLocked = locked || candidate !== null;
   return (
     <section
       className="planning-section segmentation-panel"
@@ -154,16 +175,38 @@ export default function SegmentationPanel(props: Props) {
       ) : (
         <>
           <div className="point-row">
-            <button disabled={locked} onClick={() => run("vessel")}>
+            <button disabled={inferenceLocked} onClick={() => run("vessel")}>
               Run vessel model
             </button>
-            <button disabled={locked} onClick={() => run("aneurysm")}>
+            <button disabled={inferenceLocked} onClick={() => run("aneurysm")}>
               Run aneurysm model
             </button>
-            <button disabled={locked || !location} onClick={() => run("sam2")}>
+            <button
+              disabled={inferenceLocked || !location || !!acceptedAneurysm}
+              onClick={() => run("sam2")}
+            >
               SAM at crosshair
             </button>
           </div>
+          <button
+            className="sam-correction-trigger"
+            disabled={inferenceLocked || !location || !acceptedAneurysm}
+            onClick={() => run("sam2", true)}
+          >
+            Refine accepted aneurysm
+          </button>
+          <label className="small sam-input-label">
+            SAM point action
+            <select
+              aria-label="SAM point action"
+              value={pointAction}
+              disabled={inferenceLocked}
+              onChange={(event) => setPointAction(Number(event.target.value))}
+            >
+              <option value={1}>Include point</option>
+              <option value={0}>Exclude point</option>
+            </select>
+          </label>
           <label className="small">
             SAM region radius (native pixels)
             <input
@@ -172,7 +215,7 @@ export default function SegmentationPanel(props: Props) {
               min={2}
               max={40}
               value={radius}
-              disabled={locked}
+              disabled={inferenceLocked}
               onChange={(e) => {
                 const n = Number(e.target.value);
                 if (Number.isInteger(n) && n >= 2 && n <= 40) setRadius(n);
@@ -180,10 +223,11 @@ export default function SegmentationPanel(props: Props) {
             />
           </label>
           <p className="method-note">
-            Vessel: trained binary model, not aneurysm detection. SAM:
-            operator-prompted native axial slice, not a 3D sac segmentation.
-            Aneurysm: trained 3D segmentation within the selected context,
-            not independent full-head localization or validated morphometry.
+            Vessel: trained binary model, not aneurysm detection. SAM edits a
+            prompted native slice; refinement preserves other accepted slices,
+            without 3D propagation. Aneurysm: trained 3D segmentation within the
+            selected context, not independent full-head localization or
+            validated morphometry.
           </p>
           {running && (
             <p role="status">
@@ -198,7 +242,10 @@ export default function SegmentationPanel(props: Props) {
                   ? "Trained vessel candidate"
                   : candidate.producer === "aneurysm_model"
                     ? "Trained aneurysm candidate (3D context)"
-                    : "SAM single-slice candidate"}
+                    : candidate.provenance.segmentation_extent ===
+                        "single_slice_edit_of_existing_mask"
+                      ? "SAM correction of accepted mask"
+                      : "SAM single-slice candidate"}
               </p>
               <div className="point-row">
                 <button disabled={locked} onClick={() => decide("accept")}>

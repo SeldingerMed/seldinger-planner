@@ -121,9 +121,12 @@ test("opens a scoped curated reference and clears it on another volume", async (
     ),
   );
   expect(screen.getByText("Curated dataset reference")).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: "Run vessel model" }),
-  ).toBeEnabled();
+  // Inference now waits for the accepted-mask snapshot, not only reference geometry.
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Run vessel model" }),
+    ).toBeEnabled(),
+  );
   expect(screen.getByRole("button", { name: "Set point A" })).toBeDisabled();
   fireEvent.click(
     screen.getByRole("button", { name: "Focus reference target" }),

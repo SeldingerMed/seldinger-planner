@@ -19,6 +19,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 ML_PYTHON = _REPO_ROOT / ".runtime" / "ml-runtime" / "bin" / "python"
 REFERENCE_DIR = _REPO_ROOT / ".runtime" / "public-reference"
 REFERENCE_IMAGE = REFERENCE_DIR / "reference-cta.nii.gz"
+MASK_BLOB_DIR = _REPO_ROOT / ".runtime" / "inference-results" / "blobs"
+_MAX_MASK_BYTES = 16 * 1024 * 1024
 VESSEL_CHECKPOINT = _REPO_ROOT / ".runtime" / "models" / "pooled-vessel-v1" / "checkpoint_best.pth"
 VESSEL_LANDMARKS = _REPO_ROOT / ".runtime" / "models" / "pooled-vessel-v1" / "landmarks.npz"
 SAM_CHECKPOINT = _REPO_ROOT / ".runtime" / "models" / "sam2.1-tiny" / "sam2.1_hiera_tiny.pt"
@@ -166,6 +168,51 @@ def run_local_model(job, output_dir):
     return {"mask_path": mask_path, "metadata": metadata}
 
 
+def _load_correction_base(job, source):
+    """Reverify a server-selected opaque blob identity, never a supplied path."""
+    import hashlib
+    import re
+
+    import nibabel as nib
+    import numpy as np
+
+    base = job["base_mask"]
+    if not isinstance(base, dict):
+        raise TypeError("Correction base descriptor must be an object")
+    digest = base.get("mask_sha256")
+    candidate = base.get("candidate_id")
+    if (
+        not isinstance(digest, str)
+        or re.fullmatch(r"[a-f0-9]{64}", digest) is None
+        or not isinstance(candidate, str)
+        or re.fullmatch(r"[A-Za-z0-9_-]{1,80}", candidate) is None
+        or base.get("image_sha256") != job["image_sha256"]
+        or base.get("reference_revision") != job["reference_revision"]
+        or type(base.get("segmentation_revision")) is not int
+        or base["segmentation_revision"] < 1
+        or base.get("producer") not in ("aneurysm_model", "sam2_prompted_slice")
+    ):
+        raise ValueError("Correction base identity does not match this job")
+    path = MASK_BLOB_DIR / f"{digest}.nii.gz"
+    if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= _MAX_MASK_BYTES:
+        raise ValueError("Correction base blob is unavailable")
+    with path.open("rb") as stream:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
+            raise ValueError("Correction base blob hash mismatch")
+    mask_image = nib.load(str(path))
+    if (
+        mask_image.shape != source.shape
+        or mask_image.get_data_dtype() != np.uint8
+        or not np.array_equal(mask_image.affine, source.affine)
+        or mask_image.header.get_xyzt_units() != source.header.get_xyzt_units()
+    ):
+        raise ValueError("Correction base geometry does not match the source")
+    mask = np.asarray(mask_image.dataobj)
+    if not np.isin(mask, [0, 1]).all():
+        raise ValueError("Correction base must be binary")
+    return mask
+
+
 def _run_job(job, output_dir):
     """Child entry point: verify the fixed reference, infer, save artifacts."""
     import hashlib
@@ -218,6 +265,9 @@ def _run_job(job, output_dir):
     ):
         raise ValueError("display_window must be two increasing finite values")
     window = [float(window[0]), float(window[1])]
+    correction_base = None
+    point_label = 1
+    sam_prompt_metadata = {}
 
     if kind == "vessel":
         import torch
@@ -249,22 +299,48 @@ def _run_job(job, output_dir):
         normalized = np.clip(plane_rows_j_cols_i, window[0], window[1])
         rgb = ((normalized - window[0]) / span * 255.0).round().astype(np.uint8)
         image = np.repeat(rgb[:, :, None], 3, axis=2)
+        correction_base = job.get("base_mask")
+        base_volume = _load_correction_base(job, source) if correction_base is not None else None
+        prior_args = (
+            {"initial_mask": base_volume[:, :, k].T.copy()} if base_volume is not None else {}
+        )
+        point_label = job.get("point_label", 1)
+        if type(point_label) is not int or point_label not in (0, 1):
+            raise ValueError("Point polarity must be integer 0 or 1")
         result = refine_slice(
             image,
             points=[(i, j)],
-            labels=[1],
+            labels=[point_label],
             box=box,
             checkpoint_path=SAM_CHECKPOINT,
             prompt_provenance="operator_entered",
+            **prior_args,
         )
-        candidate = np.asarray(result["mask"], dtype=np.uint8)
+        candidate = np.asarray(result["mask"])
         if candidate.shape != (height, width) or not np.isin(candidate, [0, 1]).all():
             raise ValueError("SAM returned an unusable candidate mask")
-        mask_xyz = np.zeros(native_shape, dtype=np.uint8)
+        if base_volume is not None and result.get("initial_mask_used") is not True:
+            raise ValueError("SAM did not use the selected correction base")
+        mask_xyz = (
+            base_volume.copy()
+            if base_volume is not None
+            else np.zeros(native_shape, dtype=np.uint8)
+        )
         mask_xyz[:, :, k] = candidate.T
         slice_index = k
-        segmentation_extent = "single_native_axial_slice"
+        segmentation_extent = (
+            "single_slice_edit_of_existing_mask"
+            if base_volume is not None
+            else "single_native_axial_slice"
+        )
         prompt_provenance = "operator_entered"
+        sam_prompt_metadata = {
+            "point_label": point_label,
+            "point_ras": [float(value) for value in job["point_ras"]],
+            "prompt_native_ijk": [float(i), float(j), int(k)],
+            "prompt_box_native_xyxy": box,
+            "three_dimensional_propagation": False,
+        }
     else:
         if job.get("role") != "aneurysm":
             raise ValueError("aneurysm requires the aneurysm role")
@@ -332,6 +408,10 @@ def _run_job(job, output_dir):
         metadata["slice_index"] = slice_index
         metadata["prompt_provenance"] = prompt_provenance
         metadata["prompt_context"] = "curated_reference_case; crosshair may be reference-informed"
+    if kind == "sam2":
+        metadata.update(sam_prompt_metadata)
+        if correction_base is not None:
+            metadata["correction_base"] = correction_base
     (output_dir / "metadata.json").write_text(json.dumps(metadata, allow_nan=False))
     return metadata
 

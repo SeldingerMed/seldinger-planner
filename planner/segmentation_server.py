@@ -51,6 +51,12 @@ class SegmentationRequest(BaseModel):
     point_ras: list[StrictFloat] | None = None
     radius_voxels: StrictInt = Field(default=12, ge=2, le=40)
     display_window: tuple[StrictFloat, StrictFloat] = (0.0, 600.0)
+    # Only opaque identity/point polarity are product inputs. Blob paths and
+    # hashes are selected from the current case-owned accepted ledger record.
+    base_candidate_id: str | None = Field(
+        default=None, min_length=1, max_length=80, pattern=r"^[A-Za-z0-9_-]+$"
+    )
+    point_label: StrictInt = Field(default=1, ge=0, le=1)
 
     @field_validator("point_ras")
     @classmethod
@@ -172,12 +178,51 @@ def register_segmentation_routes(
             )
         if payload.kind == "sam2" and payload.point_ras is None:
             raise HTTPException(422, "SAM requests require point_ras")
+        if payload.kind != "sam2" and (
+            payload.base_candidate_id is not None or payload.point_label != 1
+        ):
+            raise HTTPException(422, "Mask correction and point polarity require the sam2 kind")
         case, bundle = _bound_case(case_id)
         revision = bundle[1]
         if case["artifact_version"] != payload.artifact_version:
             raise HTTPException(409, "Case revision changed")
         if revision != payload.reference_revision:
             raise HTTPException(409, "Reference revision changed")
+        base_mask = None
+        if (
+            payload.kind == "sam2"
+            and payload.base_candidate_id is None
+            and ledger.current(case_id, role="aneurysm") is not None
+        ):
+            raise HTTPException(422, "Use the current accepted mask as the SAM correction base")
+        if payload.base_candidate_id is not None:
+            current = ledger.current(case_id, role=payload.role)
+            if (
+                current is None
+                or current["candidate_id"] != payload.base_candidate_id
+                or current["image_sha256"] != case["image_sha256"]
+                or current["reference_revision"] != revision
+            ):
+                raise HTTPException(409, "Correction base is not the current case-owned mask")
+            blob = results_dir / "blobs" / f"{current['mask_sha256']}.nii.gz"
+            if (
+                blob.is_symlink()
+                or not blob.is_file()
+                or not 0 < blob.stat().st_size <= _MASK_CAP
+                or _sha256_file(blob) != current["mask_sha256"]
+            ):
+                raise HTTPException(503, "Correction base failed integrity checks")
+            base_mask = {
+                key: current[key]
+                for key in (
+                    "candidate_id",
+                    "mask_sha256",
+                    "image_sha256",
+                    "reference_revision",
+                    "segmentation_revision",
+                    "producer",
+                )
+            }
         if not _INFERENCE_GATE.acquire(blocking=False):
             raise HTTPException(429, "Another segmentation request is already running")
         staging = None
@@ -194,6 +239,9 @@ def register_segmentation_routes(
                 "case_id": case_id,
                 "image_sha256": case["image_sha256"],
             }
+            if base_mask is not None:
+                job["base_mask"] = base_mask
+            job["point_label"] = payload.point_label
             try:
                 result = (runner or default_runner())(job, staging)
                 mask_path = result["mask_path"]
