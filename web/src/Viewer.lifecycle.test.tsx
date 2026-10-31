@@ -122,6 +122,8 @@ test("initial location and evidence focus use the same physical-affine space as 
   const nv = harness.instances[0];
   expect(nv.frac2mm).toHaveBeenCalledWith(expect.anything(), 0, true);
   const focus: [number, number, number] = [5, 6, 7];
+  handlers.onLocation.mockClear();
+  nv.frac2mm.mockReturnValue(focus);
   view.rerender(
     <Viewer
       file={file}
@@ -132,4 +134,5 @@ test("initial location and evidence focus use the same physical-affine space as 
     />,
   );
   expect(nv.mm2frac).toHaveBeenCalledWith(focus, 0, true);
+  expect(handlers.onLocation).toHaveBeenLastCalledWith(focus);
 });

@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from planner.agent import AgentError, BoundedAgent, CaseContext, ToolSpec
+from planner.planning_sources import PLANNING_SOURCE_BUNDLE
 from planner.providers import ModelClient, ProviderError, ProviderSettings
 from planner.workspace import _connect, _get_case, create_app
 
@@ -84,24 +85,36 @@ def build_app(db_path: Path, *, client_factory=None, sample_dir: Path | None = N
         }
         tool = ToolSpec(
             "read_case_plan",
-            "Read the actual persisted case plan, public-source provenance, user notes and point-to-point measurements. "
+            "Read the persisted case plan, operator-entered aneurysm worksheet, provenance, notes and manual point-pair evidence. "
             "Call with an empty JSON object. Scope is fixed by the server; do not supply case identifiers. "
             "Call this before answering. The measurements are not validated vessel diameters or device sizes.",
             schema,
             lambda context, args: deepcopy(snapshot),
         )
+        sources_tool = ToolSpec(
+            "read_planning_sources",
+            "Read a fixed, small primary-guideline bundle with population, section, source URLs and coverage limits. "
+            "It is not a live literature search, device IFU, or clinical recommendation. Call with an empty JSON object.",
+            schema,
+            lambda context, args: deepcopy(PLANNING_SOURCE_BUNDLE),
+        )
+        sources_required = bool((snapshot.get("aneurysm_plan") or {}).get("options"))
         question = (
             "Read the case plan tool before answering. Distinguish user-provided notes from measured facts. "
             "Do not invent aneurysm location, dimensions, diagnosis, device compatibility or literature sources. "
             "Point-to-point distances are NOT neck, sac or orthogonal vessel measurements. "
-            "Describe available evidence and missing information; do not recommend a treatment. "
+            "The aneurysm worksheet is operator-entered, not inferred anatomy or diagnosis. "
+            "Read read_planning_sources before discussing selected options; cite only supplied sources for clinical comparisons. "
+            "Respect each source's population and coverage limits; if rupture status is unknown, do not assume an unruptured or ruptured pathway. "
+            "Compare the selected options' evidence needs and unresolved questions, not individual suitability. "
+            "Do not rank or recommend a treatment, estimate individual risk, or invent device sizes, IFU claims or references. "
             "User question: " + payload.question
         )
         try:
             with (client_factory or default_client)() as model:
-                result = BoundedAgent(model, [tool], max_model_calls=4, max_tool_calls=4).run(
-                    question, CaseContext(case_id, payload.artifact_version)
-                )
+                result = BoundedAgent(
+                    model, [tool, sources_tool], max_model_calls=4, max_tool_calls=4
+                ).run(question, CaseContext(case_id, payload.artifact_version))
         except (AgentError, ProviderError):
             raise HTTPException(
                 502, "Model request failed; no planning state was changed"
@@ -110,11 +123,19 @@ def build_app(db_path: Path, *, client_factory=None, sample_dir: Path | None = N
             raise HTTPException(409, "Case changed during model request; result discarded")
         if "read_case_plan" not in result.tool_names:
             raise HTTPException(502, "Model did not inspect the case plan")
+        if sources_required and "read_planning_sources" not in result.tool_names:
+            raise HTTPException(502, "Model did not inspect the planning sources")
         return {
             "answer": result.answer,
             "tool_names": result.tool_names,
             "artifact_version": payload.artifact_version,
             "model_calls": result.model_calls,
+            "sources": [
+                {key: source[key] for key in ("id", "title", "url", "population", "section")}
+                for source in PLANNING_SOURCE_BUNDLE["sources"]
+            ]
+            if "read_planning_sources" in result.tool_names
+            else [],
         }
 
     return app

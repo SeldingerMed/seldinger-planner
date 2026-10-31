@@ -1,5 +1,12 @@
-import { lazy, Suspense, useState } from "react";
-import { api, restoreOrCreateCase, type CaseState } from "./api";
+import { lazy, Suspense, useCallback, useState } from "react";
+import {
+  api,
+  restoreOrCreateCase,
+  RevisionConflictError,
+  type CaseState,
+} from "./api";
+import AneurysmWorksheet from "./AneurysmWorksheet";
+import type { AneurysmPlan } from "./planning";
 import type { Point3 } from "./geometry";
 import type { VolumeInfo } from "./Viewer";
 const Viewer = lazy(() => import("./Viewer"));
@@ -17,10 +24,13 @@ export default function App() {
   const [pointB, setB] = useState<Point3 | null>(null);
   const [label, setLabel] = useState("Point-to-point distance");
   const [notes, setNotes] = useState("");
+  const [planDirty, setPlanDirty] = useState(false);
   const [source, setSource] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [conflict, setConflict] = useState(false);
+  const [reloadEpoch, setReloadEpoch] = useState(0);
   const [question, setQuestion] = useState(
     "Summarize the measured anatomy, distinguish what remains unknown, and list the information needed to compare treatment options.",
   );
@@ -28,8 +38,21 @@ export default function App() {
     answer: string;
     tool_names: string[];
     artifact_version: string;
+    sources?: {
+      id: string;
+      title: string;
+      url: string;
+      population: string;
+      section: string;
+    }[];
   } | null>(null);
+  const planEdited = useCallback((dirty: boolean) => {
+    setPlanDirty(dirty);
+    if (dirty) setAnswer(null);
+  }, []);
   function failVolume(message: string) {
+    setConflict(false);
+    setPlanDirty(false);
     setFile(null);
     setDigest("");
     setCase(null);
@@ -60,6 +83,8 @@ export default function App() {
     setSource(sourceURL);
     setAnswer(null);
     setNotes("");
+    setPlanDirty(false);
+    setConflict(false);
     try {
       const bytes = await crypto.subtle.digest(
         "SHA-256",
@@ -89,13 +114,53 @@ export default function App() {
       setNotes(result.notes);
       setSource(result.source_url || "");
     } catch (e) {
-      setError((e as Error).message);
+      reportRequestError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  function reportRequestError(e: unknown) {
+    setError(e instanceof Error ? e.message : "Workspace request failed.");
+    if (e instanceof RevisionConflictError) {
+      setConflict(true);
+      setAnswer(null);
+    }
+  }
+  async function reloadSavedCase() {
+    if (!caseState || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const latest = await api<CaseState>(`/cases/${caseState.case_id}`);
+      if (
+        latest.case_id !== caseState.case_id ||
+        latest.image_sha256 !== digest
+      )
+        throw new Error("Saved case identity does not match the loaded image.");
+      setCase(latest);
+      setNotes(latest.notes);
+      setReloadEpoch((value) => value + 1);
+      setA(null);
+      setB(null);
+      setFocus(null);
+      setPlanDirty(false);
+      setConfirmed(false);
+      setAnswer(null);
+      setConflict(false);
+    } catch (e) {
+      reportRequestError(e);
     } finally {
       setBusy(false);
     }
   }
   async function saveMeasurement() {
-    if (!caseState || caseState.spatial_units !== "mm" || !pointA || !pointB)
+    if (
+      !caseState ||
+      conflict ||
+      caseState.spatial_units !== "mm" ||
+      !pointA ||
+      !pointB
+    )
       return;
     setBusy(true);
     setError("");
@@ -112,13 +177,13 @@ export default function App() {
       setB(null);
       setAnswer(null);
     } catch (e) {
-      setError((e as Error).message);
+      reportRequestError(e);
     } finally {
       setBusy(false);
     }
   }
   async function saveNotes() {
-    if (!caseState) return;
+    if (!caseState || conflict) return;
     setBusy(true);
     setError("");
     try {
@@ -131,13 +196,42 @@ export default function App() {
       );
       setAnswer(null);
     } catch (e) {
-      setError((e as Error).message);
+      reportRequestError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function saveAneurysmPlan(plan: AneurysmPlan) {
+    if (!caseState || conflict) return;
+    setBusy(true);
+    setError("");
+    try {
+      setCase(
+        await api<CaseState>(
+          `/cases/${caseState.case_id}/aneurysm-plan`,
+          {
+            artifact_version: caseState.artifact_version,
+            plan,
+          },
+          "PATCH",
+        ),
+      );
+      setAnswer(null);
+    } catch (e) {
+      reportRequestError(e);
     } finally {
       setBusy(false);
     }
   }
   async function askMuse() {
-    if (!caseState || !confirmed) return;
+    if (
+      !caseState ||
+      conflict ||
+      !confirmed ||
+      planDirty ||
+      notes !== caseState.notes
+    )
+      return;
     setBusy(true);
     setError("");
     try {
@@ -149,7 +243,7 @@ export default function App() {
         }),
       );
     } catch (e) {
-      setError((e as Error).message);
+      reportRequestError(e);
     } finally {
       setBusy(false);
     }
@@ -316,6 +410,16 @@ export default function App() {
               ))}
             </nav>
           </div>
+          {error && (
+            <div className="error-banner" role="alert">
+              {error}
+              {conflict && (
+                <button onClick={reloadSavedCase} disabled={busy}>
+                  Reload saved state (discard edits)
+                </button>
+              )}
+            </div>
+          )}
           <div className="canvas-wrap">
             {file ? (
               <Suspense
@@ -369,16 +473,36 @@ export default function App() {
               Click to locate · Scroll through slices · Drag to rotate 3D
             </span>
           </footer>
-          {error && (
-            <div className="error-banner" role="alert">
-              {error}
-            </div>
-          )}
         </section>
         <aside className="planning-panel">
           <div className="eyebrow">03 / PLANNING</div>
-          <h2>Evidence before decisions.</h2>
-          <section className="planning-section">
+          <h2>Aneurysm planning.</h2>
+          <nav className="planning-nav" aria-label="Planning sections">
+            <a href="#aneurysm-plan">Plan</a>
+            <a href="#manual-evidence">Evidence</a>
+            <a href="#muse-discussion">Muse ↗</a>
+          </nav>
+          {caseState ? (
+            <AneurysmWorksheet
+              key={`${caseState.case_id}:${reloadEpoch}`}
+              caseId={caseState.case_id}
+              plan={caseState.aneurysm_plan ?? null}
+              measurements={caseState.measurements}
+              spatialUnits={caseState.spatial_units}
+              location={location}
+              disabled={busy || conflict}
+              onSave={saveAneurysmPlan}
+              onFocus={setFocus}
+              onDirtyChange={planEdited}
+            />
+          ) : (
+            <section className="planning-section" id="aneurysm-plan">
+              <p className="muted small">
+                Open a volume to mark the target and build a case plan.
+              </p>
+            </section>
+          )}
+          <section className="planning-section" id="manual-evidence">
             <h3>
               Measurements <span>{caseState?.measurements.length || 0}</span>
             </h3>
@@ -392,7 +516,8 @@ export default function App() {
                   !location ||
                   !caseState ||
                   caseState.spatial_units !== "mm" ||
-                  busy
+                  busy ||
+                  conflict
                 }
                 onClick={() => setA(location && [...location])}
               >
@@ -403,7 +528,8 @@ export default function App() {
                   !location ||
                   !caseState ||
                   caseState.spatial_units !== "mm" ||
-                  busy
+                  busy ||
+                  conflict
                 }
                 onClick={() => setB(location && [...location])}
               >
@@ -429,7 +555,8 @@ export default function App() {
                   !pointB ||
                   !caseState ||
                   caseState.spatial_units !== "mm" ||
-                  busy
+                  busy ||
+                  conflict
                 }
                 onClick={saveMeasurement}
               >
@@ -479,7 +606,9 @@ export default function App() {
             <div className="section-actions">
               <button
                 onClick={saveNotes}
-                disabled={!caseState || busy || notes === caseState.notes}
+                disabled={
+                  !caseState || busy || conflict || notes === caseState.notes
+                }
               >
                 Save notes
               </button>
@@ -493,7 +622,10 @@ export default function App() {
               )}
             </div>
           </section>
-          <section className="planning-section muse-section">
+          <section
+            className="planning-section muse-section"
+            id="muse-discussion"
+          >
             <h3>
               <span className="muse-spark">✳</span> Muse{" "}
               <small>SPARK OPEN / BASETEN</small>
@@ -520,16 +652,18 @@ export default function App() {
                 !caseState ||
                 !confirmed ||
                 busy ||
+                conflict ||
                 !question.trim() ||
+                planDirty ||
                 notes !== caseState.notes
               }
               onClick={askMuse}
             >
               Ask Muse <span>↗</span>
             </button>
-            {notes !== caseState?.notes && caseState && (
+            {(planDirty || notes !== caseState?.notes) && caseState && (
               <small className="method-note">
-                Save notes before asking Muse.
+                Save the worksheet and notes before asking Muse.
               </small>
             )}
             {answer && (
@@ -539,6 +673,25 @@ export default function App() {
                   {answer.tool_names.join(" → ")}
                 </div>
                 <p>{answer.answer}</p>
+                {!!answer.sources?.length && (
+                  <div className="source-receipt">
+                    <h4>Sources read</h4>
+                    {answer.sources.map((source) => (
+                      <div key={source.id}>
+                        <a href={source.url} target="_blank" rel="noreferrer">
+                          {source.title}
+                        </a>
+                        <small>
+                          {source.population} · {source.section}
+                        </small>
+                      </div>
+                    ))}
+                    <small>
+                      Selected historical sources, not a complete or live
+                      guideline review.
+                    </small>
+                  </div>
+                )}
               </div>
             )}
           </section>

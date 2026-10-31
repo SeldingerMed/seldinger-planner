@@ -18,6 +18,7 @@ body {
 }
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
@@ -599,6 +600,10 @@ h3 {
   font-size: 11px;
 }
 .error-banner {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   font-size: 11px;
   padding: 14px 20px;
   background: #3a2325;
@@ -618,6 +623,118 @@ h3 {
 }
 .app-footer span:last-child {
   letter-spacing: 0.2px;
+}
+.source-receipt {
+  border-top: 1px solid #2d4548;
+  padding-top: 14px;
+}
+.source-receipt h4 {
+  margin: 0 0 12px;
+  font-size: 10px;
+  color: #9fbdb4;
+}
+.source-receipt > div {
+  margin-bottom: 13px;
+}
+.source-receipt a {
+  display: block;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.source-receipt small {
+  display: block;
+  color: #789098;
+  font-size: 9px;
+  line-height: 1.6;
+  margin-top: 4px;
+}
+.planning-nav {
+  position: sticky;
+  top: -27px;
+  z-index: 2;
+  display: flex;
+  gap: 22px;
+  padding: 14px 0;
+  background: #10191ef5;
+  border-bottom: 1px solid #2d4548;
+  font-size: 11px;
+}
+.planning-section {
+  scroll-margin-top: 58px;
+}
+.aneurysm-worksheet fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.aneurysm-worksheet .field-label {
+  display: block;
+  margin-top: 10px;
+}
+.aneurysm-worksheet select {
+  width: 100%;
+  min-width: 0;
+  background: #0c1419;
+  border: 1px solid #2a373e;
+  color: #dbe3e7;
+  border-radius: 4px;
+  padding: 9px 7px;
+  font-size: 10px;
+}
+.aneurysm-worksheet select:focus-visible,
+.context-details summary:focus-visible {
+  outline: 2px solid #78d5bd;
+  outline-offset: 3px;
+}
+.aneurysm-worksheet select:disabled {
+  opacity: 0.5;
+}
+.aneurysm-worksheet h4 {
+  color: #a8bfbe;
+  font-size: 11px;
+  font-weight: 500;
+  margin: 22px 0 8px;
+}
+.target-coordinate {
+  color: #8ac9b9;
+  line-height: 1.6;
+}
+.context-details {
+  margin: 15px 0;
+}
+.context-details summary {
+  color: #91aaa9;
+  font-size: 10px;
+  cursor: pointer;
+}
+.evidence-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 10px;
+}
+.option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 8px;
+  margin: 16px 0 22px;
+}
+.option-grid label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: #a9c0c2;
+  font-size: 10px;
+}
+.option-grid input {
+  width: 13px;
+  margin: 0;
+  accent-color: #a4dfcb;
+}
+.worksheet-error {
+  color: #e6ae9f;
+  font-size: 10px;
+  margin-top: 12px;
 }
 @media (max-width: 1200px) {
   .workspace-grid {

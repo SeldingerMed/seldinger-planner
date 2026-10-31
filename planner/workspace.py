@@ -6,6 +6,7 @@ Bounded contract per docs/plans/workspace-first-build.md; no legacy code.
 
 from __future__ import annotations
 
+import json
 import math
 import pathlib
 import re
@@ -18,6 +19,8 @@ import fastapi
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field, field_validator
 
+from planner.planning import AneurysmPlan, build_plan_evidence
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS cases (
     case_id TEXT PRIMARY KEY,
@@ -28,7 +31,8 @@ CREATE TABLE IF NOT EXISTS cases (
     spacing_mm TEXT NOT NULL,
     spatial_units TEXT NOT NULL DEFAULT 'mm',
     artifact_version INTEGER NOT NULL,
-    notes TEXT NOT NULL DEFAULT ''
+    notes TEXT NOT NULL DEFAULT '',
+    aneurysm_plan TEXT
 );
 CREATE TABLE IF NOT EXISTS measurements (
     measurement_id TEXT PRIMARY KEY,
@@ -102,6 +106,11 @@ class NotesIn(BaseModel):
     notes: str = Field(max_length=8000)
 
 
+class AneurysmPlanIn(BaseModel):
+    artifact_version: str = Field(min_length=1, max_length=20)
+    plan: AneurysmPlan
+
+
 def _vec(text: str) -> list[float]:
     return [float(x) for x in text.split(",")]
 
@@ -118,6 +127,7 @@ def _row_to_case(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
         }
         for m in conn.execute("SELECT * FROM measurements WHERE case_id = ?", (row["case_id"],))
     ]
+    plan = AneurysmPlan.model_validate_json(row["aneurysm_plan"]) if row["aneurysm_plan"] else None
     return {
         "case_id": row["case_id"],
         "title": row["title"],
@@ -129,6 +139,10 @@ def _row_to_case(conn: sqlite3.Connection, row: sqlite3.Row) -> dict[str, Any]:
         "artifact_version": str(row["artifact_version"]),
         "notes": row["notes"],
         "measurements": measurements,
+        "aneurysm_plan": plan.model_dump(mode="json") if plan else None,
+        "aneurysm_evidence": build_plan_evidence(plan, measurements, row["spatial_units"])
+        if plan
+        else None,
     }
 
 
@@ -165,6 +179,8 @@ def create_app(db_path: pathlib.Path | str) -> fastapi.FastAPI:
         conn.executescript(_SCHEMA)
         if "spatial_units" not in {r[1] for r in conn.execute("PRAGMA table_info(cases)")}:
             conn.execute("ALTER TABLE cases ADD COLUMN spatial_units TEXT NOT NULL DEFAULT 'mm'")
+        if "aneurysm_plan" not in {r[1] for r in conn.execute("PRAGMA table_info(cases)")}:
+            conn.execute("ALTER TABLE cases ADD COLUMN aneurysm_plan TEXT")
 
     @app.exception_handler(fastapi.exceptions.RequestValidationError)
     def _validation_error(request: fastapi.Request, exc: Exception) -> JSONResponse:
@@ -250,6 +266,31 @@ def create_app(db_path: pathlib.Path | str) -> fastapi.FastAPI:
             )
             return _get_case(conn, case_id)
 
+    @app.patch("/api/cases/{case_id}/aneurysm-plan")
+    def set_aneurysm_plan(case_id: str, payload: AneurysmPlanIn) -> Any:
+        with _LOCK, _connect(db_path) as conn:
+            current = _get_case(conn, case_id)
+            if current is None:
+                return JSONResponse({"detail": "case not found"}, status_code=404)
+            try:
+                build_plan_evidence(payload.plan, current["measurements"], current["spatial_units"])
+            except ValueError:
+                raise fastapi.HTTPException(
+                    422,
+                    "Evidence links require millimeter units and distinct, same-case measurements",
+                ) from None
+            ok, error = _update_with_revision(conn, case_id, payload.artifact_version)
+            if not ok:
+                return JSONResponse({"detail": error}, status_code=409)
+            conn.execute(
+                "UPDATE cases SET aneurysm_plan = ? WHERE case_id = ?",
+                (
+                    json.dumps(payload.plan.model_dump(mode="json")),
+                    case_id,
+                ),
+            )
+            return _get_case(conn, case_id)
+
     @app.get("/api/cases/{case_id}/brief")
     def brief(case_id: str) -> Any:
         with _connect(db_path) as conn:
@@ -285,6 +326,42 @@ def create_app(db_path: pathlib.Path | str) -> fastapi.FastAPI:
             ]
         else:
             lines += ["(none)", ""]
+        if case["aneurysm_plan"] is not None:
+            plan = case["aneurysm_plan"]
+            evidence = case["aneurysm_evidence"]
+            units = "mm" if case["spatial_units"] == "mm" else "source units (unspecified)"
+            lines += [
+                "## Aneurysm worksheet",
+                "",
+                "Operator-entered target and clinical context, not inferred findings.",
+                "",
+                f"- Target: {plan['lesion_label']}",
+                f"- Location / segment: {plan['location_note'] or 'not specified'}",
+                f"- Rupture status (operator-entered): {plan['rupture_status']}",
+                f"- Target RAS {units}: {plan['focus_ras'] or 'not marked'}",
+                f"- Options for discussion, not endorsements: {', '.join(plan['options']) or 'none selected'}",
+                "",
+                "### Clinical context",
+                "",
+                plan["clinical_context"] or "(not provided)",
+                "",
+                "### User-assigned manual evidence",
+                "",
+                evidence["interpretation"],
+                "",
+            ]
+            for item in evidence["linked_measurements"]:
+                lines.append(
+                    f"- {item['role']}: {item['distance_mm']:.3f} mm; manual_point_pair; measurement `{item['measurement_id']}`"
+                )
+            lines += [
+                f"- Unfilled roles: {', '.join(evidence['missing_measurements']) or 'none'}",
+                "",
+                "### Planning questions",
+                "",
+                plan["questions"] or "(none)",
+                "",
+            ]
         lines += ["## User notes", "", case["notes"] or "(none)", ""]
         return PlainTextResponse("\n".join(lines), media_type="text/markdown")
 

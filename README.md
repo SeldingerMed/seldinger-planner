@@ -8,10 +8,11 @@ A new CTA-first neurovascular planning research prototype. This repository conta
 - Browser-local NIfTI loading. Image bytes are not uploaded to the workspace server or included in Muse requests.
 - FastAPI and local SQLite case state, notes, point-to-point distances, optimistic revision checks, and Markdown brief export.
 - Case reopening by image fingerprint preserves saved notes and measurements in the same browser/server workspace.
-- Baseten Muse Spark Open reads a server-bound snapshot through a bounded tool loop. The model cannot select a different case, write planning state, execute shell commands, or fetch arbitrary files or URLs.
+- An editable aneurysm worksheet: operator-marked image target, lesion/context fields, user-assigned manual measurement roles, discussion candidates and planning questions. Saving is revision-bound and reopening the same image restores it.
+- Baseten Muse Spark Open reads the server-bound case/worksheet snapshot through a bounded tool loop. Selected-option discussion also requires a fixed primary-source bundle, with source population and coverage limits visible. The model cannot select a different case, write planning state, execute shell commands, or fetch arbitrary files or URLs.
 - Direct Meta model adapter for separate infrastructure tests.
 
-This is not yet the proposed end-to-end aneurysm planner. Segmentation inference, sac/neck measurements, orthogonal landing-zone diameters, sourced device sizing, treatment comparison and SAM correction are not implemented.
+This is not yet the proposed end-to-end aneurysm planner. Segmentation inference, validated sac/neck morphometry, orthogonal landing-zone diameters, sourced device sizing and SAM correction are not implemented. The worksheet supports user-assigned manual point-pair roles and non-prescriptive discussion of selected options, not clinical suitability ranking or treatment recommendations.
 
 ## Run locally
 

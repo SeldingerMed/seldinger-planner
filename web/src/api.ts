@@ -1,4 +1,5 @@
 import type { Point3 } from "./geometry";
+import type { AneurysmPlan } from "./planning";
 export type Measurement = {
   measurement_id: string;
   label: string;
@@ -18,7 +19,13 @@ export type CaseState = {
   artifact_version: string;
   notes: string;
   measurements: Measurement[];
+  aneurysm_plan?: AneurysmPlan | null;
 };
+export class RevisionConflictError extends Error {
+  constructor() {
+    super("Case changed. Reload saved state to review it before saving again.");
+  }
+}
 export async function api<T>(
   path: string,
   body?: unknown,
@@ -30,8 +37,7 @@ export async function api<T>(
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) {
-    if (response.status === 409)
-      throw new Error("Case changed. Reopen the workspace before retrying.");
+    if (response.status === 409) throw new RevisionConflictError();
     throw new Error(`Workspace request failed (${response.status}).`);
   }
   return response.json();

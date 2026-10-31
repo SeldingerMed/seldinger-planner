@@ -115,6 +115,8 @@ export default function Viewer({
     if (!focus || !nv?.volumes.length) return;
     nv.scene.crosshairPos = nv.mm2frac(focus, 0, true);
     nv.drawScene();
+    const actual = point3(nv.frac2mm(nv.scene.crosshairPos, 0, true));
+    if (actual) callbacks.current.onLocation(actual);
   }, [focus]);
   return <canvas ref={canvas} aria-label="Linked CTA slices and 3D volume" />;
 }
