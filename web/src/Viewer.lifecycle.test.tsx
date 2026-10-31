@@ -17,13 +17,17 @@ const harness = vi.hoisted(() => ({
     mm2frac: ReturnType<typeof vi.fn>;
     loadFromFile: ReturnType<typeof vi.fn>;
     setScale: ReturnType<typeof vi.fn>;
+    addVolumeFromUrl: ReturnType<typeof vi.fn>;
     meshes: { id: string }[];
+    volumes: object[];
   }>,
   attachFails: false,
   referenceLoad: vi.fn(),
+  maskLoad: vi.fn(),
   meshThicknessOn2D: undefined as number | undefined,
 }));
 vi.mock("./reference", () => ({ loadReferenceMeshes: harness.referenceLoad }));
+vi.mock("./segmentation", () => ({ loadSegmentationMask: harness.maskLoad }));
 vi.mock("@niivue/niivue", () => ({
   SLICE_TYPE: { MULTIPLANAR: 3, AXIAL: 0, CORONAL: 1, SAGITTAL: 2, RENDER: 4 },
   SHOW_RENDER: { ALWAYS: 1 },
@@ -57,9 +61,14 @@ vi.mock("@niivue/niivue", () => ({
     setScale = vi.fn();
     updateGLVolume = vi.fn();
     drawScene = vi.fn();
-    removeVolume() {
-      this.volumes = [];
+    removeVolume(volume: typeof harness.image) {
+      this.volumes = this.volumes.filter((v) => v !== volume);
     }
+    addVolumeFromUrl = vi.fn(async () => {
+      const volume = { ...harness.image };
+      this.volumes.push(volume);
+      return volume;
+    });
     loadFromFile = vi.fn(async (file: File) => {
       if (file.name.startsWith("broken")) throw new Error("Bad image");
       this.volumes = [harness.image];
@@ -74,6 +83,98 @@ afterEach(() => {
   harness.instances.length = 0;
   harness.attachFails = false;
   harness.referenceLoad.mockReset();
+  harness.maskLoad.mockReset();
+});
+test("verified model mask overlays the CTA and clears on replacement", async () => {
+  Object.defineProperty(URL, "createObjectURL", {
+    value: () => "blob:synthetic-mask",
+    configurable: true,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    value: vi.fn(),
+    configurable: true,
+  });
+  harness.maskLoad.mockResolvedValue(new ArrayBuffer(4));
+  const entry = {
+    candidate_id: "candidate-a",
+    case_id: "case-a",
+    image_sha256: "a".repeat(64),
+    reference_revision: "b".repeat(64),
+    mask_sha256: "c".repeat(64),
+    role: "vessel",
+  } as never;
+  const file = new File(["synthetic"], "cta.nii");
+  const view = render(
+    <Viewer
+      file={file}
+      mode="linked"
+      windowRange={[0, 600]}
+      focus={null}
+      segmentation={entry}
+      segmentationBinding={entry}
+      {...callbacks()}
+    />,
+  );
+  await waitFor(() => expect(harness.instances[0].volumes).toHaveLength(2));
+  view.rerender(
+    <Viewer
+      file={new File(["synthetic replacement"], "second.nii")}
+      mode="linked"
+      windowRange={[0, 600]}
+      focus={null}
+      segmentation={null}
+      segmentationBinding={null}
+      {...callbacks()}
+    />,
+  );
+  await waitFor(() => expect(harness.instances[0].volumes).toHaveLength(1));
+  expect(harness.maskLoad).toHaveBeenCalledTimes(1);
+});
+test("late model-mask fetch cannot attach to a replacement image", async () => {
+  let finish!: (value: ArrayBuffer) => void;
+  harness.maskLoad.mockReturnValue(
+    new Promise<ArrayBuffer>((resolve) => {
+      finish = resolve;
+    }),
+  );
+  const entry = {
+    candidate_id: "late-model",
+    case_id: "case-a",
+    image_sha256: "a".repeat(64),
+    reference_revision: "b".repeat(64),
+    mask_sha256: "c".repeat(64),
+    role: "vessel",
+  } as never;
+  const view = render(
+    <Viewer
+      file={new File(["synthetic"], "first.nii")}
+      mode="linked"
+      windowRange={[0, 600]}
+      focus={null}
+      segmentation={entry}
+      segmentationBinding={entry}
+      {...callbacks()}
+    />,
+  );
+  await waitFor(() => expect(harness.maskLoad).toHaveBeenCalledTimes(1));
+  view.rerender(
+    <Viewer
+      file={new File(["synthetic replacement"], "second.nii")}
+      mode="linked"
+      windowRange={[0, 600]}
+      focus={null}
+      segmentation={null}
+      segmentationBinding={null}
+      {...callbacks()}
+    />,
+  );
+  await waitFor(() =>
+    expect(harness.instances[0].loadFromFile).toHaveBeenCalledTimes(2),
+  );
+  finish(new ArrayBuffer(4));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(harness.instances[0].volumes).toHaveLength(1);
+  expect(harness.instances[0].addVolumeFromUrl).not.toHaveBeenCalled();
 });
 const reference = { case_id: "case-a", image_sha256: "0".repeat(64) } as never;
 test("loads curated surfaces and removes them on image replacement", async () => {

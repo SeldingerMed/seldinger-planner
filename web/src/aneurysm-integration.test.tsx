@@ -78,6 +78,10 @@ test("opens a scoped curated reference and clears it on another volume", async (
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/segmentations"))
+        return new Response(
+          JSON.stringify({ current: { vessel: null, aneurysm: null } }),
+        );
       if (url.endsWith("/reference"))
         return new Response(
           JSON.stringify({
@@ -117,6 +121,9 @@ test("opens a scoped curated reference and clears it on another volume", async (
     ),
   );
   expect(screen.getByText("Curated dataset reference")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Run vessel model" }),
+  ).toBeEnabled();
   expect(screen.getByRole("button", { name: "Set point A" })).toBeDisabled();
   fireEvent.click(
     screen.getByRole("button", { name: "Focus reference target" }),
@@ -135,6 +142,9 @@ test("opens a scoped curated reference and clears it on another volume", async (
   );
   expect(
     screen.queryByText("Curated dataset reference"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Run vessel model" }),
   ).not.toBeInTheDocument();
 });
 

@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Niivue, SLICE_TYPE, SHOW_RENDER } from "@niivue/niivue";
 import { point3, volumeMetadata, type Point3 } from "./geometry";
 import { loadReferenceMeshes, type CaseReference } from "./reference";
+import {
+  loadSegmentationMask,
+  type SegmentationEntry,
+  type SegmentationBinding,
+} from "./segmentation";
 export type VolumeInfo = ReturnType<typeof volumeMetadata>;
 type Props = {
   file: File | null;
@@ -14,6 +19,9 @@ type Props = {
   reference?: CaseReference | null;
   onReferenceStatus?: (status: "off" | "loading" | "ready" | "error") => void;
   onReferenceError?: (message: string) => void;
+  segmentation?: SegmentationEntry | null;
+  segmentationBinding?: SegmentationBinding | null;
+  onSegmentationError?: (message: string) => void;
 };
 export default function Viewer({
   file,
@@ -26,6 +34,9 @@ export default function Viewer({
   reference = null,
   onReferenceStatus,
   onReferenceError,
+  segmentation = null,
+  segmentationBinding = null,
+  onSegmentationError,
 }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const viewer = useRef<Niivue | null>(null);
@@ -36,6 +47,7 @@ export default function Viewer({
     onError,
     onReferenceStatus,
     onReferenceError,
+    onSegmentationError,
   });
   callbacks.current = {
     onLocation,
@@ -43,6 +55,7 @@ export default function Viewer({
     onError,
     onReferenceStatus,
     onReferenceError,
+    onSegmentationError,
   };
   const [loadedFile, setLoadedFile] = useState<File | null>(null);
   const desiredMode = useRef(mode);
@@ -196,5 +209,66 @@ export default function Viewer({
     const actual = point3(nv.frac2mm(nv.scene.crosshairPos, 0, true));
     if (actual) callbacks.current.onLocation(actual);
   }, [focus]);
+  useEffect(() => {
+    const nv = viewer.current;
+    if (
+      !nv ||
+      !file ||
+      loadedFile !== file ||
+      !segmentation ||
+      !segmentationBinding
+    )
+      return;
+    let active = true;
+    let url: string | null = null;
+    let added: (typeof nv.volumes)[number] | null = null;
+    (async () => {
+      try {
+        const buffer = await loadSegmentationMask(
+          segmentation,
+          segmentationBinding,
+        );
+        if (!active || viewer.current !== nv) return;
+        url = URL.createObjectURL(new Blob([buffer]));
+        const volume = await nv.addVolumeFromUrl({
+          url,
+          name: `${segmentation.role}-candidate.nii.gz`,
+          colormap: segmentation.role === "vessel" ? "green" : "red",
+          cal_min: 0,
+          cal_max: 1,
+          opacity: 0.65,
+        });
+        if (!active || viewer.current !== nv) {
+          if (nv.volumes.includes(volume)) nv.removeVolume(volume);
+          return;
+        }
+        added = volume;
+        nv.updateGLVolume();
+      } catch {
+        if (active)
+          callbacks.current.onSegmentationError?.(
+            "Model mask failed to load or verify. The CTA remains available.",
+          );
+      } finally {
+        if (url) {
+          URL.revokeObjectURL(url);
+          url = null;
+        }
+      }
+    })();
+    return () => {
+      active = false;
+      if (added && nv.volumes.includes(added)) nv.removeVolume(added);
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [
+    file,
+    loadedFile,
+    segmentation?.candidate_id,
+    segmentation?.mask_sha256,
+    segmentationBinding?.case_id,
+    segmentationBinding?.image_sha256,
+    segmentationBinding?.reference_revision,
+  ]);
   return <canvas ref={canvas} aria-label="Linked CTA slices and 3D volume" />;
 }

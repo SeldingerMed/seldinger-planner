@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useState, useRef } from "react";
 import {
   api,
   restoreOrCreateCase,
@@ -6,6 +6,8 @@ import {
   type CaseState,
 } from "./api";
 import AneurysmWorksheet from "./AneurysmWorksheet";
+import SegmentationPanel from "./SegmentationPanel";
+import type { SegmentationEntry } from "./segmentation";
 import type { AneurysmPlan } from "./planning";
 import type { Point3 } from "./geometry";
 import type { VolumeInfo } from "./Viewer";
@@ -22,6 +24,13 @@ export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [digest, setDigest] = useState("");
   const [caseState, setCase] = useState<CaseState | null>(null);
+  const [segmentation, setSegmentation] = useState<SegmentationEntry | null>(
+    null,
+  );
+  const activeIdentity = useRef("");
+  activeIdentity.current = caseState
+    ? `${caseState.case_id}:${caseState.image_sha256}`
+    : "";
   const [mode, setMode] = useState("linked");
   const [windowRange, setWindow] = useState<[number, number]>([0, 600]);
   const [location, setLocation] = useState<Point3 | null>(null);
@@ -64,6 +73,7 @@ export default function App() {
     if (dirty) setAnswer(null);
   }, []);
   function failVolume(message: string) {
+    setSegmentation(null);
     setReference(null);
     setRequestedReference(null);
     setConflict(false);
@@ -94,6 +104,7 @@ export default function App() {
     setBusy(true);
     setError("");
     setCase(null);
+    setSegmentation(null);
     setA(null);
     setB(null);
     setLocation(null);
@@ -151,6 +162,28 @@ export default function App() {
       reportRequestError(e);
     } finally {
       setBusy(false);
+    }
+  }
+  async function segmentationAccepted(version: string) {
+    if (!caseState) return;
+    const selected = caseState;
+    const identity = `${selected.case_id}:${selected.image_sha256}`;
+    try {
+      const latest = await api<CaseState>(`/cases/${selected.case_id}`);
+      if (activeIdentity.current !== identity) return;
+      if (
+        latest.case_id !== selected.case_id ||
+        latest.image_sha256 !== selected.image_sha256 ||
+        latest.artifact_version !== version
+      )
+        throw new RevisionConflictError();
+      setCase(latest);
+      setConfirmed(false);
+      setAnswer(null);
+      setA(null);
+      setB(null);
+    } catch (error) {
+      if (activeIdentity.current === identity) reportRequestError(error);
     }
   }
   function reportRequestError(e: unknown) {
@@ -463,8 +496,8 @@ export default function App() {
             </p>
           )}
           <div className="rail-note">
-            Volumes render in this browser. Images are not uploaded to the
-            workspace server or Muse.
+            Volumes render in this browser. Local inference reads the installed
+            public source. Muse receives planning metadata, not images.
           </div>
         </aside>
         <section className="imaging-panel">
@@ -528,6 +561,17 @@ export default function App() {
                   onLoaded={loaded}
                   onError={failVolume}
                   reference={showReference ? reference : null}
+                  segmentation={segmentation}
+                  segmentationBinding={
+                    caseState && reference
+                      ? {
+                          case_id: caseState.case_id,
+                          image_sha256: caseState.image_sha256,
+                          reference_revision: reference.reference_revision,
+                        }
+                      : null
+                  }
+                  onSegmentationError={setError}
                   onReferenceStatus={setReferenceStatus}
                   onReferenceError={(message) => {
                     setError(message);
@@ -577,6 +621,7 @@ export default function App() {
           <h2>Aneurysm planning.</h2>
           <nav className="planning-nav" aria-label="Planning sections">
             <a href="#aneurysm-plan">Plan</a>
+            <a href="#model-segmentation">Models</a>
             <a href="#manual-evidence">Evidence</a>
             <a href="#muse-discussion">Muse ↗</a>
           </nav>
@@ -599,6 +644,21 @@ export default function App() {
                 Open a volume to mark the target and build a case plan.
               </p>
             </section>
+          )}
+          {caseState && (
+            <SegmentationPanel
+              key={caseState.case_id}
+              caseState={caseState}
+              reference={reference}
+              location={location}
+              windowRange={windowRange}
+              disabled={
+                busy || conflict || planDirty || notes !== caseState.notes
+              }
+              onOverlay={setSegmentation}
+              onAccepted={segmentationAccepted}
+              onError={reportRequestError}
+            />
           )}
           <section className="planning-section" id="manual-evidence">
             <h3>

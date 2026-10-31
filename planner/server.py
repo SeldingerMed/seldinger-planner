@@ -30,6 +30,8 @@ def build_app(
     client_factory=None,
     sample_dir: Path | None = None,
     reference_dir: Path | None = None,
+    inference_runner=None,
+    inference_results_dir: Path | None = None,
 ):
     app = create_app(db_path)
     references = ReferenceStore(
@@ -165,6 +167,19 @@ def build_app(
             if "read_planning_sources" in result.tool_names
             else [],
         }
+
+    from planner.segmentation_server import register_segmentation_routes
+    from planner.segmentation_state import SegmentationLedger
+
+    register_segmentation_routes(
+        app,
+        SegmentationLedger(db_path),
+        references,
+        read_case,
+        inference_results_dir
+        or Path(__file__).resolve().parents[1] / ".runtime" / "inference-results",
+        runner=inference_runner,
+    )
 
     return app
 

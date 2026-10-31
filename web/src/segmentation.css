@@ -1,0 +1,20 @@
+.segmentation-panel .model-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.segmentation-panel .model-toggle input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+}
+.segmentation-candidate {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line, #293d42);
+  border-radius: 6px;
+}
+.segmentation-candidate strong {
+  font-size: 12px;
+}
