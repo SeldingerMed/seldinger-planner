@@ -297,8 +297,11 @@ def test_case_edit_between_final_readback_and_preview_is_a_conflict(tmp_path, mo
     }
 
 
-def test_runner_failure_is_sanitized_and_changes_nothing(tmp_path):
+@pytest.mark.parametrize("failure_type", [RuntimeError, json.JSONDecodeError])
+def test_runner_failure_is_sanitized_and_changes_nothing(tmp_path, failure_type):
     def failing_runner(job, output_dir):
+        if failure_type is json.JSONDecodeError:
+            raise json.JSONDecodeError(f"boom wrote {output_dir} trace", "invalid metadata", 0)
         raise RuntimeError(f"boom wrote {output_dir} trace")
 
     client, _, manifest, results_dir = make_client(tmp_path, failing_runner)

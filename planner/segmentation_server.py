@@ -126,11 +126,8 @@ def _install_blob(results_dir, staging: object) -> str:
     return digest
 
 
-def _read_bundle(references):
-    bundle = references.load()
-    if bundle[0].get("source_header", {}).get("xyzt_units") != 0:
-        raise HTTPException(503, "Public reference assets failed integrity checks")
-    return bundle
+def _read_bundle(references, case):
+    return references.load_for_case(case)
 
 
 def register_segmentation_routes(
@@ -146,11 +143,11 @@ def register_segmentation_routes(
 
     def _bound_case(case_id):
         case = read_case(case_id)
-        bundle = _read_bundle(references)
+        bundle = _read_bundle(references, case)
         if case["image_sha256"] != bundle[0]["image"]["sha256"]:
             raise HTTPException(404, "Segmentation inference requires the reference-bound image")
-        if case.get("spatial_units") != "unknown":
-            raise HTTPException(409, "Case spatial units must remain unknown source units")
+        if case.get("spatial_units") != bundle[0]["spatial_units"]:
+            raise HTTPException(409, "Case units do not match the installed source")
         dimensions = bundle[0].get("crop", {}).get("size_voxels")
         if (
             not isinstance(dimensions, list)
@@ -238,6 +235,7 @@ def register_segmentation_routes(
                 "display_window": payload.display_window,
                 "case_id": case_id,
                 "image_sha256": case["image_sha256"],
+                "source_id": bundle[0]["source_id"],
             }
             if base_mask is not None:
                 job["base_mask"] = base_mask
@@ -258,7 +256,7 @@ def register_segmentation_routes(
                     503, "Segmentation inference failed; no candidate was accepted"
                 ) from None
             case_now = read_case(case_id)
-            revision_now = _read_bundle(references)[1]
+            revision_now = _read_bundle(references, case_now)[1]
             if (
                 case_now["artifact_version"] != payload.artifact_version
                 or case_now["image_sha256"] != case["image_sha256"]
@@ -303,7 +301,7 @@ def register_segmentation_routes(
             raise HTTPException(409, "Case revision changed")
         if entry["reference_revision"] != payload.reference_revision:
             raise HTTPException(409, "Candidate reference revision does not match request")
-        if _read_bundle(references)[1] != payload.reference_revision:
+        if _read_bundle(references, case)[1] != payload.reference_revision:
             raise HTTPException(409, "Reference revision changed")
         try:
             decided = ledger.decide(
@@ -327,7 +325,7 @@ def register_segmentation_routes(
             and entry["produced_artifact_version"] != case["artifact_version"]
         ):
             raise HTTPException(409, "Case changed; preview is stale")
-        if _read_bundle(references)[1] != entry["reference_revision"]:
+        if _read_bundle(references, case)[1] != entry["reference_revision"]:
             if entry["status"] == "preview":
                 raise HTTPException(409, "Reference revision changed; preview is stale")
             raise HTTPException(409, "Reference revision no longer matches this mask")

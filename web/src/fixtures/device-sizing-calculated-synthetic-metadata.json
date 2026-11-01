@@ -1,0 +1,367 @@
+{
+  "fixture_scope": "SYNTHETIC metadata only, NOT real CTA measurements",
+  "caseState": {
+    "case_id": "v9cbJXkJHmaFOBGC7Ea22A",
+    "title": "Synthetic device inputs",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_url": null,
+    "dimensions": [
+      20,
+      20,
+      20
+    ],
+    "spacing_mm": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "spatial_units": "mm",
+    "artifact_version": "4",
+    "notes": "",
+    "measurements": [],
+    "aneurysm_plan": null,
+    "aneurysm_evidence": null
+  },
+  "report": {
+    "case_id": "v9cbJXkJHmaFOBGC7Ea22A",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "artifact_version": "4",
+    "geometry_status": "current",
+    "geometry_result_id": "aNX3lD3Zcf3GG8og1fZLww",
+    "geometry_dependencies": {
+      "artifact_version": "4",
+      "calculation_version": "native-mask-operator-plane-v1",
+      "case_id": "v9cbJXkJHmaFOBGC7Ea22A",
+      "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "masks": {
+        "aneurysm": {
+          "candidate_id": "wtFDBAb04NVEsp2kX0S-IQ",
+          "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "segmentation_revision": 2
+        },
+        "vessel": {
+          "candidate_id": "RDDRjIPPqbdjwP2kYb0SBA",
+          "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "segmentation_revision": 1
+        }
+      },
+      "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+      "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "calculation_version": "historical-operator-sizing-v1",
+    "inputs": {
+      "geometry_dependencies": {
+        "artifact_version": "4",
+        "calculation_version": "native-mask-operator-plane-v1",
+        "case_id": "v9cbJXkJHmaFOBGC7Ea22A",
+        "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "masks": {
+          "aneurysm": {
+            "candidate_id": "wtFDBAb04NVEsp2kX0S-IQ",
+            "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "segmentation_revision": 2
+          },
+          "vessel": {
+            "candidate_id": "RDDRjIPPqbdjwP2kYb0SBA",
+            "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "segmentation_revision": 1
+          }
+        },
+        "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+        "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "input_revision": "UGHZ7Y_2LexIQfFMydGqgA",
+      "inputs_sha256": "847c6883aa2f352a60a1a44b02e1e47678139c95ea2406e51fe609242e93410a",
+      "inputs_version": "operator-reported-device-inputs-v1",
+      "measurements": {
+        "average_sac_diameter": 6.0,
+        "distal_parent": 3.5,
+        "dome_diameter": 6.5,
+        "neck_coverage_length": 8.0,
+        "proximal_parent": 3.0,
+        "smallest_sac_height": 5.0
+      },
+      "provenance": {
+        "kind": "operator_reported",
+        "note": "synthetic operator tape values"
+      },
+      "status": "current"
+    },
+    "current": {
+      "status": "current",
+      "result_id": "xn6tfamvUGOWQyRob1MbBw",
+      "dependencies": {
+        "calculation_version": "historical-operator-sizing-v1",
+        "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+        "geometry": {
+          "artifact_version": "4",
+          "calculation_version": "native-mask-operator-plane-v1",
+          "case_id": "v9cbJXkJHmaFOBGC7Ea22A",
+          "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "masks": {
+            "aneurysm": {
+              "candidate_id": "wtFDBAb04NVEsp2kX0S-IQ",
+              "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "segmentation_revision": 2
+            },
+            "vessel": {
+              "candidate_id": "RDDRjIPPqbdjwP2kYb0SBA",
+              "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "segmentation_revision": 1
+            }
+          },
+          "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+          "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "geometry_result_id": "aNX3lD3Zcf3GG8og1fZLww",
+        "input_revision": "UGHZ7Y_2LexIQfFMydGqgA",
+        "inputs_sha256": "847c6883aa2f352a60a1a44b02e1e47678139c95ea2406e51fe609242e93410a"
+      },
+      "result": {
+        "binding_status": "case_bound_calculation",
+        "calculation_version": "historical-operator-sizing-v1",
+        "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+        "clinical_suitability_established": false,
+        "compatibility_status": "not_established",
+        "input_basis": "operator_reported_unvalidated_measurements",
+        "missing_inputs": [],
+        "pipeline": {
+          "clinical_suitability_established": false,
+          "largest_parent_mm": 3.5,
+          "minimum_labeled_coverage_length_mm": 14.0,
+          "rows": [
+            {
+              "device_id": "PIPELINE-HIST-2_50",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 2.5,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true
+              },
+              "nominal_difference_mm": -1.0,
+              "self_expanded_diameter_mm": 2.75
+            },
+            {
+              "device_id": "PIPELINE-HIST-2_75",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 2.75,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true
+              },
+              "nominal_difference_mm": -0.75,
+              "self_expanded_diameter_mm": 3.0
+            },
+            {
+              "device_id": "PIPELINE-HIST-3_00",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 3.0,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": -0.5,
+              "self_expanded_diameter_mm": 3.25
+            },
+            {
+              "device_id": "PIPELINE-HIST-3_25",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 3.25,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": -0.25,
+              "self_expanded_diameter_mm": 3.5
+            },
+            {
+              "device_id": "PIPELINE-HIST-3_50",
+              "diameter_equivalent": true,
+              "labeled_diameter_mm": 3.5,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": 0.0,
+              "self_expanded_diameter_mm": 3.75
+            },
+            {
+              "device_id": "PIPELINE-HIST-3_75",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 3.75,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": 0.25,
+              "self_expanded_diameter_mm": 4.0
+            },
+            {
+              "device_id": "PIPELINE-HIST-4_00",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 4.0,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": 0.5,
+              "self_expanded_diameter_mm": 4.25
+            },
+            {
+              "device_id": "PIPELINE-HIST-4_25",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 4.25,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": 0.75,
+              "self_expanded_diameter_mm": 4.5
+            },
+            {
+              "device_id": "PIPELINE-HIST-4_50",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 4.5,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": 1.0,
+              "self_expanded_diameter_mm": 4.75
+            },
+            {
+              "device_id": "PIPELINE-HIST-4_75",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 4.75,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": 1.25,
+              "self_expanded_diameter_mm": 5.0
+            },
+            {
+              "device_id": "PIPELINE-HIST-5_00",
+              "diameter_equivalent": false,
+              "labeled_diameter_mm": 5.0,
+              "length_checks_mm": {
+                "10.0": false,
+                "12.0": false,
+                "14.0": true,
+                "16.0": true,
+                "18.0": true,
+                "20.0": true,
+                "25.0": true,
+                "30.0": true,
+                "35.0": true
+              },
+              "nominal_difference_mm": 1.5,
+              "self_expanded_diameter_mm": 5.25
+            }
+          ],
+          "source": {
+            "revision": "71012-001 Rev. 5 (12/2018)",
+            "scope": "historical_directions_for_use",
+            "table": "Table 1",
+            "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf10/P100018S015C.pdf"
+          },
+          "spatial_units": "mm",
+          "status": "geometric_checks_only",
+          "validated_sizing": false
+        },
+        "provenance": {
+          "kind": "operator_reported",
+          "note": "synthetic operator tape values"
+        },
+        "status": "calculated",
+        "validated_sizing": false,
+        "web": {
+          "approximate": true,
+          "average_sac_diameter_mm": 6.0,
+          "clinical_suitability_established": false,
+          "dome_diameter_mm": 6.5,
+          "nominal_target_diameter_mm": 7.0,
+          "nominal_target_height_mm": 4.0,
+          "smallest_sac_height_mm": 5.0,
+          "source": {
+            "revision": "LBA0040, Rev Q 12/2018",
+            "section": "sizing_instructions",
+            "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf17/P170032C.pdf"
+          },
+          "spatial_units": "mm",
+          "status": "geometric_checks_only",
+          "validated_sizing": false
+        },
+        "web_catalog_status": "not_available"
+      }
+    },
+    "clinical_suitability_established": false,
+    "validated_sizing": false
+  }
+}

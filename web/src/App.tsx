@@ -7,10 +7,21 @@ import {
 } from "./api";
 import AneurysmWorksheet from "./AneurysmWorksheet";
 import SegmentationPanel from "./SegmentationPanel";
+import MorphometryResults from "./MorphometryResults";
+import MorphometryInputs from "./MorphometryInputs";
+import DeviceReference from "./DeviceReference";
+import DeviceSizingInputs from "./DeviceSizingInputs";
+import DeviceSizingPanel from "./DeviceSizingPanel";
 import type { SegmentationEntry } from "./segmentation";
 import type { AneurysmPlan } from "./planning";
 import type { Point3 } from "./geometry";
 import type { VolumeInfo } from "./Viewer";
+import {
+  loadCalibratedVolume,
+  findCaseImageSource,
+  type CalibratedSourceMetadata,
+  type CaseImageSource,
+} from "./calibratedSource";
 import {
   findCaseReference,
   loadReferenceVolume,
@@ -40,15 +51,29 @@ export default function App() {
   const [label, setLabel] = useState("Point-to-point distance");
   const [notes, setNotes] = useState("");
   const [planDirty, setPlanDirty] = useState(false);
+  const [geometryInputsDirty, setGeometryDirty] = useState(false);
+  const [deviceDirty, setDeviceDirty] = useState(false);
+  const [deviceEpoch, setDeviceEpoch] = useState(0);
+  const geometryDirty = geometryInputsDirty || deviceDirty;
+  const [geometryEpoch, setGeometryEpoch] = useState(0);
   const [source, setSource] = useState("");
   const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [workspaceBusy, setBusy] = useState(false);
+  const [geometryBusy, setGeometryBusy] = useState(false);
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const [deviceCalculationBusy, setDeviceCalculationBusy] = useState(false);
+  const busy =
+    workspaceBusy || geometryBusy || deviceBusy || deviceCalculationBusy;
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [reloadEpoch, setReloadEpoch] = useState(0);
   const [requestedReference, setRequestedReference] =
     useState<ReferenceMetadata | null>(null);
   const [reference, setReference] = useState<CaseReference | null>(null);
+  const [requestedCalibrated, setRequestedCalibrated] =
+    useState<CalibratedSourceMetadata | null>(null);
+  const [calibratedSource, setCalibratedSource] =
+    useState<CaseImageSource | null>(null);
   const [showReference, setShowReference] = useState(true);
   const [referenceStatus, setReferenceStatus] = useState<
     "off" | "loading" | "ready" | "error"
@@ -72,12 +97,30 @@ export default function App() {
     setPlanDirty(dirty);
     if (dirty) setAnswer(null);
   }, []);
+  const geometryEdited = useCallback((dirty: boolean) => {
+    setGeometryDirty(dirty);
+    if (dirty) {
+      setAnswer(null);
+      setConfirmed(false);
+    }
+  }, []);
+  const deviceEdited = useCallback((dirty: boolean) => {
+    setDeviceDirty(dirty);
+    if (dirty) {
+      setAnswer(null);
+      setConfirmed(false);
+    }
+  }, []);
   function failVolume(message: string) {
     setSegmentation(null);
     setReference(null);
     setRequestedReference(null);
+    setRequestedCalibrated(null);
+    setCalibratedSource(null);
     setConflict(false);
     setPlanDirty(false);
+    setGeometryDirty(false);
+    setDeviceDirty(false);
     setFile(null);
     setDigest("");
     setCase(null);
@@ -96,6 +139,7 @@ export default function App() {
     next: File,
     sourceURL = caseState ? "" : source,
     requested: ReferenceMetadata | null = null,
+    calibrated: CalibratedSourceMetadata | null = null,
   ) {
     if (!/\.nii(\.gz)?$/i.test(next.name) || next.size > 200 * 1024 * 1024) {
       setError("Choose a NIfTI .nii or .nii.gz file smaller than 200 MB.");
@@ -113,12 +157,16 @@ export default function App() {
     setSource(sourceURL);
     setReference(null);
     setRequestedReference(requested);
+    setRequestedCalibrated(calibrated);
+    setCalibratedSource(null);
     setShowReference(true);
     setReferenceStatus("off");
     setMode("linked");
     setAnswer(null);
     setNotes("");
     setPlanDirty(false);
+    setGeometryDirty(false);
+    setDeviceDirty(false);
     setConflict(false);
     try {
       const bytes = await crypto.subtle.digest(
@@ -137,8 +185,31 @@ export default function App() {
   }
   async function loaded(info: VolumeInfo) {
     try {
+      const matchesCalibrated = (
+        geometry: Pick<
+          CaseState,
+          "dimensions" | "spacing_mm" | "spatial_units"
+        >,
+      ) =>
+        !requestedCalibrated ||
+        (geometry.spatial_units === "mm" &&
+          geometry.dimensions.length === 3 &&
+          geometry.spacing_mm.length === 3 &&
+          geometry.dimensions.every(
+            (v, i) => v === requestedCalibrated.dimensions[i],
+          ) &&
+          geometry.spacing_mm.every(
+            (v, i) =>
+              Number.isFinite(v) &&
+              Math.abs(v - requestedCalibrated.spacing_mm[i]) < 1e-6,
+          ));
+      if (!matchesCalibrated(info))
+        throw new Error(
+          "Loaded geometry does not match the calibrated source.",
+        );
       const result = await restoreOrCreateCase({
         title:
+          requestedCalibrated?.case_label ||
           requestedReference?.case_label ||
           file?.name.replace(/\.nii(\.gz)?$/i, "").slice(0, 100) ||
           "CTA workspace",
@@ -150,6 +221,21 @@ export default function App() {
         throw new Error(
           "Saved reference unit declaration does not match the source.",
         );
+      if (requestedCalibrated) {
+        if (!matchesCalibrated(result))
+          throw new Error(
+            "Saved case geometry does not match the calibrated source.",
+          );
+        const verified = await findCaseImageSource(result.case_id, digest);
+        if (
+          !verified ||
+          verified.reference_revision !== requestedCalibrated.reference_revision
+        )
+          throw new Error(
+            "Calibrated source revision could not be verified for this case.",
+          );
+        setCalibratedSource(verified);
+      }
       setCase(result);
       setNotes(result.notes);
       setSource(result.source_url || "");
@@ -208,11 +294,22 @@ export default function App() {
       setNotes(latest.notes);
       if (requestedReference)
         setReference(await findCaseReference(latest.case_id, digest));
+      if (requestedCalibrated) {
+        const verified = await findCaseImageSource(latest.case_id, digest);
+        if (
+          !verified ||
+          verified.reference_revision !== requestedCalibrated.reference_revision
+        )
+          throw new Error("Calibrated source revision changed.");
+        setCalibratedSource(verified);
+      }
       setReloadEpoch((value) => value + 1);
       setA(null);
       setB(null);
       setFocus(null);
       setPlanDirty(false);
+      setGeometryDirty(false);
+      setDeviceDirty(false);
       setConfirmed(false);
       setAnswer(null);
       setConflict(false);
@@ -237,9 +334,29 @@ export default function App() {
       setBusy(false);
     }
   }
+  async function openCalibrated() {
+    setBusy(true);
+    setError("");
+    try {
+      const loaded = await loadCalibratedVolume(
+        "zenodo-case006-planning-context",
+      );
+      await acceptFile(
+        loaded.file,
+        loaded.metadata.source_url,
+        null,
+        loaded.metadata,
+      );
+    } catch (error) {
+      reportRequestError(error);
+      setBusy(false);
+    }
+  }
   async function saveMeasurement() {
     if (
       !caseState ||
+      geometryDirty ||
+      busy ||
       conflict ||
       caseState.spatial_units !== "mm" ||
       !pointA ||
@@ -267,7 +384,7 @@ export default function App() {
     }
   }
   async function saveNotes() {
-    if (!caseState || conflict) return;
+    if (!caseState || conflict || geometryDirty || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -286,7 +403,7 @@ export default function App() {
     }
   }
   async function saveAneurysmPlan(plan: AneurysmPlan) {
-    if (!caseState || conflict) return;
+    if (!caseState || conflict || geometryDirty || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -313,6 +430,8 @@ export default function App() {
       conflict ||
       !confirmed ||
       planDirty ||
+      geometryDirty ||
+      busy ||
       notes !== caseState.notes
     )
       return;
@@ -364,10 +483,13 @@ export default function App() {
         </div>
         <span className="build-tag">RESEARCH BUILD / 01</span>
         <div className="top-actions">
-          <button onClick={openReference} disabled={busy}>
+          <button onClick={openCalibrated} disabled={busy || geometryDirty}>
+            Open calibrated CTA
+          </button>
+          <button onClick={openReference} disabled={busy || geometryDirty}>
             Open reference CTA
           </button>
-          <button onClick={publicSample} disabled={busy}>
+          <button onClick={publicSample} disabled={busy || geometryDirty}>
             Open public CTA
           </button>
           <label className="file-button">
@@ -376,7 +498,7 @@ export default function App() {
               aria-label="Open CTA volume"
               type="file"
               accept=".nii,.nii.gz"
-              disabled={busy}
+              disabled={busy || geometryDirty}
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 e.target.value = "";
@@ -412,6 +534,16 @@ export default function App() {
               onChange={(e) => setSource(e.target.value)}
             />
           </label>
+          {calibratedSource && (
+            <section className="reference-card">
+              <strong>Calibrated public CTA context</strong>
+              <small>DICOM-derived mm geometry · image only</small>
+              <small>
+                Reference-informed crop; annotation registration remains
+                unvalidated.
+              </small>
+            </section>
+          )}
           {reference && (
             <section className="reference-card">
               <strong>Curated dataset reference</strong>
@@ -563,11 +695,12 @@ export default function App() {
                   reference={showReference ? reference : null}
                   segmentation={segmentation}
                   segmentationBinding={
-                    caseState && reference
+                    caseState && (calibratedSource || reference)
                       ? {
                           case_id: caseState.case_id,
                           image_sha256: caseState.image_sha256,
-                          reference_revision: reference.reference_revision,
+                          reference_revision: (calibratedSource || reference)!
+                            .reference_revision,
                         }
                       : null
                   }
@@ -620,11 +753,124 @@ export default function App() {
           <div className="eyebrow">03 / PLANNING</div>
           <h2>Aneurysm planning.</h2>
           <nav className="planning-nav" aria-label="Planning sections">
+            <a href="#mask-geometry">Geometry</a>
+            <a href="#device-reference">Devices</a>
             <a href="#aneurysm-plan">Plan</a>
             <a href="#model-segmentation">Models</a>
             <a href="#manual-evidence">Evidence</a>
             <a href="#muse-discussion">Muse ↗</a>
           </nav>
+          {caseState && calibratedSource && (
+            <section id="mask-geometry" className="planning-section">
+              <MorphometryResults
+                key={geometryEpoch}
+                caseState={caseState}
+                binding={calibratedSource}
+                disabled={
+                  busy ||
+                  conflict ||
+                  geometryDirty ||
+                  planDirty ||
+                  notes !== caseState.notes
+                }
+                onFocus={setFocus}
+              />
+              <details className="geometry-editor">
+                <summary>Set geometry landmarks</summary>
+                <MorphometryInputs
+                  key={`${caseState.case_id}:${reloadEpoch}`}
+                  caseState={caseState}
+                  binding={calibratedSource}
+                  location={location}
+                  disabled={
+                    busy ||
+                    conflict ||
+                    deviceDirty ||
+                    planDirty ||
+                    notes !== caseState.notes
+                  }
+                  onRevision={segmentationAccepted}
+                  onComputed={() => {
+                    setGeometryEpoch((value) => value + 1);
+                    setAnswer(null);
+                  }}
+                  onDirtyChange={geometryEdited}
+                  onBusy={setGeometryBusy}
+                  onError={reportRequestError}
+                  onFocus={setFocus}
+                />
+              </details>
+            </section>
+          )}
+          {caseState && calibratedSource && (
+            <section id="device-reference" className="planning-section">
+              <DeviceReference
+                key={`${geometryEpoch}:${deviceEpoch}`}
+                caseState={caseState}
+                binding={calibratedSource}
+                disabled={
+                  busy ||
+                  conflict ||
+                  geometryDirty ||
+                  planDirty ||
+                  notes !== caseState.notes
+                }
+              />
+              <details className="geometry-editor">
+                <summary>Enter independent sizing values</summary>
+                <DeviceSizingInputs
+                  key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}`}
+                  caseState={caseState}
+                  binding={calibratedSource}
+                  disabled={
+                    busy ||
+                    conflict ||
+                    geometryInputsDirty ||
+                    planDirty ||
+                    notes !== caseState.notes
+                  }
+                  onDirty={deviceEdited}
+                  onBusy={setDeviceBusy}
+                  onSaved={() => {
+                    setDeviceEpoch((value) => value + 1);
+                    setAnswer(null);
+                    setConfirmed(false);
+                  }}
+                  onConflict={(message) => {
+                    setError(message);
+                    setConflict(true);
+                    setAnswer(null);
+                  }}
+                />
+              </details>
+              <DeviceSizingPanel
+                key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}:${deviceEpoch}`}
+                caseState={caseState}
+                binding={calibratedSource}
+                disabled={
+                  workspaceBusy ||
+                  geometryBusy ||
+                  deviceBusy ||
+                  conflict ||
+                  geometryDirty ||
+                  planDirty ||
+                  notes !== caseState.notes
+                }
+                onBusy={setDeviceCalculationBusy}
+                onCalculated={() => {
+                  setAnswer(null);
+                  setConfirmed(false);
+                }}
+                onConflict={() => {
+                  setError(
+                    "Sizing calculation could not be confirmed. Reload saved state before retrying.",
+                  );
+                  setConflict(true);
+                  setAnswer(null);
+                }}
+              />
+            </section>
+          )}
           {caseState ? (
             <AneurysmWorksheet
               key={`${caseState.case_id}:${reloadEpoch}`}
@@ -633,7 +879,7 @@ export default function App() {
               measurements={caseState.measurements}
               spatialUnits={caseState.spatial_units}
               location={location}
-              disabled={busy || conflict}
+              disabled={busy || conflict || geometryDirty}
               onSave={saveAneurysmPlan}
               onFocus={setFocus}
               onDirtyChange={planEdited}
@@ -649,11 +895,15 @@ export default function App() {
             <SegmentationPanel
               key={caseState.case_id}
               caseState={caseState}
-              reference={reference}
+              reference={calibratedSource || reference}
               location={location}
               windowRange={windowRange}
               disabled={
-                busy || conflict || planDirty || notes !== caseState.notes
+                busy ||
+                conflict ||
+                geometryDirty ||
+                planDirty ||
+                notes !== caseState.notes
               }
               onOverlay={setSegmentation}
               onAccepted={segmentationAccepted}
@@ -674,6 +924,7 @@ export default function App() {
                   !location ||
                   !caseState ||
                   caseState.spatial_units !== "mm" ||
+                  geometryDirty ||
                   busy ||
                   conflict
                 }
@@ -686,6 +937,7 @@ export default function App() {
                   !location ||
                   !caseState ||
                   caseState.spatial_units !== "mm" ||
+                  geometryDirty ||
                   busy ||
                   conflict
                 }
@@ -713,6 +965,7 @@ export default function App() {
                   !pointB ||
                   !caseState ||
                   caseState.spatial_units !== "mm" ||
+                  geometryDirty ||
                   busy ||
                   conflict
                 }
@@ -756,6 +1009,7 @@ export default function App() {
             <h3>Case notes</h3>
             <textarea
               aria-label="Case planning notes"
+              disabled={geometryDirty || busy}
               value={notes}
               maxLength={8000}
               onChange={(e) => setNotes(e.target.value)}
@@ -765,7 +1019,11 @@ export default function App() {
               <button
                 onClick={saveNotes}
                 disabled={
-                  !caseState || busy || conflict || notes === caseState.notes
+                  !caseState ||
+                  busy ||
+                  conflict ||
+                  geometryDirty ||
+                  notes === caseState.notes
                 }
               >
                 Save notes
@@ -812,6 +1070,7 @@ export default function App() {
                 busy ||
                 conflict ||
                 !question.trim() ||
+                geometryDirty ||
                 planDirty ||
                 notes !== caseState.notes
               }

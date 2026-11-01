@@ -6,7 +6,7 @@ import type { Point3 } from "./geometry";
 import type { SegmentationEntry } from "./segmentation";
 type Props = {
   caseState: CaseState;
-  reference: CaseReference | null;
+  reference: Pick<CaseReference, "case_id" | "image_sha256" | "reference_revision"> | null;
   location: Point3 | null;
   windowRange: [number, number];
   disabled: boolean;

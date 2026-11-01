@@ -653,7 +653,8 @@ h3 {
   top: -27px;
   z-index: 2;
   display: flex;
-  gap: 22px;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 14px 0;
   background: #10191ef5;
   border-bottom: 1px solid #2d4548;

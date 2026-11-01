@@ -15,6 +15,11 @@ from planner.agent import AgentError, BoundedAgent, CaseContext, ToolSpec
 from planner.planning_sources import PLANNING_SOURCE_BUNDLE
 from planner.providers import ModelClient, ProviderError, ProviderSettings
 from planner.reference_server import ReferenceStore, register_reference_routes
+from planner.source_registry import (
+    IMAGE_ONLY_HASHES,
+    ImageSourceRegistry,
+    register_image_source_routes,
+)
 from planner.workspace import _connect, _get_case, create_app
 
 
@@ -32,11 +37,15 @@ def build_app(
     reference_dir: Path | None = None,
     inference_runner=None,
     inference_results_dir: Path | None = None,
+    calibrated_source_store=None,
+    planning_source_store=None,
+    geometry_runner=None,
 ):
     app = create_app(db_path)
     references = ReferenceStore(
         reference_dir or Path(__file__).resolve().parents[1] / ".runtime" / "public-reference"
     )
+    image_sources = ImageSourceRegistry(references, calibrated_source_store, planning_source_store)
     sample_dir = (
         sample_dir or Path(__file__).resolve().parents[1] / ".runtime" / "approved-public-sample"
     )
@@ -77,9 +86,12 @@ def build_app(
         if case is None:
             raise HTTPException(404, "Case not found")
         case["reference_annotation"] = references.optional_for_case(case)
+        if case["image_sha256"] in IMAGE_ONLY_HASHES:
+            case["image_source"] = image_sources.calibrated_metadata_for_case(case)
         return case
 
     register_reference_routes(app, references, read_case)
+    register_image_source_routes(app, image_sources, read_case)
 
     def default_client():
         env = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
@@ -143,7 +155,9 @@ def build_app(
         latest = read_case(case_id)
 
         def reference_revision(case):
-            return (case.get("reference_annotation") or {}).get("reference_revision")
+            return (case.get("image_source") or case.get("reference_annotation") or {}).get(
+                "reference_revision"
+            )
 
         if latest["artifact_version"] != payload.artifact_version or reference_revision(
             latest
@@ -168,18 +182,47 @@ def build_app(
             else [],
         }
 
+    from planner.device_inputs_server import register_device_input_routes
+    from planner.device_inputs_state import DeviceInputsLedger
+    from planner.device_results_read import register_device_result_read_routes
+    from planner.device_results_server import register_device_calculation_routes
+    from planner.device_results_state import DeviceResultsLedger
+    from planner.device_server import register_device_routes
+    from planner.geometry_server import register_geometry_routes
+    from planner.geometry_state import GeometryLedger
     from planner.segmentation_server import register_segmentation_routes
     from planner.segmentation_state import SegmentationLedger
+
+    results_dir = (
+        inference_results_dir
+        or Path(__file__).resolve().parents[1] / ".runtime" / "inference-results"
+    )
 
     register_segmentation_routes(
         app,
         SegmentationLedger(db_path),
-        references,
+        image_sources,
         read_case,
-        inference_results_dir
-        or Path(__file__).resolve().parents[1] / ".runtime" / "inference-results",
+        results_dir,
         runner=inference_runner,
     )
+
+    read_geometry = register_geometry_routes(
+        app,
+        GeometryLedger(db_path),
+        image_sources,
+        read_case,
+        results_dir,
+        runner=geometry_runner,
+    )
+    register_device_routes(app, read_geometry)
+    device_inputs = DeviceInputsLedger(db_path)
+    device_results = DeviceResultsLedger(db_path)
+    register_device_input_routes(app, device_inputs, read_geometry)
+    read_sizing = register_device_result_read_routes(
+        app, device_inputs, device_results, read_geometry
+    )
+    register_device_calculation_routes(app, device_results, read_sizing)
 
     return app
 

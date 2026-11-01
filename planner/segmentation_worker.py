@@ -213,6 +213,46 @@ def _load_correction_base(job, source):
     return mask
 
 
+def _source_context_metadata(job):
+    source_id = job.get("source_id", "cmha-ahmu1218001-context")
+    metadata = {"source_id": source_id}
+    if source_id in ("zenodo-case006-calibrated", "zenodo-case006-planning-context"):
+        metadata["input_context"] = "server_installed_calibrated_reference_informed_context"
+        metadata["source_annotation_registration_validated"] = False
+        if job.get("kind") == "sam2":
+            metadata["prompt_context"] = (
+                "operator crosshair in calibrated context; ROI may be reference-informed"
+            )
+    return metadata
+
+
+def _source_bundle(job):
+    """Resolve only a registered opaque identity, never job-supplied paths."""
+    import hashlib
+
+    source_id = job.get("source_id", "cmha-ahmu1218001-context")
+    if source_id in ("zenodo-case006-calibrated", "zenodo-case006-planning-context"):
+        from planner import image_source
+
+        provider = getattr(
+            image_source,
+            "PlanningSourceStore"
+            if source_id == "zenodo-case006-planning-context"
+            else "CalibratedSourceStore",
+        )
+        data, revision, paths = provider().load()
+        return data, revision, paths["image"], "mm"
+    if source_id != "cmha-ahmu1218001-context":
+        raise ValueError("Unknown installed image source")
+    raw_manifest = (REFERENCE_DIR / "manifest.json").read_bytes()
+    return (
+        json.loads(raw_manifest),
+        hashlib.sha256(raw_manifest).hexdigest(),
+        REFERENCE_IMAGE,
+        "unknown",
+    )
+
+
 def _run_job(job, output_dir):
     """Child entry point: verify the fixed reference, infer, save artifacts."""
     import hashlib
@@ -233,19 +273,15 @@ def _run_job(job, output_dir):
     ):
         raise ValueError("Job identity fields are incomplete")
 
-    raw_manifest = (REFERENCE_DIR / "manifest.json").read_bytes()
-    manifest = json.loads(raw_manifest)
+    manifest, installed_revision, image_path, expected_units = _source_bundle(job)
     expected_sha = manifest["image"]["sha256"]
-    if (
-        image_sha256 != expected_sha
-        or reference_revision != hashlib.sha256(raw_manifest).hexdigest()
-    ):
+    if image_sha256 != expected_sha or reference_revision != installed_revision:
         raise ValueError("Job does not match the installed reference revision")
-    actual_sha = hashlib.sha256(REFERENCE_IMAGE.read_bytes()).hexdigest()
+    actual_sha = hashlib.sha256(image_path.read_bytes()).hexdigest()
     if actual_sha != expected_sha:
         raise ValueError("Installed reference image hash mismatch")
 
-    source = nib.load(str(REFERENCE_IMAGE))
+    source = nib.load(str(image_path))
     data = np.asarray(source.dataobj)
     if data.ndim != 3 or data.size == 0:
         raise ValueError("Source image must be a nonempty 3D volume")
@@ -255,6 +291,11 @@ def _run_job(job, output_dir):
         raise ValueError("Source image contains non-finite voxels")
     native_shape = tuple(int(value) for value in data.shape)
     source_units = source.header.get_xyzt_units()[0] or "unknown"
+    if (
+        job.get("source_id") in ("zenodo-case006-calibrated", "zenodo-case006-planning-context")
+        and source_units != expected_units
+    ):
+        raise ValueError("Calibrated source unit declaration does not match its registry")
     source_dtype = str(source.get_data_dtype())
     window = job.get("display_window", [0, 600])
     if (
@@ -412,6 +453,7 @@ def _run_job(job, output_dir):
         metadata.update(sam_prompt_metadata)
         if correction_base is not None:
             metadata["correction_base"] = correction_base
+    metadata.update(_source_context_metadata(job))
     (output_dir / "metadata.json").write_text(json.dumps(metadata, allow_nan=False))
     return metadata
 

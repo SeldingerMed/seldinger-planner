@@ -1,0 +1,85 @@
+{
+  "case_id": "IkEMF5YWYSm7LeodOXBSbQ",
+  "image_sha256": "26b8a3e766cf1306796286c8d10dfef41192930919df9029f9be0779b8080473",
+  "reference_revision": "92834342c650ecae3733cac33aec096f01ff699c4f25c234fdb0b8738ae6f18e",
+  "artifact_version": "6",
+  "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+  "device_checks_version": "historical-label-range-checks-v1",
+  "geometry_status": "current",
+  "status": "partial_inputs",
+  "clinical_suitability_established": false,
+  "validated_sizing": false,
+  "missing_dimensions": {
+    "average_sac_diameter": {
+      "reason": "Independent sac diameters are not supplied; one projected width is not their average.",
+      "status": "missing"
+    },
+    "dome_diameter": {
+      "reason": "A separately recorded dome diameter is not supplied.",
+      "status": "missing"
+    },
+    "neck_coverage_length": {
+      "reason": "Longitudinal neck extent before the historical coverage margin is not measured; neck-plane width is not a substitute.",
+      "status": "missing"
+    },
+    "smallest_sac_height": {
+      "reason": "Current sac height is one plane's maximum, not an established independent minimum.",
+      "status": "missing"
+    }
+  },
+  "dependencies": {
+    "geometry_result_id": "TB7cH69mFvVtkwKfO4_D3A",
+    "geometry": {
+      "artifact_version": "6",
+      "calculation_version": "native-mask-operator-plane-v1",
+      "case_id": "IkEMF5YWYSm7LeodOXBSbQ",
+      "image_sha256": "26b8a3e766cf1306796286c8d10dfef41192930919df9029f9be0779b8080473",
+      "masks": {
+        "aneurysm": {
+          "candidate_id": "kcFqkVPc0OurCgfL4eHWHg",
+          "mask_sha256": "9b94126ab67abdfc45b1dab56ac0c6b0b7a1f5263d39e5914c3e1fc65b6fe3b8",
+          "segmentation_revision": 3
+        },
+        "vessel": {
+          "candidate_id": "dycJyq9mxUTrB_C9G3PDKg",
+          "mask_sha256": "2a301b02171aaf3bb8b7508c480a6dd8111d612d93e6a192797ec0ef2c07cf99",
+          "segmentation_revision": 2
+        }
+      },
+      "operator_sha256": "576c6ba6763704490870dc623d01af6d37abbd0506e20b6453edccd5c36af955",
+      "source_revision": "92834342c650ecae3733cac33aec096f01ff699c4f25c234fdb0b8738ae6f18e"
+    },
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "device_checks_version": "historical-label-range-checks-v1"
+  },
+  "checks": {
+    "pipeline": {
+      "basis": "operator_path_normal_mask_feret_extrema",
+      "parent_range_mm": [
+        2.0,
+        5.0
+      ],
+      "parent_sections": {
+        "proximal_parent": {
+          "min_diameter_mm": 3.452668144138498,
+          "max_diameter_mm": 5.151147810682815,
+          "equivalent_diameter_mm": 4.130411316841555,
+          "area_mm2": 13.399126438412168,
+          "comparison": "outside_historical_range"
+        },
+        "distal_parent": {
+          "min_diameter_mm": 3.452668144138499,
+          "max_diameter_mm": 5.056600271110765,
+          "equivalent_diameter_mm": 4.081205070332587,
+          "area_mm2": 13.081776241542162,
+          "comparison": "outside_historical_range"
+        }
+      },
+      "sizing_status": "missing_inputs"
+    },
+    "web": {
+      "sizing_status": "missing_inputs",
+      "catalog_rows_available": false
+    }
+  }
+}
