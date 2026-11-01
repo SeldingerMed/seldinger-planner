@@ -15,7 +15,7 @@ import DeviceSizingPanel from "./DeviceSizingPanel";
 import type { SegmentationEntry } from "./segmentation";
 import type { AneurysmPlan } from "./planning";
 import type { Point3 } from "./geometry";
-import type { VolumeInfo } from "./Viewer";
+import type { VolumeInfo, NativeVolume } from "./Viewer";
 import {
   loadCalibratedVolume,
   findCaseImageSource,
@@ -33,6 +33,7 @@ const coordinate = (p: Point3 | null) =>
   p ? p.map((v) => v.toFixed(1)).join(" / ") : "Select a location in the scan";
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
+  const [nativeVolume, setNativeVolume] = useState<NativeVolume | null>(null);
   const [digest, setDigest] = useState("");
   const [caseState, setCase] = useState<CaseState | null>(null);
   const [segmentation, setSegmentation] = useState<SegmentationEntry | null>(
@@ -112,6 +113,7 @@ export default function App() {
     }
   }, []);
   function failVolume(message: string) {
+    setNativeVolume(null);
     setSegmentation(null);
     setReference(null);
     setRequestedReference(null);
@@ -148,6 +150,7 @@ export default function App() {
     setBusy(true);
     setError("");
     setCase(null);
+    setNativeVolume(null);
     setSegmentation(null);
     setA(null);
     setB(null);
@@ -685,12 +688,14 @@ export default function App() {
                 }
               >
                 <Viewer
+                  key={digest}
                   file={file}
                   mode={mode}
                   windowRange={windowRange}
                   focus={focus}
                   onLocation={setLocation}
                   onLoaded={loaded}
+                  onNativeVolume={setNativeVolume}
                   onError={failVolume}
                   reference={showReference ? reference : null}
                   segmentation={segmentation}
@@ -766,6 +771,13 @@ export default function App() {
                 key={geometryEpoch}
                 caseState={caseState}
                 binding={calibratedSource}
+                nativeVolume={
+                  nativeVolume?.file === file &&
+                  digest === caseState.image_sha256
+                    ? nativeVolume.image
+                    : null
+                }
+                windowRange={windowRange}
                 disabled={
                   busy ||
                   conflict ||

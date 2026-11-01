@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type CaseState } from "./api";
 import type { Point3 } from "./geometry";
+import type { NVImage } from "@niivue/niivue";
+import ObliqueSection from "./ObliqueSection";
 import "./morphometry.css";
 
 export type MorphometryBinding = {
@@ -159,65 +161,6 @@ function fmt(v: number): string {
   return v.toFixed(2);
 }
 
-function planeBasis(normal: Vec3): [Vec3, Vec3] {
-  const len = Math.hypot(normal[0], normal[1], normal[2]);
-  const n: Vec3 = [normal[0] / len, normal[1] / len, normal[2] / len];
-  // Reference axis least aligned with the normal for a stable basis.
-  const ref: Vec3 = [1, 0, 0];
-  if (Math.abs(n[0]) > 0.9) ((ref[0] = 0), (ref[1] = 1));
-  let u: Vec3 = [
-    ref[1] * n[2] - ref[2] * n[1],
-    ref[2] * n[0] - ref[0] * n[2],
-    ref[0] * n[1] - ref[1] * n[0],
-  ];
-  const ul = Math.hypot(u[0], u[1], u[2]);
-  u = [u[0] / ul, u[1] / ul, u[2] / ul];
-  const v: Vec3 = [
-    n[1] * u[2] - n[2] * u[1],
-    n[2] * u[0] - n[0] * u[2],
-    n[0] * u[1] - n[1] * u[0],
-  ];
-  return [u, v];
-}
-
-function ContourSvg({ section }: { section: MorphometrySection }) {
-  const [u, v] = planeBasis(section.plane_normal);
-  const o = section.plane_origin;
-  const pts = section.contour_world.map((p) => {
-    const dx = p[0] - o[0];
-    const dy = p[1] - o[1];
-    const dz = p[2] - o[2];
-    return [
-      dx * u[0] + dy * u[1] + dz * u[2],
-      dx * v[0] + dy * v[1] + dz * v[2],
-    ];
-  });
-  const xs = pts.map((p) => p[0]);
-  const ys = pts.map((p) => p[1]);
-  const pad = 1;
-  const minX = Math.min(...xs) - pad;
-  const maxX = Math.max(...xs) + pad;
-  const minY = Math.min(...ys) - pad;
-  const maxY = Math.max(...ys) + pad;
-  const w = maxX - minX;
-  const h = maxY - minY;
-  const d = pts
-    .map((p, i) => `${i === 0 ? "M" : "L"}${p[0]},${p[1]}`)
-    .join(" ")
-    .concat(" Z");
-  return (
-    <svg
-      className="morphometry-contour"
-      viewBox={`${minX} ${minY} ${w} ${h}`}
-      preserveAspectRatio="xMidYMid meet"
-      role="img"
-      aria-label="Section contour in its own plane"
-    >
-      <path d={d} className="morphometry-contour-path" />
-    </svg>
-  );
-}
-
 type FetchState =
   | { phase: "idle" }
   | { phase: "loading" }
@@ -229,11 +172,15 @@ export default function MorphometryResults({
   binding,
   onFocus,
   disabled = false,
+  nativeVolume = null,
+  windowRange = [0, 600],
 }: {
   caseState: CaseState;
   binding: MorphometryBinding | null;
   onFocus: (point: Point3) => void;
   disabled?: boolean;
+  nativeVolume?: NVImage | null;
+  windowRange?: [number, number];
 }) {
   const [state, setState] = useState<FetchState>({ phase: "idle" });
   const epochRef = useRef(0);
@@ -388,7 +335,11 @@ export default function MorphometryResults({
                     </div>
                   ) : null}
                 </dl>
-                <ContourSvg section={section} />
+                <ObliqueSection
+                  section={section}
+                  volume={nativeVolume}
+                  windowRange={windowRange}
+                />
                 <button
                   type="button"
                   className="morphometry-focus"

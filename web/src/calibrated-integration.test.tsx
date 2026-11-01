@@ -15,8 +15,15 @@ import deviceChecks from "./fixtures/device-checks-current-metadata.json";
 import deviceInputs from "./fixtures/device-inputs-current-metadata.json";
 import sizingVariants from "./fixtures/device-sizing-synthetic-variants.json";
 import * as calibrated from "./calibratedSource";
+vi.mock("./ObliqueSection", () => ({
+  default: (p: { volume: unknown }) => (
+    <div data-testid="native-cta-binding">{p.volume ? "bound" : "none"}</div>
+  ),
+}));
 vi.mock("./Viewer", () => ({
   default: (p: {
+    file: File;
+    onNativeVolume?: (value: unknown) => void;
     onLoaded: (v: unknown) => void;
     onLocation: (p: [number, number, number]) => void;
     onError: (message: string) => void;
@@ -25,6 +32,26 @@ vi.mock("./Viewer", () => ({
     focus?: number[] | null;
   }) => (
     <div>
+      <button
+        onClick={() =>
+          p.onNativeVolume?.({
+            file: p.file,
+            image: { synthetic: "not image proof" },
+          })
+        }
+      >
+        Bind current native fixture
+      </button>
+      <button
+        onClick={() =>
+          p.onNativeVolume?.({
+            file: new File(["other"], "other.nii"),
+            image: { synthetic: "not image proof" },
+          })
+        }
+      >
+        Bind wrong-file native fixture
+      </button>
       <button
         onClick={() =>
           p.onLoaded({
@@ -219,6 +246,35 @@ test("opens calibrated image-only source with mm evidence and model controls, no
     metadata.image_sha256,
   );
   expect(await screen.findByText("Current estimate")).toBeInTheDocument();
+  expect(
+    screen
+      .getAllByTestId("native-cta-binding")
+      .every((e) => e.textContent === "none"),
+  ).toBe(true);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Bind wrong-file native fixture" }),
+  );
+  expect(
+    screen
+      .getAllByTestId("native-cta-binding")
+      .every((e) => e.textContent === "none"),
+  ).toBe(true);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Bind current native fixture" }),
+  );
+  expect(
+    screen
+      .getAllByTestId("native-cta-binding")
+      .every((e) => e.textContent === "bound"),
+  ).toBe(true);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Bind wrong-file native fixture" }),
+  );
+  expect(
+    screen
+      .getAllByTestId("native-cta-binding")
+      .every((e) => e.textContent === "none"),
+  ).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Locate neck origin" }));
   expect(await screen.findByTestId("dr-badge")).toHaveTextContent(
     "Missing sizing inputs",

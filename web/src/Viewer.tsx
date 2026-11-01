@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Niivue, SLICE_TYPE, SHOW_RENDER } from "@niivue/niivue";
+import { Niivue, SLICE_TYPE, SHOW_RENDER, type NVImage } from "@niivue/niivue";
 import { point3, volumeMetadata, type Point3 } from "./geometry";
 import { loadReferenceMeshes, type CaseReference } from "./reference";
 import {
@@ -8,6 +8,7 @@ import {
   type SegmentationBinding,
 } from "./segmentation";
 export type VolumeInfo = ReturnType<typeof volumeMetadata>;
+export type NativeVolume = { file: File; image: NVImage };
 type Props = {
   file: File | null;
   mode: string;
@@ -15,6 +16,7 @@ type Props = {
   focus: Point3 | null;
   onLocation: (p: Point3) => void;
   onLoaded: (info: VolumeInfo) => void;
+  onNativeVolume?: (value: NativeVolume | null) => void;
   onError: (message: string) => void;
   reference?: CaseReference | null;
   onReferenceStatus?: (status: "off" | "loading" | "ready" | "error") => void;
@@ -32,6 +34,7 @@ export default function Viewer({
   onLoaded,
   onError,
   reference = null,
+  onNativeVolume,
   onReferenceStatus,
   onReferenceError,
   segmentation = null,
@@ -44,6 +47,7 @@ export default function Viewer({
   const callbacks = useRef({
     onLocation,
     onLoaded,
+    onNativeVolume,
     onError,
     onReferenceStatus,
     onReferenceError,
@@ -52,6 +56,7 @@ export default function Viewer({
   callbacks.current = {
     onLocation,
     onLoaded,
+    onNativeVolume,
     onError,
     onReferenceStatus,
     onReferenceError,
@@ -98,6 +103,7 @@ export default function Viewer({
     };
   }, []);
   useEffect(() => {
+    callbacks.current.onNativeVolume?.(null);
     if (!file) return;
     setLoadedFile(null);
     let active = true;
@@ -118,6 +124,7 @@ export default function Viewer({
         nv.updateGLVolume();
         setLoadedFile(file);
         callbacks.current.onLoaded(info);
+        callbacks.current.onNativeVolume?.({ file, image: vol });
         const center = point3(nv.frac2mm(nv.scene.crosshairPos, 0, true));
         if (center) callbacks.current.onLocation(center);
       } catch {
@@ -129,6 +136,7 @@ export default function Viewer({
     })();
     return () => {
       active = false;
+      callbacks.current.onNativeVolume?.(null);
     };
   }, [file]);
   useEffect(() => {

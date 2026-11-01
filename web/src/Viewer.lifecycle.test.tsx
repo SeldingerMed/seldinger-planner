@@ -255,6 +255,39 @@ test("late reference fetch cannot attach geometry to the next image", async () =
   expect(status).not.toHaveBeenCalledWith("ready");
 });
 
+test("exposes the exact native image/file and clears it on a failed replacement", async () => {
+  const handlers = callbacks();
+  const onNativeVolume = vi.fn();
+  const file = new File(["synthetic native source"], "native.nii");
+  const view = render(
+    <Viewer
+      file={file}
+      mode="linked"
+      windowRange={[0, 600]}
+      focus={null}
+      onNativeVolume={onNativeVolume}
+      {...handlers}
+    />,
+  );
+  await waitFor(() => expect(handlers.onLoaded).toHaveBeenCalledOnce());
+  expect(onNativeVolume).toHaveBeenLastCalledWith({
+    file,
+    image: harness.image,
+  });
+  view.rerender(
+    <Viewer
+      file={new File(["invalid"], "broken.nii")}
+      mode="linked"
+      windowRange={[0, 600]}
+      focus={null}
+      onNativeVolume={onNativeVolume}
+      {...handlers}
+    />,
+  );
+  await waitFor(() => expect(handlers.onError).toHaveBeenCalledOnce());
+  expect(onNativeVolume).toHaveBeenLastCalledWith(null);
+});
+
 const callbacks = () => ({
   onLocation: vi.fn(),
   onLoaded: vi.fn(),
