@@ -1,6 +1,14 @@
 # Seldinger Planner
 
-A new CTA-first neurovascular planning research prototype. This repository contains the new application, not a wholesale port of the earlier Seldinger app.
+A new CTA-first neurovascular imaging and evidence-workspace research prototype, built for the Meta Global AI Developer Hackathon. This repository contains the new application, not a wholesale port of the earlier Seldinger app. It is not a clinical service or a treatment-recommendation system.
+
+## Hackathon source and original work
+
+**Full application: [`feat/fresh-planning-workspace`](https://github.com/SeldingerMed/seldinger-planner/tree/feat/fresh-planning-workspace).** The older `main` branch contains the initial provider foundation, not the complete workspace. Public source does not mean a hosted deployment.
+
+The new application and adapters were authored here during the event, with implementation commits dated October 31 and November 1, 2026. New work includes the viewer/workspace, case persistence and provenance contracts, bounded agent, inference adapters, mask-preview ledger, native-slice correction, geometry dependency tracking, historical source/input checks, and native oblique CTA display. No legacy Seldinger application code was imported.
+
+Upstream libraries, public datasets, and pretrained checkpoints are dependencies, not newly trained models or newly collected data. Meta provides Muse Spark Open and SAM 2.1; separate pretrained vessel/aneurysm adapters are not presented as Meta models. Source images, model weights, local state, and generated evidence are excluded from git.
 
 ## Implemented
 
@@ -13,7 +21,16 @@ A new CTA-first neurovascular planning research prototype. This repository conta
 - Direct Meta model adapter for separate infrastructure tests.
 - Original-public-case reference preview: a hash-checked context CTA crop and paired curated 3D surfaces, fixed case-bound asset routes, browser-side asset verification, reference-target navigation and a dedicated surface view. This is dataset-provided geometry, not a new segmentation result.
 
-This is not yet the proposed end-to-end aneurysm planner. Segmentation inference, validated sac/neck morphometry, orthogonal landing-zone diameters, sourced device sizing and SAM correction are not implemented. The worksheet supports user-assigned manual point-pair roles and non-prescriptive discussion of selected options, not clinical suitability ranking or treatment recommendations.
+- Case-bound local inference workers for trained binary vessels, trained aneurysm segmentation within an installed context crop, and Meta SAM 2.1 prompted segmentation/correction. Candidates have an explicit preview/accept/reject lifecycle, source identity, and versioned producer provenance. Local inference reads the installed public source; user-opened viewer files and Muse requests do not upload the scan.
+- Correction of an accepted mask on one native slice, preserving other slices. Acceptance invalidates dependent geometry/sizing results. This is not 3D propagation or evidence of better anatomical boundaries.
+- Operator-defined neck/parent planes and path, prototype sac/section geometry, and native CTA reslices with accepted-mask contours. Source, physical units, case/input revisions, and currentness gate the displayed outputs.
+- Historical FDA-label references, saved independent operator sizing inputs, deterministic checks/arithmetic, and explicit missing/stale/outside-range states. Mask-section extrema are not silently copied into independent sizing fields. The exercised public example still has missing independent inputs, no selected device, and no clinical compatibility determination.
+
+## Current limits
+
+This is not a clinically validated planning application. Full-head aneurysm localization, segmentation accuracy, anatomical plane validity, clinical morphometry, device suitability, individual risk, treatment selection, deployment simulation, and improved outcomes are not established. SAM is **2.1**, not SAM 3.1. Muse reads saved case/worksheet metadata and a fixed source bundle; it does not inspect scan pixels, operate the viewer, accept masks, compute geometry, or choose a device. Point-pair distances and current mask-section calculations are not validated clinical diameters.
+
+The mm-calibrated Zenodo case `006` is a development example, publisher-classified fusiform-saccular. DICOM calibration does not validate reference-informed crop selection, STL registration, or the operator-defined planes. A smaller context produced an empty vessel result, retained as a negative result; a larger context produced nonempty candidates, not proof of anatomical accuracy. See [calibrated application evidence](docs/verification/calibrated-source-application.md).
 
 ## Run locally
 
@@ -66,7 +83,24 @@ uv run python -m planner.probe --provider both
 
 The probe sends no imaging and saves sanitized local results in ignored `artifacts/`. Model/tool call counts and output tokens are capped; elapsed time is checked at operation boundaries. Blocking tools do not yet have process-level preemption. No automatic retries or fallback providers are enabled.
 
-## Evidence boundary
+## Optional source/model installation
+
+A fresh source checkout can run the basic viewer, local workspace, manual evidence, and brief export with an authorized user-opened NIfTI. It does not include demonstration datasets or model weights. **Open calibrated CTA** requires the separately prepared, ignored Zenodo source bundle; source [DOI 10.5281/zenodo.15697196](https://doi.org/10.5281/zenodo.15697196), CC BY 4.0. Model buttons require pinned checkpoints and isolated runtimes. See [model source/runtime evidence](docs/verification/model-foundations.md), [reference preparation](docs/verification/original-case-reference.md), and [calibrated context preparation](docs/verification/calibrated-context-preparation.md). These are exercised preparation records with limits, not a one-command installer or permission to redistribute assets.
+
+## Current verification checkpoint
+
+On November 4, 2026, the backend suite passed **553 tests**, with **96 optional heavyweight tests skipped**. Ruff lint and format passed. The frontend passed **159 tests**, TypeScript/production build, and the production dependency audit (zero reported vulnerabilities). Vite retains a large-chunk advisory. Skipped real-model tests are not counted as passed, and software checks do not establish clinical performance.
+
+Actual browser checks also exercised a live Baseten Muse call, local SAM correction preview/rejection, native geometry recomputation after a case revision, and saved-note/brief readback on the public calibrated case. Related retained evidence:
+
+- [Actual calibrated application and context-size diagnostic](docs/verification/calibrated-source-application.md)
+- [SAM acceptance to downstream invalidation/recomputation](docs/verification/device-sizing-sam-lifecycle.md)
+- [Native oblique CTA sections and independent pixel readback](docs/verification/native-cta-oblique-sections.md)
+- [Historical sizing input/result application checks](docs/verification/device-sizing-application.md)
+
+Verification documents are historical checkpoints. Later notes supersede earlier implementation-status statements without erasing negative results or clinical limits.
+
+## Earlier viewer-only evidence boundary
 
 Backend persistence, stale-write rejection, brief export and the live Muse read-tool round trip have been exercised with explicitly synthetic metadata. The real public CMHA crop has also been exercised in an attached browser: all five layouts, crosshair and display-preset changes, 3D camera motion, saved-note persistence after reopening, brief export, and a live Muse call reading the saved public-case metadata and notes.
 
