@@ -13,6 +13,7 @@ import json
 import math
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
 from pathlib import Path
@@ -337,3 +338,39 @@ def register_segmentation_routes(
         from fastapi.responses import FileResponse
 
         return FileResponse(blob, media_type="application/gzip", filename="mask.nii.gz")
+
+    @app.get("/api/cases/{case_id}/segmentations/{candidate_id}/surface")
+    def segmentation_surface(case_id: str, candidate_id: str):
+        from fastapi.responses import Response
+
+        from planner.device_surface import build_surface
+
+        case = read_case(case_id)
+        if case["spatial_units"] != "mm":
+            raise HTTPException(422, "Millimeter-calibrated source required for device scene")
+        entry = _entry_or_error(case_id, candidate_id)
+        if entry["status"] != "accepted":
+            raise HTTPException(409, "Accept the mask before creating its planning surface")
+        # Reuse the existing source/role/version/hash-bound mask guard chain.
+        mask_response = segmentation_mask(case_id, candidate_id)
+        try:
+            data = build_surface(Path(mask_response.path), entry["mask_sha256"])
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+            raise HTTPException(503, "Native mask surface unavailable") from None
+        after = _entry_or_error(case_id, candidate_id)
+        if (
+            read_case(case_id)["artifact_version"] != case["artifact_version"]
+            or after["status"] != "accepted"
+            or after["mask_sha256"] != entry["mask_sha256"]
+            or after["reference_revision"] != entry["reference_revision"]
+        ):
+            raise HTTPException(409, "Anatomy changed while preparing surface")
+        return Response(
+            data,
+            media_type="model/stl",
+            headers={
+                "Cache-Control": "no-store",
+                "X-Mask-Sha256": entry["mask_sha256"],
+                "X-Surface-Sha256": hashlib.sha256(data).hexdigest(),
+            },
+        )

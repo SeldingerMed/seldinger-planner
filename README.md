@@ -25,6 +25,8 @@ Upstream libraries, public datasets, and pretrained checkpoints are dependencies
 - Correction of an accepted mask on one native slice, preserving other slices. Acceptance invalidates dependent geometry/sizing results. This is not 3D propagation or evidence of better anatomical boundaries.
 - Operator-defined neck/parent planes and path, prototype sac/section geometry, and native CTA reslices with accepted-mask contours. Source, physical units, case/input revisions, and currentness gate the displayed outputs.
 - Historical FDA-label references, saved independent operator sizing inputs, deterministic checks/arithmetic, and explicit missing/stale/outside-range states. Mask-section extrema are not silently copied into independent sizing fields. The exercised public example still has missing independent inputs, no selected device, and no clinical compatibility determination.
+- Interactive **Device studio** with authored Stryker/Medtronic flow-diverter braids, WEB SL/SLS cages and two illustrative coil families. Place and compare them with hash-checked accepted native-mask surfaces and optional linked CTA; edit dimensions/pose/path and retain independent browser-local alternatives. Geometric warnings and source/recall status are separate from clinical suitability.
+- An explicitly hypothetical research physics bench: ideal-helix diameter/length coupling, a cited local thin-screen pressure-loss equation, and primary-coil volume arithmetic requiring explicit inputs. These are not patient-specific CFD or outcome predictions. See [exercised studio evidence and limits](docs/verification/device-planning-studio.md).
 
 ## Current limits
 
@@ -89,7 +91,7 @@ A fresh source checkout can run the basic viewer, local workspace, manual eviden
 
 ## Current verification checkpoint
 
-On November 4, 2026, the backend suite passed **553 tests**, with **96 optional heavyweight tests skipped**. Ruff lint and format passed. The frontend passed **159 tests**, TypeScript/production build, and the production dependency audit (zero reported vulnerabilities). Vite retains a large-chunk advisory. Skipped real-model tests are not counted as passed, and software checks do not establish clinical performance.
+On November 4, 2026, the local backend suite passed **557 tests**, with **97 optional heavyweight skips**. A separate isolated native surface/mask-geometry lane passed **16 synthetic tests**. Ruff lint and format passed. The frontend passed **188 tests**, TypeScript/production build, and the production dependency audit (zero reported vulnerabilities). Vite retains a large-chunk advisory. Skipped real-model tests are not counted as passed, and software checks do not establish clinical performance.
 
 Actual browser checks also exercised a live Baseten Muse call, local SAM correction preview/rejection, native geometry recomputation after a case revision, and saved-note/brief readback on the public calibrated case. Related retained evidence:
 

@@ -29,9 +29,11 @@ import {
   type ReferenceMetadata,
 } from "./reference";
 const Viewer = lazy(() => import("./Viewer"));
+const DeviceStudio = lazy(() => import("./devices/DeviceStudio"));
 const coordinate = (p: Point3 | null) =>
   p ? p.map((v) => v.toFixed(1)).join(" / ") : "Select a location in the scan";
 export default function App() {
+  const [studioOpen, setStudioOpen] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [nativeVolume, setNativeVolume] = useState<NativeVolume | null>(null);
   const [digest, setDigest] = useState("");
@@ -476,6 +478,16 @@ export default function App() {
   }
   return (
     <div className="app-shell">
+      {studioOpen && (
+        <Suspense fallback={<div role="status">Opening device studio…</div>}>
+          <DeviceStudio
+            file={file}
+            caseState={caseState}
+            sourceRevision={(calibratedSource || reference)?.reference_revision ?? null}
+            onClose={() => setStudioOpen(false)}
+          />
+        </Suspense>
+      )}
       <header className="topbar">
         <div className="brand-mark">
           S<span>/</span>
@@ -486,6 +498,7 @@ export default function App() {
         </div>
         <span className="build-tag">RESEARCH BUILD / 01</span>
         <div className="top-actions">
+          <button className="ds-studio-open" onClick={() => setStudioOpen(true)} disabled={busy || geometryDirty || conflict}>Device studio</button>
           <button onClick={openCalibrated} disabled={busy || geometryDirty}>
             Open calibrated CTA
           </button>
