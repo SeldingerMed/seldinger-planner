@@ -1,0 +1,203 @@
+.morphometry {
+  border: 1px solid var(--border-color, #2b4247);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  color: inherit;
+  background: var(--panel-background, #101d22);
+}
+.morphometry-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.morphometry-title {
+  margin: 0;
+  font-size: 13px;
+}
+.morphometry-badge {
+  font-size: 9px;
+  padding: 3px 6px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.morphometry-badge-current {
+  color: var(--status-ok-color, #9edbc8);
+}
+.morphometry-badge-stale {
+  color: var(--status-warn-color, #e3bc83);
+}
+.morphometry-badge-idle {
+  color: var(--text-muted-color, #94a9af);
+}
+.morphometry-subtitle {
+  margin: 7px 0 0;
+  color: var(--text-muted-color, #94a9af);
+  font-size: 10px;
+  line-height: 1.5;
+}
+.morphometry-draft-note {
+  margin: 3px 0 13px;
+  color: var(--text-muted-color, #94a9af);
+  font-size: 9px;
+}
+.morphometry-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.morphometry-sac {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+}
+.morphometry-sac dt,
+.morphometry-scalars dt {
+  color: var(--text-muted-color, #94a9af);
+  font-size: 9px;
+  line-height: 1.4;
+}
+.morphometry-sac dd,
+.morphometry-scalars dd {
+  margin: 3px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.morphometry-sac dd {
+  color: #c2f0df;
+  font-size: 17px;
+}
+.morphometry-section {
+  border-top: 1px solid var(--border-color, #2b4247);
+  padding-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 90px;
+  gap: 8px;
+  align-items: center;
+}
+.morphometry-section-title {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 550;
+  text-transform: capitalize;
+}
+.morphometry-scalars {
+  grid-column: 1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+.morphometry-scalars dd {
+  font-size: 10px;
+  white-space: nowrap;
+}
+.morphometry-contour {
+  grid-column: 2;
+  grid-row: 2;
+  display: block;
+  width: 90px;
+  height: 90px;
+  background: #0b151a;
+  border-radius: 5px;
+}
+.morphometry-contour-path {
+  fill: #78d5bd0d;
+  stroke: var(--accent-color, #81cfbb);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+.morphometry-focus {
+  grid-column: 1 / -1;
+  font: inherit;
+  font-size: 10px;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color, #36514f);
+  border-radius: 4px;
+  color: #b7d8cc;
+  cursor: pointer;
+}
+.morphometry-focus:hover {
+  background: #1b302e;
+}
+.geometry-editor {
+  margin-top: 12px;
+  border: 1px solid #2b4247;
+  border-radius: 5px;
+  padding: 10px;
+}
+.geometry-editor > summary {
+  cursor: pointer;
+  color: #aed4c7;
+  font-size: 11px;
+}
+.geometry-inputs {
+  margin-top: 14px;
+  min-width: 0;
+}
+.geometry-inputs .point-row {
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: 10px 0;
+}
+.geometry-inputs .point-row > span {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.geometry-inputs .point-row > button {
+  flex: 1 1 90px;
+  padding: 8px 6px;
+}
+.geometry-inputs .field-label {
+  display: block;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.geometry-inputs select {
+  display: block;
+  width: 100%;
+  margin: 5px 0 10px;
+  padding: 6px;
+  color: #d4e3dd;
+  background: #0c171d;
+  border: 1px solid #2b4247;
+  border-radius: 4px;
+}
+.geometry-inputs ol {
+  padding-left: 19px;
+  font: 10px/1.8 monospace;
+  color: #a3bcb6;
+}
+.geometry-inputs [role="alert"] {
+  color: #e3bc83;
+}
+.oblique-section {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+  min-width: 0;
+}
+.oblique-section.has-native-cta {
+  grid-column: 1 / -1;
+  grid-row: auto;
+}
+.oblique-section.has-native-cta .morphometry-contour {
+  width: 100%;
+  height: 180px;
+}
+.oblique-section figcaption {
+  color: var(--text-muted-color, #94a9af);
+  font-size: 9px;
+  line-height: 1.5;
+  margin-top: 5px;
+}
+.oblique-section figcaption small {
+  display: block;
+  font-size: 8px;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}

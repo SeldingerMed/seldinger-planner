@@ -1,0 +1,11 @@
+# Point-constrained SAM selection review
+
+Independent review `deleg_09c1235f` found no blocking issue in the initialized-correction selection delta. Parent verified the relevant helper/worker files still match published revision `363e0956e4e8c17b294dddd933d6c17be862b9fe`, reran the SAM module's 16 opt-in tests successfully, and reconciled the observations below. Two upstream TorchScript deprecation warnings remain.
+
+- **Lower-bound sampling concern is unreachable under the current validated contract.** `normalize_prompts` rejects negative coordinates before predictor construction and sampling. Parent exercised actual inputs `[-0.1,2]`, `[2,-0.1]`, `[-1,2]` and `[2,-1]`; all raised `PromptError`. No silent lower clamp was added, because invalid input should fail rather than be silently changed.
+- **I/J are floating native coordinates**, not integers as one review note implied. Only selected K is an integer. Sampling uses Python nearest-integer ties-to-even: exact inputs 0.5,1.5,2.5,3.5 produce 0,2,2,4. At an exact half-way point either neighboring center is equally near; this is a deterministic technical convention, not a clinical sampling validation. It is not asserted to reproduce an anatomical boundary or a decoder's learned pixel semantics.
+- Native-resolution output validation is appropriate for the pinned original predictor's postprocessed masks. Unexpected lower-resolution output fails closed rather than being silently stretched. Exact-score ties preserve the first eligible mask, consistent with previous argmax tie behavior.
+- Input-prior validation occurs before model construction. Predicted mask/score validation necessarily occurs **after inference**, before output coercion/selection. The review's broad phrase "validation precedes any model load" must not be applied to predicted output.
+- A supplied prior must actually be used. Initialized mask selection enforces the supplied nearest-native point labels or raises if no candidate satisfies them. Point compliance and the selected raw model-quality score are recorded, not recast as boundary accuracy or calibrated lesion probability.
+
+This is a scoped software review, not whole-product approval, clinical validation, exact-head automated review-app approval or permission to merge. The broader integration review and calibrated-source/product morphometry work remain separate.

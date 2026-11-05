@@ -1,0 +1,257 @@
+{
+  "scope": "SYNTHETIC metadata, NOT real CTA sizing",
+  "caseState": {
+    "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+    "title": "Synthetic device inputs",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "source_url": null,
+    "dimensions": [
+      20,
+      20,
+      20
+    ],
+    "spacing_mm": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "spatial_units": "mm",
+    "artifact_version": "4",
+    "notes": "",
+    "measurements": [],
+    "aneurysm_plan": null,
+    "aneurysm_evidence": null
+  },
+  "partial": {
+    "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "artifact_version": "4",
+    "geometry_status": "current",
+    "geometry_result_id": "pA4XXM6vAgf1_bz5bBgfAg",
+    "geometry_dependencies": {
+      "artifact_version": "4",
+      "calculation_version": "native-mask-operator-plane-v1",
+      "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+      "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "masks": {
+        "aneurysm": {
+          "candidate_id": "9yLUnLaCs3HRUjmqipLd7g",
+          "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "segmentation_revision": 2
+        },
+        "vessel": {
+          "candidate_id": "sNCiJFollta8JMziPhcrrw",
+          "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "segmentation_revision": 1
+        }
+      },
+      "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+      "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "calculation_version": "historical-operator-sizing-v1",
+    "inputs": {
+      "geometry_dependencies": {
+        "artifact_version": "4",
+        "calculation_version": "native-mask-operator-plane-v1",
+        "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+        "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "masks": {
+          "aneurysm": {
+            "candidate_id": "9yLUnLaCs3HRUjmqipLd7g",
+            "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "segmentation_revision": 2
+          },
+          "vessel": {
+            "candidate_id": "sNCiJFollta8JMziPhcrrw",
+            "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "segmentation_revision": 1
+          }
+        },
+        "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+        "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "input_revision": "RB_GkiCvWhzPEHNfo5S70w",
+      "inputs_sha256": "2dc69d3476ce206a7800e3fef68a1eab95b51136d2bb867190f26483493833b1",
+      "inputs_version": "operator-reported-device-inputs-v1",
+      "measurements": {
+        "average_sac_diameter": null,
+        "distal_parent": null,
+        "dome_diameter": null,
+        "neck_coverage_length": null,
+        "proximal_parent": null,
+        "smallest_sac_height": null
+      },
+      "provenance": {
+        "kind": "operator_reported",
+        "note": "synthetic operator tape values"
+      },
+      "status": "current"
+    },
+    "current": {
+      "dependencies": {
+        "calculation_version": "historical-operator-sizing-v1",
+        "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+        "geometry": {
+          "artifact_version": "4",
+          "calculation_version": "native-mask-operator-plane-v1",
+          "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+          "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "masks": {
+            "aneurysm": {
+              "candidate_id": "9yLUnLaCs3HRUjmqipLd7g",
+              "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "segmentation_revision": 2
+            },
+            "vessel": {
+              "candidate_id": "sNCiJFollta8JMziPhcrrw",
+              "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "segmentation_revision": 1
+            }
+          },
+          "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+          "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "geometry_result_id": "pA4XXM6vAgf1_bz5bBgfAg",
+        "input_revision": "RB_GkiCvWhzPEHNfo5S70w",
+        "inputs_sha256": "2dc69d3476ce206a7800e3fef68a1eab95b51136d2bb867190f26483493833b1"
+      },
+      "result": {
+        "binding_status": "case_bound_calculation",
+        "calculation_version": "historical-operator-sizing-v1",
+        "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+        "clinical_suitability_established": false,
+        "compatibility_status": "not_established",
+        "input_basis": "operator_reported_unvalidated_measurements",
+        "missing_inputs": [
+          "proximal_parent",
+          "distal_parent",
+          "neck_coverage_length",
+          "average_sac_diameter",
+          "smallest_sac_height",
+          "dome_diameter"
+        ],
+        "pipeline": {
+          "clinical_suitability_established": false,
+          "largest_parent_mm": null,
+          "minimum_labeled_coverage_length_mm": null,
+          "rows": [],
+          "source": {
+            "revision": "71012-001 Rev. 5 (12/2018)",
+            "scope": "historical_directions_for_use",
+            "table": "Table 1",
+            "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf10/P100018S015C.pdf"
+          },
+          "spatial_units": "mm",
+          "status": "missing_inputs",
+          "validated_sizing": false
+        },
+        "provenance": {
+          "kind": "operator_reported",
+          "note": "synthetic operator tape values"
+        },
+        "status": "partial_inputs",
+        "validated_sizing": false,
+        "web": {
+          "approximate": true,
+          "average_sac_diameter_mm": null,
+          "clinical_suitability_established": false,
+          "dome_diameter_mm": null,
+          "smallest_sac_height_mm": null,
+          "source": {
+            "revision": "LBA0040, Rev Q 12/2018",
+            "section": "sizing_instructions",
+            "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf17/P170032C.pdf"
+          },
+          "spatial_units": "mm",
+          "status": "missing_inputs",
+          "validated_sizing": false
+        },
+        "web_catalog_status": "not_available"
+      },
+      "result_id": "TMaVOEsN-JIY8YHPwmMvAA",
+      "status": "current"
+    },
+    "clinical_suitability_established": false,
+    "validated_sizing": false
+  },
+  "stale": {
+    "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "artifact_version": "4",
+    "geometry_status": "current",
+    "geometry_result_id": "pA4XXM6vAgf1_bz5bBgfAg",
+    "geometry_dependencies": {
+      "artifact_version": "4",
+      "calculation_version": "native-mask-operator-plane-v1",
+      "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+      "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "masks": {
+        "aneurysm": {
+          "candidate_id": "9yLUnLaCs3HRUjmqipLd7g",
+          "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          "segmentation_revision": 2
+        },
+        "vessel": {
+          "candidate_id": "sNCiJFollta8JMziPhcrrw",
+          "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "segmentation_revision": 1
+        }
+      },
+      "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+      "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "calculation_version": "historical-operator-sizing-v1",
+    "inputs": {
+      "geometry_dependencies": {
+        "artifact_version": "4",
+        "calculation_version": "native-mask-operator-plane-v1",
+        "case_id": "wnYH9-xT5sjDRPgAls9dgQ",
+        "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "masks": {
+          "aneurysm": {
+            "candidate_id": "9yLUnLaCs3HRUjmqipLd7g",
+            "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "segmentation_revision": 2
+          },
+          "vessel": {
+            "candidate_id": "sNCiJFollta8JMziPhcrrw",
+            "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "segmentation_revision": 1
+          }
+        },
+        "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+        "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "input_revision": "1r3EHVAp2JLsA4TSTYfDGQ",
+      "inputs_sha256": "2dc69d3476ce206a7800e3fef68a1eab95b51136d2bb867190f26483493833b1",
+      "inputs_version": "operator-reported-device-inputs-v1",
+      "measurements": {
+        "average_sac_diameter": null,
+        "distal_parent": null,
+        "dome_diameter": null,
+        "neck_coverage_length": null,
+        "proximal_parent": null,
+        "smallest_sac_height": null
+      },
+      "provenance": {
+        "kind": "operator_reported",
+        "note": "synthetic operator tape values"
+      },
+      "status": "current"
+    },
+    "current": {
+      "result": null,
+      "result_id": "TMaVOEsN-JIY8YHPwmMvAA",
+      "stale_reasons": [
+        "device_sizing_dependencies_changed"
+      ],
+      "status": "stale"
+    },
+    "clinical_suitability_established": false,
+    "validated_sizing": false
+  }
+}

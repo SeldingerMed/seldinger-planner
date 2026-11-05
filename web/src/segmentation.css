@@ -1,0 +1,44 @@
+.segmentation-panel .model-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.segmentation-panel .model-toggle input[type="checkbox"] {
+  width: auto;
+  flex: 0 0 auto;
+  margin: 0;
+}
+.segmentation-candidate {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line, #293d42);
+  border-radius: 6px;
+}
+.segmentation-candidate strong {
+  font-size: 12px;
+}
+.segmentation-panel .sam-correction-trigger {
+  display: block;
+  width: 100%;
+  margin: 8px 0 12px;
+}
+.segmentation-panel .sam-input-label {
+  display: block;
+  margin-bottom: 10px;
+}
+.segmentation-panel select {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px;
+  background: #0c1419;
+  border: 1px solid #2a373e;
+  color: #dbe3e7;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.segmentation-panel select:focus-visible {
+  outline: 2px solid #78d5bd;
+  outline-offset: 3px;
+}

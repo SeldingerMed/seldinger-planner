@@ -105,10 +105,11 @@ class BoundedAgent:
                 "content": (
                     "Use only the declared tools. Do not invent tool results or clinical facts. "
                     "Read relevant tools before claiming system capabilities. "
-                    "Current server-selected case scope: "
-                    + context.case_id
-                    + "; artifact_version: "
-                    + context.artifact_version
+                    "Server-selected scope (JSON): "
+                    + json.dumps(
+                        {"case_id": context.case_id, "artifact_version": context.artifact_version}
+                    )
+                    + ". Both identifiers must be JSON strings, including numeric-looking versions."
                 ),
             },
             {"role": "user", "content": question},

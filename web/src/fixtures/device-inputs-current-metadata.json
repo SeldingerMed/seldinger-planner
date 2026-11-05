@@ -1,0 +1,47 @@
+{
+  "case_id": "IkEMF5YWYSm7LeodOXBSbQ",
+  "image_sha256": "26b8a3e766cf1306796286c8d10dfef41192930919df9029f9be0779b8080473",
+  "reference_revision": "92834342c650ecae3733cac33aec096f01ff699c4f25c234fdb0b8738ae6f18e",
+  "artifact_version": "8",
+  "geometry_status": "current",
+  "inputs": {
+    "status": "current",
+    "input_revision": "xEasu4qG5t5OVe0iqmP33A",
+    "inputs_sha256": "92d2e4f9683fcbd118cc9fe5eac8d3f35236a828b90716c81b1f4db0e9fdae69",
+    "geometry_dependencies": {
+      "artifact_version": "8",
+      "calculation_version": "native-mask-operator-plane-v1",
+      "case_id": "IkEMF5YWYSm7LeodOXBSbQ",
+      "image_sha256": "26b8a3e766cf1306796286c8d10dfef41192930919df9029f9be0779b8080473",
+      "masks": {
+        "aneurysm": {
+          "candidate_id": "kcFqkVPc0OurCgfL4eHWHg",
+          "mask_sha256": "9b94126ab67abdfc45b1dab56ac0c6b0b7a1f5263d39e5914c3e1fc65b6fe3b8",
+          "segmentation_revision": 3
+        },
+        "vessel": {
+          "candidate_id": "dycJyq9mxUTrB_C9G3PDKg",
+          "mask_sha256": "2a301b02171aaf3bb8b7508c480a6dd8111d612d93e6a192797ec0ef2c07cf99",
+          "segmentation_revision": 2
+        }
+      },
+      "operator_sha256": "576c6ba6763704490870dc623d01af6d37abbd0506e20b6453edccd5c36af955",
+      "source_revision": "92834342c650ecae3733cac33aec096f01ff699c4f25c234fdb0b8738ae6f18e"
+    },
+    "measurements": {
+      "average_sac_diameter": null,
+      "distal_parent": null,
+      "dome_diameter": null,
+      "neck_coverage_length": null,
+      "proximal_parent": null,
+      "smallest_sac_height": null
+    },
+    "provenance": {
+      "kind": "operator_reported",
+      "note": "Technical persistence smoke test on approved public case. No independent measurement values supplied."
+    },
+    "inputs_version": "operator-reported-device-inputs-v1"
+  },
+  "clinical_suitability_established": false,
+  "validated_sizing": false
+}

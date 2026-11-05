@@ -13,3 +13,10 @@ coverage/
 *.egg-info/
 build/
 .DS_Store
+.runtime/
+data/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+web/test-results/
+web/playwright-report/
