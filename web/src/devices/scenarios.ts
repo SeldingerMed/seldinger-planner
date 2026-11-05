@@ -1,3 +1,4 @@
+import { newRandomId } from "../browserCrypto";
 export type Triple = [number, number, number];
 export type SceneBinding = {
   caseId: string;
@@ -113,7 +114,7 @@ export function saveScenario(
   return [
     ...rows,
     {
-      id: crypto.randomUUID(),
+      id: newRandomId(),
       name: name.trim(),
       binding: structuredClone(binding),
       placement: structuredClone(placement),

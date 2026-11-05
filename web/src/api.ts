@@ -50,17 +50,32 @@ export async function restoreOrCreateCase(
     Partial<Pick<CaseState, "spatial_units">>,
 ): Promise<CaseState> {
   const key = "seldinger-case:" + metadata.image_sha256;
-  const saved = localStorage.getItem(key);
+  const linked = new URLSearchParams(window.location.search).get("case");
+  if (linked !== null && !/^[A-Za-z0-9_-]{22}$/.test(linked))
+    throw new Error(
+      "Linked case identifier is invalid. No replacement was created.",
+    );
+  const saved = linked ?? localStorage.getItem(key);
   if (saved) {
     const response = await fetch("/api/cases/" + encodeURIComponent(saved), {
       cache: "no-store",
     });
     if (response.ok) {
       const state = (await response.json()) as CaseState;
-      if (state.image_sha256 === metadata.image_sha256) return state;
+      if (
+        state?.image_sha256 === metadata.image_sha256 &&
+        state.case_id === saved
+      ) {
+        if (linked) localStorage.setItem(key, state.case_id);
+        return state;
+      }
     } else if (response.status !== 404)
       throw new Error(
         "Could not restore the saved workspace. No new case was created.",
+      );
+    if (linked !== null)
+      throw new Error(
+        "Linked case is missing or does not match the loaded image. No replacement was created.",
       );
   }
   const state = await api<CaseState>("/cases", metadata);

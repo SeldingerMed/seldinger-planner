@@ -28,6 +28,7 @@ import {
   type CaseReference,
   type ReferenceMetadata,
 } from "./reference";
+import { sha256Hex } from "./browserCrypto";
 const Viewer = lazy(() => import("./Viewer"));
 const DeviceStudio = lazy(() => import("./devices/DeviceStudio"));
 const coordinate = (p: Point3 | null) =>
@@ -174,15 +175,7 @@ export default function App() {
     setDeviceDirty(false);
     setConflict(false);
     try {
-      const bytes = await crypto.subtle.digest(
-        "SHA-256",
-        await next.arrayBuffer(),
-      );
-      setDigest(
-        Array.from(new Uint8Array(bytes))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join(""),
-      );
+      setDigest(await sha256Hex(await next.arrayBuffer()));
       setFile(next);
     } catch {
       failVolume("Could not read the selected volume.");

@@ -23,6 +23,7 @@ import {
   type Triple,
 } from "./scenarios";
 import "./devices.css";
+import { sha256Hex } from "../browserCrypto";
 
 type Props = {
   file: File | null;
@@ -253,11 +254,7 @@ export default function DeviceStudio({
           const bytes = await r.arrayBuffer();
           if (bytes.byteLength > 2500084 || bytes.byteLength < 134)
             throw new Error("Surface size rejected");
-          const hash = [
-            ...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)),
-          ]
-            .map((x) => x.toString(16).padStart(2, "0"))
-            .join("");
+          const hash = await sha256Hex(bytes);
           if (hash !== r.headers.get("X-Surface-Sha256"))
             throw new Error("Anatomy surface integrity check failed");
           meshes.push({

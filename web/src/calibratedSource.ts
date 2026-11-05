@@ -1,3 +1,4 @@
+import { sha256Hex as digest } from "./browserCrypto";
 export type CalibratedSourceId = "zenodo-case006-calibrated" | "zenodo-case006-planning-context";
 export const PLANNING_SOURCE_ID = "zenodo-case006-planning-context";
 export type CalibratedSourceMetadata = {
@@ -98,13 +99,6 @@ function validate(meta: unknown): asserts meta is CalibratedSourceMetadata {
     if (Math.abs(norm - spacing[col]) > 1e-6 * Math.max(1, spacing[col]))
       throw new Error("Affine spacing inconsistent with spacing_mm.");
   }
-}
-
-async function digest(buffer: ArrayBuffer): Promise<string> {
-  const hash = await crypto.subtle.digest("SHA-256", buffer);
-  return [...new Uint8Array(hash)]
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 export async function loadCalibratedVolume(sourceId: CalibratedSourceId = SOURCE_ID): Promise<{

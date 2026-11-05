@@ -1,4 +1,5 @@
 import type { Point3 } from "./geometry";
+import { sha256Hex } from "./browserCrypto";
 export type ReferenceMetadata = {
   case_label: string;
   source_url: string;
@@ -45,10 +46,7 @@ async function verified(url: string, expected: string, cap: number) {
   const declared = Number(response.headers.get("Content-Length"));
   if (declared > cap) throw new Error("Reference asset exceeds size limit.");
   const buffer = await response.arrayBuffer();
-  const digest = await crypto.subtle.digest("SHA-256", buffer);
-  const actual = [...new Uint8Array(digest)]
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
+  const actual = await sha256Hex(buffer);
   if (buffer.byteLength > cap || actual !== expected)
     throw new Error("Reference asset integrity check failed.");
   return buffer;

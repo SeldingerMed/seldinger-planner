@@ -1,3 +1,4 @@
+import { sha256Hex } from "./browserCrypto";
 export type SegmentationEntry = {
   candidate_id: string;
   case_id: string;
@@ -43,11 +44,7 @@ export async function loadSegmentationMask(
   const buffer = await response.arrayBuffer();
   if (!buffer.byteLength || buffer.byteLength > cap)
     throw new Error("Segmentation size exceeds its bound.");
-  const actual = [
-    ...new Uint8Array(await crypto.subtle.digest("SHA-256", buffer)),
-  ]
-    .map((v) => v.toString(16).padStart(2, "0"))
-    .join("");
+  const actual = await sha256Hex(buffer);
   if (actual !== entry.mask_sha256)
     throw new Error("Segmentation integrity check failed.");
   return buffer;

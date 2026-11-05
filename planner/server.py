@@ -1,10 +1,13 @@
 """Local-only workspace composition. Images are never included in model requests."""
 
+import ipaddress
 import json
+import os
 from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
 from fastapi import HTTPException, Request
@@ -29,6 +32,34 @@ class AgentRequest(BaseModel):
     public_data_confirmed: Literal[True]
 
 
+def _configured_browser_origins():
+    origins = set()
+    value = os.environ.get("SELDINGER_BROWSER_ORIGINS", "")
+    if len(value) > 2048:
+        raise ValueError("Invalid tailnet origin configuration")
+    for origin in filter(None, (part.strip() for part in value.split(","))):
+        try:
+            parsed = urlsplit(origin)
+            valid = (
+                parsed.scheme in ("http", "https")
+                and origin.startswith(parsed.scheme + "://")
+                and ipaddress.IPv4Address(parsed.hostname) in ipaddress.IPv4Network("100.64.0.0/10")
+                and parsed.port is not None
+                and parsed.port > 0
+                and not parsed.username
+                and not parsed.password
+                and not parsed.path
+                and not parsed.query
+                and not parsed.fragment
+            )
+        except (TypeError, ValueError):
+            valid = False
+        if not valid:
+            raise ValueError("Invalid tailnet origin configuration")
+        origins.add(origin)
+    return origins
+
+
 def build_app(
     db_path: Path,
     *,
@@ -42,6 +73,11 @@ def build_app(
     geometry_runner=None,
 ):
     app = create_app(db_path)
+    allowed_origins = {
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:8765",
+    } | _configured_browser_origins()
     references = ReferenceStore(
         reference_dir or Path(__file__).resolve().parents[1] / ".runtime" / "public-reference"
     )
@@ -53,8 +89,7 @@ def build_app(
     @app.middleware("http")
     async def local_origin_only(request: Request, call_next):
         origin = request.headers.get("origin")
-        allowed = {"http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:8765"}
-        if origin and origin not in allowed:
+        if origin and origin not in allowed_origins:
             return JSONResponse({"detail": "Origin not allowed"}, status_code=403)
         return await call_next(request)
 
