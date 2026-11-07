@@ -10,6 +10,7 @@ import {
   comparePlacement,
   planeClearance,
   referenceOnly,
+  resolveCoilPrimaryDiameterMm,
   type DeviceSpec,
   type PlanningAnatomy,
 } from "./analysis";
@@ -86,6 +87,14 @@ function Slider({
     </label>
   );
 }
+/**
+ * Visualization-only coil wire radius for the procedural skeleton. The
+ * catalog captures no verified per-SKU primary diameter for the coil
+ * families, so this default is never a measured or sourced value; metrics
+ * that need the real primary diameter are suppressed instead (see
+ * resolveCoilPrimaryDiameterMm / comparePlacement).
+ */
+const ILLUSTRATIVE_COIL_WIRE_DIAMETER_MM = 0.25;
 function model(device: DeviceSpec, p: Placement, angle: number) {
   if (device.category === "flow-diverter")
     return flowDiverter({
@@ -102,7 +111,9 @@ function model(device: DeviceSpec, p: Placement, angle: number) {
       center: p.center,
       axis: p.axis,
       sacDiameterMm: p.diameter,
-      primaryDiameterMm: 0.25,
+      primaryDiameterMm:
+        resolveCoilPrimaryDiameterMm(device, p) ??
+        ILLUSTRATIVE_COIL_WIRE_DIAMETER_MM,
       lengthMm: p.coilLength,
     });
   return intrasaccular({
@@ -214,7 +225,7 @@ export default function DeviceStudio({
           neckWidth: scalar(result.neck?.max_diameter),
           proximalDiameter: scalar(result.proximal_parent?.equivalent_diameter),
           distalDiameter: scalar(result.distal_parent?.equivalent_diameter),
-          sacVolume: null,
+          sacVolume: scalar(result.sac?.volume),
           geometryResultId: cur.result_id,
           center: inputs.aneurysm_seed,
           neckOrigin: finite3(inputs.neck_origin)

@@ -59,6 +59,28 @@ it("restores the actual visual braid state with a saved alternative", () => {
     screen.getByRole("slider", { name: "Illustrative braid angle (degrees)" }),
   ).toHaveValue("60");
 });
+it("never shows a measured-looking coil volume for a coil with no captured SKU data", () => {
+  localStorage.clear();
+  render(
+    <DeviceStudio
+      file={null}
+      caseState={null}
+      sourceRevision={null}
+      onClose={() => {}}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Target 360/ }));
+  expect(screen.getByRole("heading", { name: "Target 360" })).toBeInTheDocument();
+  // No per-SKU primary diameter is captured for the coil families, so the
+  // volume/density metrics must be absent entirely rather than shown from a
+  // visualization default.
+  expect(screen.queryByText("Coil wire volume")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Packing volume density"),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("slider", { name: "Secondary coil length (mm)" })).toBeInTheDocument();
+});
+
 it("exposes manufacturer-specific models without a CTA and keeps recalled devices out of normal choices", async () => {
   render(
     <DeviceStudio

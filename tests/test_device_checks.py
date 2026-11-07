@@ -53,8 +53,58 @@ def test_current_real_producer_exposes_only_explicit_partial_checks():
     assert proximal["comparison"] == "outside_historical_range"
     assert result["checks"]["pipeline"]["sizing_status"] == "missing_inputs"
     assert result["checks"]["web"]["sizing_status"] == "missing_inputs"
-    assert result["checks"]["web"]["catalog_rows_available"] is False
     assert "nominal_target_diameter_mm" not in result["checks"]["web"]
+    web_catalog_section = result["checks"]["web"]["catalog"]
+    assert web_catalog_section["verified_specifications"] is False
+    assert web_catalog_section["rows_available"] is True
+    assert web_catalog_section["sku_count"] > 0
+
+
+def test_frontend_web_catalog_is_an_unverified_listing_projection():
+    catalog = device_checks.frontend_web_catalog()
+    assert catalog["verified_specifications"] is False
+    assert catalog["catalog_status"] in (
+        "frontend_catalog_listing_unverified",
+        "not_available",
+    )
+    for row in catalog["rows"]:
+        assert row["category"] == "intrasaccular"
+        for size in row["sizes"]:
+            assert set(size) == {"sku", "diameter_mm", "height_mm", "catheter", "minimum_id_inch"}
+            assert isinstance(size["sku"], str) and size["sku"]
+
+
+def test_match_web_rows_uses_synthetic_rows_and_recorded_margins_only():
+    rows = [
+        {
+            "id": "synthetic-web",
+            "name": "Synthetic WEB (fixture)",
+            "sizes": [
+                {
+                    "sku": "SYN-5-3",
+                    "diameter_mm": 5.0,
+                    "height_mm": 3.0,
+                    "catheter": "SYN-17",
+                    "minimum_id_inch": 0.017,
+                },
+                {
+                    "sku": "SYN-7-2",
+                    "diameter_mm": 7.0,
+                    "height_mm": 2.0,
+                    "catheter": "SYN-17",
+                    "minimum_id_inch": 0.017,
+                },
+            ],
+        }
+    ]
+    matches = device_checks.match_web_rows(rows, 5.8, 3.4)
+    assert [m["sku"] for m in matches] == ["SYN-5-3"]
+    assert matches[0]["diameter_difference_mm"] == pytest.approx(-0.8)
+    assert matches[0]["height_difference_mm"] == pytest.approx(0.4)
+    assert device_checks.match_web_rows(rows, 9.0, 2.0) == []
+    for bad in ((0.0, 3.0), (5.0, -1), (float("nan"), 3.0), (True, 3.0)):
+        with pytest.raises(ValueError):
+            device_checks.match_web_rows(rows, *bad)
 
 
 def geometry():

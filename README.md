@@ -1,12 +1,20 @@
 # Seldinger Planner
 
-A new CTA-first neurovascular imaging and evidence-workspace research prototype, built for the Meta Global AI Developer Hackathon. This repository contains the new application, not a wholesale port of the earlier Seldinger app. It is not a clinical service or a treatment-recommendation system.
+The canonical treatment-planning repository for Seldinger. The local `plan.md` is the controlling architecture and phased implementation plan; it remains intentionally uncommitted and is not distributed with this source checkout. The product direction spans neurovascular, coronary/structural-heart and peripheral/aortic planning; the implemented imaging workspace remains aneurysm-first. This is a research prototype, not a clinical service or a treatment-recommendation system.
 
-## Hackathon source and original work
+## Phase 1 consolidation
 
-**Full application: [`feat/fresh-planning-workspace`](https://github.com/SeldingerMed/seldinger-planner/tree/feat/fresh-planning-workspace).** The older `main` branch contains the initial provider foundation, not the complete workspace. Public source does not mean a hosted deployment.
+Reusable catalog/database patterns, territory contracts and deterministic calculators have been adapted locally from `seldinger-app` and `seldinger-ml`. Runtime imports do not depend on those sibling checkouts. A shared SQLite catalog projects the frontend listing through `/api/devices`, with explicit unverified category scaffolding outside the sourced neurovascular listing. Unsupported commercial SKU, primary-coil-diameter and regulatory claims are not filled with guesses.
 
-The new application and adapters were authored here during the event, with implementation commits dated October 31 and November 1, 2026. New work includes the viewer/workspace, case persistence and provenance contracts, bounded agent, inference adapters, mask-preview ledger, native-slice correction, geometry dependency tracking, historical source/input checks, and native oblique CTA display. No legacy Seldinger application code was imported.
+Current accepted-mask metadata, scalar morphometry, derived indices and saved operator-reported sizing are available through `/api/cases/{case_id}/planning-context`, in the Markdown brief, and to the bounded agent after the existing public/synthetic-data confirmation. Recomputed result identities invalidate a model response even if the case revision is unchanged. No image, mesh, contour or centerline arrays are included in this computed context.
+
+Additional server-installed NIfTI-1 sources can be discovered by an opaque source ID and a verified manifest under `.runtime/installed-sources/`. This bounded path requires millimeter units and explicit sform calibration, preserves hash/revision checks and rejects malformed or tampered sources. It is not a generic clinical-data upload service. See the [installed-source contract](docs/installed-sources.md).
+
+## Historical hackathon source and original work
+
+The source checkout includes the planning workspace. Images and trained artifacts are installed separately under the source/model contracts below. Public source does not mean a hosted deployment.
+
+The new application and adapters were authored here during the event, with implementation commits dated October 31 and November 1, 2026. That event baseline included the viewer/workspace, case persistence and provenance contracts, bounded agent, inference adapters, mask-preview ledger, native-slice correction, geometry dependency tracking, historical source/input checks, and native oblique CTA display. No legacy application code was imported into that event baseline; the subsequent Phase 1 consolidation above adapts selected sibling-repository components.
 
 Upstream libraries, public datasets, and pretrained checkpoints are dependencies, not newly trained models or newly collected data. Meta provides Muse Spark Open and SAM 2.1; separate pretrained vessel/aneurysm adapters are not presented as Meta models. Source images, model weights, local state, and generated evidence are excluded from git.
 
@@ -90,6 +98,8 @@ The probe sends no imaging and saves sanitized local results in ignored `artifac
 A fresh source checkout can run the basic viewer, local workspace, manual evidence, and brief export with an authorized user-opened NIfTI. It does not include demonstration datasets or model weights. **Open calibrated CTA** requires the separately prepared, ignored Zenodo source bundle; source [DOI 10.5281/zenodo.15697196](https://doi.org/10.5281/zenodo.15697196), CC BY 4.0. Model buttons require pinned checkpoints and isolated runtimes. See [model source/runtime evidence](docs/verification/model-foundations.md), [reference preparation](docs/verification/original-case-reference.md), and [calibrated context preparation](docs/verification/calibrated-context-preparation.md). These are exercised preparation records with limits, not a one-command installer or permission to redistribute assets.
 
 ## Current verification checkpoint
+
+The later [Phase 1 source verification](docs/verification/phase1-consolidation.md) records the consolidation review, clean-export checks and evidence boundaries. The checkpoint below is historical.
 
 On November 4, 2026, the local backend suite passed **557 tests**, with **97 optional heavyweight skips**. A separate isolated native surface/mask-geometry lane passed **16 synthetic tests**. Ruff lint and format passed. The frontend passed **188 tests**, TypeScript/production build, and the production dependency audit (zero reported vulnerabilities). Vite retains a large-chunk advisory. Skipped real-model tests are not counted as passed, and software checks do not establish clinical performance.
 

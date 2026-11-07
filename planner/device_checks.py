@@ -104,6 +104,68 @@ MISSING_DIMENSIONS = {
 }
 
 
+def frontend_web_catalog():
+    """Project the shared listing without upgrading it to verified IFU evidence."""
+    from planner.device_db import load_frontend_catalog
+
+    data = load_frontend_catalog()
+    rows = []
+    for model in data["devices"]:
+        if not model["id"].startswith("web-") or model["category"] != "intrasaccular":
+            continue
+        sizes = []
+        for row in model["sizes"]:
+            if not isinstance(row.get("sku"), str) or not row["sku"]:
+                raise DeviceCheckError("Invalid WEB listing identity")
+            sizes.append(
+                {
+                    "sku": row["sku"],
+                    "diameter_mm": _positive_number(row["diameterMm"]),
+                    "height_mm": _positive_number(row["heightMm"]),
+                    "catheter": row.get("catheter"),
+                    "minimum_id_inch": row.get("minimumIdInch"),
+                }
+            )
+        rows.append(
+            {
+                "id": model["id"],
+                "name": model["name"],
+                "category": model["category"],
+                "sizes": sizes,
+            }
+        )
+    return {
+        "catalog_status": "frontend_catalog_listing_unverified" if rows else "not_available",
+        "verified_specifications": False,
+        "clinical_suitability_established": False,
+        "listing_sha256": hashlib.sha256(encoded(data).encode()).hexdigest(),
+        "rows": rows,
+    }
+
+
+def match_web_rows(rows, target_d, target_h):
+    """Bounded geometric listing comparison, not an IFU or suitability match."""
+    diameter = _positive_number(target_d)
+    height = _positive_number(target_h)
+    matches = []
+    for model in rows:
+        for row in model["sizes"]:
+            delta_d = _positive_number(row["diameter_mm"]) - diameter
+            delta_h = height - _positive_number(row["height_mm"])
+            if abs(delta_d) <= WEB_DIAMETER_MARGIN_MM and abs(delta_h) <= WEB_HEIGHT_MARGIN_MM:
+                matches.append(
+                    {
+                        "model_id": model["id"],
+                        "sku": row["sku"],
+                        "diameter_difference_mm": delta_d,
+                        "height_difference_mm": delta_h,
+                        "verified_specifications": False,
+                        "clinical_suitability_established": False,
+                    }
+                )
+    return matches
+
+
 def case_device_checks(envelope, catalog):
     """Project explicit geometric comparisons, never a selected sizing diameter."""
     validate_catalog(catalog)
@@ -178,6 +240,8 @@ def case_device_checks(envelope, catalog):
             if low <= minimum <= maximum <= high
             else "outside_historical_range",
         }
+    listing = frontend_web_catalog()
+    sku_count = sum(len(row["sizes"]) for row in listing["rows"])
     return {
         **identity,
         "catalog_version": catalog["catalog_version"],
@@ -200,6 +264,15 @@ def case_device_checks(envelope, catalog):
                 "parent_sections": sections,
                 "sizing_status": "missing_inputs",
             },
-            "web": {"sizing_status": "missing_inputs", "catalog_rows_available": False},
+            "web": {
+                "sizing_status": "missing_inputs",
+                "catalog_rows_available": bool(sku_count),
+                "catalog": {
+                    "verified_specifications": False,
+                    "rows_available": bool(sku_count),
+                    "sku_count": sku_count,
+                    "listing_sha256": listing["listing_sha256"],
+                },
+            },
         },
     }

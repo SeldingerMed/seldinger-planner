@@ -6,6 +6,8 @@ import pytest
 
 from planner.device_sizing import (
     DeviceSizingError,
+    closest_labeled_match,
+    diameter_within_half_step,
     evaluate_pipeline,
     pipeline_catalog,
     web_sizing_targets,
@@ -179,6 +181,45 @@ def test_no_recommendation_or_ranking():
     assert "ranking" not in out
     assert out["clinical_suitability_established"] is False
     assert out["validated_sizing"] is False
+
+
+# --------------------------------------------------- half-step indicator
+def test_half_step_indicator_between_labeled_steps():
+    out = evaluate_pipeline(
+        _good_measurements(proximal_parent=3.48, distal_parent=3.48, neck_coverage_length=9.0)
+    )
+    assert out["status"] == "geometric_checks_only"
+    nearest = next(r for r in out["rows"] if r["device_id"] == "PIPELINE-HIST-3_50")
+    assert nearest["diameter_within_half_step"] is True
+    assert nearest["diameter_equivalent"] is False
+    assert nearest["nominal_difference_mm"] == pytest.approx(0.02)
+    off = next(r for r in out["rows"] if r["device_id"] == "PIPELINE-HIST-3_25")
+    assert off["diameter_within_half_step"] is False
+    assert out["closest_labeled_match"] == {
+        "device_id": "PIPELINE-HIST-3_50",
+        "labeled_diameter_mm": 3.50,
+    }
+
+
+def test_half_step_indicator_true_for_exact_step():
+    out = evaluate_pipeline(_good_measurements(proximal_parent=3.5, distal_parent=3.5))
+    row = next(r for r in out["rows"] if r["device_id"] == "PIPELINE-HIST-3_50")
+    assert row["diameter_equivalent"] is True
+    assert row["diameter_within_half_step"] is True
+
+
+def test_diameter_within_half_step_boundaries():
+    # Half of the 0.25 mm catalog step, inclusive within float tolerance.
+    assert diameter_within_half_step(3.50, 3.375) is True
+    assert diameter_within_half_step(3.50, 3.374) is False
+    assert diameter_within_half_step(3.50, 3.626) is False
+
+
+def test_closest_labeled_match_picks_minimum_distance_and_ties_down():
+    assert closest_labeled_match(3.48)["device_id"] == "PIPELINE-HIST-3_50"
+    # Exact midpoint between 3.25 and 3.50 resolves to the smaller label.
+    assert closest_labeled_match(3.375)["device_id"] == "PIPELINE-HIST-3_25"
+    assert closest_labeled_match(10.0) is None  # far outside every row
 
 
 # ---------------------------------------------------------------------------

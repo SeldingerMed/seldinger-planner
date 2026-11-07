@@ -94,6 +94,20 @@ def compute_native_geometry(aneurysm_mask, vessel_mask, affine, operator_inputs)
         normal = [path[i + 1][axis] - path[i - 1][axis] for axis in range(3)]
         result[role] = selected_section_metrics(vessel_mesh, path[i], normal, spatial_units="mm")
         result[role]["method"] = "operator_path_normal_native_mask_section"
+    from planner.calculators import compute_aneurysm_morphometrics
+
+    parent_eq = 0.5 * (
+        result["proximal_parent"]["equivalent_diameter"]
+        + result["distal_parent"]["equivalent_diameter"]
+    )
+    result["morphometric_indices"] = compute_aneurysm_morphometrics(
+        dome_width_mm=result["sac"]["width"],
+        dome_height_mm=result["sac"]["height"],
+        neck_width_mm=result["neck"]["max_diameter"],
+        parent_artery_diameter_mm=parent_eq,
+        sac_volume_mm3=result["sac"].get("volume"),
+        sac_surface_area_mm2=result["sac"].get("surface_area"),
+    )
     return result
 
 
@@ -207,6 +221,8 @@ def run_local_geometry(job, *, blob_dir):
     if len(payload.encode()) > 16384:
         raise RuntimeError("Geometry job exceeds input cap")
     env = dict(os.environ)
+    # Isolate the fixed imaging interpreter from the host agent's site-packages.
+    env["PYTHONPATH"] = str(ROOT)
     env.update(
         {
             name: "4"

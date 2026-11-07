@@ -216,7 +216,7 @@ def _load_correction_base(job, source):
 def _source_context_metadata(job):
     source_id = job.get("source_id", "cmha-ahmu1218001-context")
     metadata = {"source_id": source_id}
-    if source_id in ("zenodo-case006-calibrated", "zenodo-case006-planning-context"):
+    if source_id != "cmha-ahmu1218001-context":
         metadata["input_context"] = "server_installed_calibrated_reference_informed_context"
         metadata["source_annotation_registration_validated"] = False
         if job.get("kind") == "sam2":
@@ -229,6 +229,7 @@ def _source_context_metadata(job):
 def _source_bundle(job):
     """Resolve only a registered opaque identity, never job-supplied paths."""
     import hashlib
+    import re
 
     source_id = job.get("source_id", "cmha-ahmu1218001-context")
     if source_id in ("zenodo-case006-calibrated", "zenodo-case006-planning-context"):
@@ -242,15 +243,25 @@ def _source_bundle(job):
         )
         data, revision, paths = provider().load()
         return data, revision, paths["image"], "mm"
-    if source_id != "cmha-ahmu1218001-context":
-        raise ValueError("Unknown installed image source")
-    raw_manifest = (REFERENCE_DIR / "manifest.json").read_bytes()
-    return (
-        json.loads(raw_manifest),
-        hashlib.sha256(raw_manifest).hexdigest(),
-        REFERENCE_IMAGE,
-        "unknown",
-    )
+    if source_id == "cmha-ahmu1218001-context":
+        raw_manifest = (REFERENCE_DIR / "manifest.json").read_bytes()
+        return (
+            json.loads(raw_manifest),
+            hashlib.sha256(raw_manifest).hexdigest(),
+            REFERENCE_IMAGE,
+            "unknown",
+        )
+    if isinstance(source_id, str) and re.fullmatch(r"[a-z0-9][a-z0-9_-]{1,63}", source_id):
+        from planner import image_source
+
+        installed_root = getattr(image_source, "INSTALLED_SOURCES_ROOT", None)
+        if installed_root is not None and (installed_root / source_id / "manifest.json").is_file():
+            store = image_source.InstalledNiftiSourceStore(
+                installed_root / source_id, source_id=source_id
+            )
+            data, revision, paths = store.load()
+            return data, revision, paths["image"], "mm"
+    raise ValueError("Unknown installed image source")
 
 
 def _run_job(job, output_dir):

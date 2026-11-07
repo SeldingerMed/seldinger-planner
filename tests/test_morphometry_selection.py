@@ -263,3 +263,92 @@ def test_clipped_rejects_point_cap_after_dedup():
     mesh = sphere_mesh(2.0, nu=150, nv=80)
     with pytest.raises(MorphometryError):
         clipped_sac_metrics(mesh, (0, 0, 0), (0, 0, 1))
+
+
+# --------------------------------------------- clipped volume / surface area
+def test_clipped_hemisphere_volume_and_surface_area_known_values():
+    r = 2.5
+    mesh = sphere_mesh(r)
+    m = clipped_sac_metrics(mesh, (0, 0, 0), (0, 0, 1))
+    # Hemisphere bounded by the dome surface and the planar neck cap.
+    assert m["volume"] == pytest.approx((2.0 / 3.0) * math.pi * r**3, rel=5e-2)
+    assert m["volume"] < (2.0 / 3.0) * math.pi * r**3  # chord chords undershoot
+    assert m["surface_area"] == pytest.approx(2.0 * math.pi * r**2, rel=5e-2)
+
+
+def test_clipped_box_volume_and_surface_area_exact():
+    # Planar-faced box cut by a plane: clipped mesh arithmetic is exact.
+    mesh = box_mesh(4.0, 2.0, 3.0)  # 0..4 x 0..2 x 0..3
+    m = clipped_sac_metrics(mesh, (0, 0, 1.5), (0, 0, 1))
+    assert m["volume"] == pytest.approx(4.0 * 2.0 * 1.5, rel=1e-12)
+    # Dome surface: top face 8 + two 2x1.5 faces + two 4x1.5 faces.
+    assert m["surface_area"] == pytest.approx(8.0 + 2 * 3.0 + 2 * 6.0, rel=1e-12)
+
+
+def test_clipped_prism_volume_and_surface_area_exact():
+    n, r = 8, 1.0
+    mesh = polygonal_prism(n, r, -1.0, 1.0)
+    m = clipped_sac_metrics(mesh, (0, 0, 0), (0, 0, 1))
+    cap = (n / 2.0) * r * r * math.sin(2 * math.pi / n)
+    assert m["volume"] == pytest.approx(cap * 1.0, rel=1e-12)
+    lateral = n * 2.0 * r * math.sin(math.pi / n) * 1.0
+    assert m["surface_area"] == pytest.approx(lateral + cap, rel=1e-12)
+
+
+def test_clipped_volume_invariant_to_mixed_input_winding():
+    import random
+
+    mesh = box_mesh(4.0, 2.0, 3.0)
+    ref = clipped_sac_metrics(mesh, (0, 0, 1.5), (0, 0, 1))
+    rng = random.Random(20261107)
+    mixed = [tuple(reversed(t)) if rng.random() < 0.5 else t for t in mesh]
+    m = clipped_sac_metrics(mixed, (0, 0, 1.5), (0, 0, 1))
+    assert m["volume"] == pytest.approx(ref["volume"], rel=1e-9)
+    assert m["surface_area"] == pytest.approx(ref["surface_area"], rel=1e-9)
+
+
+def test_clipped_volume_invariant_to_oblique_plane():
+    mesh = box_mesh(4.0, 2.0, 3.0)
+    ref = clipped_sac_metrics(mesh, (0, 0, 1.5), (0, 0, 1))
+    # transform_mesh maps local z=0 to the plane through `point`; the cut must
+    # sit at the same local offset (z=1.5) on both sides for a rigid-motion
+    # comparison of an actual mid-box cut.
+    point, normal = (2.0, -1.0, 0.5), (0.2, 0.2, 1.0)
+    nlen = math.sqrt(sum(c * c for c in normal))
+    cut_point = tuple(point[k] + 1.5 * normal[k] / nlen for k in range(3))
+    m = clipped_sac_metrics(transform_mesh(mesh, point, normal), cut_point, normal)
+    assert m["volume"] == pytest.approx(ref["volume"], rel=1e-7)
+    assert m["surface_area"] == pytest.approx(ref["surface_area"], rel=1e-7)
+
+
+def test_clipped_volume_sums_disconnected_dome_components():
+    # Two disjoint octagonal prisms above the plane: neither lobe's arbitrary
+    # winding parity may cancel the other's contribution.
+    left = polygonal_prism(8, 1.0, 0.0, 1.0, center=(3.0, 0.0, 0.0))
+    right = polygonal_prism(8, 1.0, 0.0, 1.0, center=(-3.0, 0.0, 0.0))
+    m = clipped_sac_metrics(left + right, (0, 0, 0), (0, 0, 1))
+    cap = 4.0 * math.sin(math.pi / 4.0)
+    assert m["volume"] == pytest.approx(2.0 * cap, rel=1e-12)
+    flipped = [tuple(reversed(t)) for t in left] + right
+    m2 = clipped_sac_metrics(flipped, (0, 0, 0), (0, 0, 1))
+    assert m2["volume"] == pytest.approx(2.0 * cap, rel=1e-12)
+
+
+def test_clipped_rejects_nested_components_without_solid_membership():
+    # Arbitrarily wound nested shells do not specify whether the inner solid
+    # is a cavity or another filled component. Do not add both absolute volumes.
+    with pytest.raises(MorphometryError, match="overlap|nested|ambiguous"):
+        clipped_sac_metrics(sphere_mesh(3.0) + sphere_mesh(1.0), (0, 0, 0), (0, 0, 1))
+
+
+def test_clipped_rejects_nonmanifold_shared_edge():
+    # Three triangles sharing one edge: non-manifold patch, reject rather
+    # than reporting a volume.
+    e0, e1 = (0.0, 0.0, 1.0), (1.0, 0.0, 1.0)
+    mesh = [
+        (e0, e1, (0.0, 1.0, 1.0)),
+        (e0, e1, (0.0, 2.0, 1.0)),
+        (e0, e1, (-1.0, 1.0, 1.0)),
+    ]
+    with pytest.raises(MorphometryError, match="non-manifold|orientation"):
+        clipped_sac_metrics(mesh, (0, 0, 0), (0, 0, 1))

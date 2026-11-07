@@ -46,6 +46,8 @@ type CurrentEnvelope = {
       sac: {
         height: number;
         width: number;
+        volume?: number;
+        surface_area?: number;
         spatial_units: string;
         validated_morphometry: boolean;
       };
@@ -147,6 +149,8 @@ function validateEnvelope(
     sac === null ||
     !isFinitePositive(sac.height) ||
     !isFinitePositive(sac.width) ||
+    (sac.volume !== undefined && !isFinitePositive(sac.volume)) ||
+    (sac.surface_area !== undefined && !isFinitePositive(sac.surface_area)) ||
     sac.spatial_units !== "mm" ||
     sac.validated_morphometry !== false
   )
@@ -305,6 +309,12 @@ export default function MorphometryResults({
               <dt>Sac width</dt>
               <dd>{fmt(result.sac.width)} mm</dd>
             </div>
+            {isFinitePositive(result.sac.volume) ? (
+              <div>
+                <dt>Sac volume</dt>
+                <dd>{fmt(result.sac.volume)} mm³</dd>
+              </div>
+            ) : null}
           </dl>
           {SECTIONS.map((key) => {
             const section = result[key];

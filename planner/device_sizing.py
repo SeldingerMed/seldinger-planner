@@ -136,6 +136,27 @@ def pipeline_catalog() -> dict:
     }
 
 
+HALF_STEP_MM = 0.125
+
+
+def diameter_within_half_step(labeled: float, measured: float) -> bool:
+    """Catalog discretization indicator only, not a clinical fit tolerance."""
+    return (
+        abs(_finite_positive(labeled, "labeled") - _finite_positive(measured, "measured"))
+        <= HALF_STEP_MM + 1e-9
+    )
+
+
+def closest_labeled_match(measured: float) -> dict | None:
+    """Nearest historical diameter, ties toward smaller label. Not a recommendation."""
+    value = _finite_positive(measured, "measured")
+    rows = pipeline_catalog()["rows"]
+    if not rows[0]["labeled_diameter_mm"] <= value <= rows[-1]["labeled_diameter_mm"]:
+        return None
+    row = min(rows, key=lambda r: (abs(r["labeled_diameter_mm"] - value), r["labeled_diameter_mm"]))
+    return {key: row[key] for key in ("device_id", "labeled_diameter_mm")}
+
+
 def evaluate_pipeline(measurements: dict) -> dict:
     """Explicit geometric checks against the historical Pipeline table.
 
@@ -146,7 +167,8 @@ def evaluate_pipeline(measurements: dict) -> dict:
     Returns the largest measured parent, the minimum labeled coverage length
     (neck coverage + 6 mm), and per-row nominal diameter differences with
     explicit length-check outcomes. Diameter equivalence is marked only when
-    exactly equal; no numeric tolerance is applied. No treatment
+    equal within 1e-6 mm floating-point tolerance. The half-step indicator is
+    discretization arithmetic only, not a clinical sizing tolerance. No treatment
     recommendation, ranking, or device selection is produced.
     """
     base = {
@@ -180,7 +202,8 @@ def evaluate_pipeline(measurements: dict) -> dict:
                 "labeled_diameter_mm": labeled,
                 "self_expanded_diameter_mm": row["self_expanded_diameter_mm"],
                 "nominal_difference_mm": round(labeled - largest, 10),
-                "diameter_equivalent": labeled == largest,
+                "diameter_equivalent": math.isclose(labeled, largest, rel_tol=0.0, abs_tol=1e-6),
+                "diameter_within_half_step": diameter_within_half_step(labeled, largest),
                 "length_checks_mm": {
                     float(length): length >= min_coverage for length in row["labeled_lengths_mm"]
                 },
@@ -190,6 +213,7 @@ def evaluate_pipeline(measurements: dict) -> dict:
         "status": "geometric_checks_only",
         "largest_parent_mm": largest,
         "minimum_labeled_coverage_length_mm": min_coverage,
+        "closest_labeled_match": closest_labeled_match(largest),
         "rows": rows,
     }
 
@@ -203,10 +227,11 @@ def web_sizing_targets(measurements: dict) -> dict:
 
     Approximate nominal target diameter = average sac diameter + 1 mm;
     approximate nominal target height = smallest sac height - 1 mm. These are
-    approximate values, not a recommendation and not a device. If the height
-    target is <= 0 the result is ``unsupported``; if the recorded dome diameter
-    falls outside the historical 3-10 mm family range the result is
-    ``out_of_family_range``. No tolerance is applied to the approximates.
+    approximate values, not a recommendation and not a device. If the recorded
+    dome diameter falls outside the historical 3-10 mm family range the result is
+    ``out_of_family_range``; this check takes precedence over a height target
+    <= 0, which otherwise returns ``unsupported``. No tolerance is applied
+    to the approximates.
     Clinical location, neck criteria, rupture/previous treatment and catheter
     compatibility are not inferred.
     """

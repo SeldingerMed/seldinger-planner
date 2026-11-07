@@ -13,6 +13,7 @@ def test_geometry_supervisor_uses_fixed_runtime_and_bounds(tmp_path, monkeypatch
     runtime = tmp_path / "fixed-python"
     runtime.write_text("synthetic executable marker")
     monkeypatch.setattr(worker, "ML_PYTHON", runtime, raising=False)
+    monkeypatch.setenv("PYTHONPATH", "/untrusted/host/site-packages")
     seen = []
 
     def fake(command, **kwargs):
@@ -28,6 +29,7 @@ def test_geometry_supervisor_uses_fixed_runtime_and_bounds(tmp_path, monkeypatch
     assert command == [str(runtime), "-m", "planner.geometry_worker"]
     assert options["timeout"] == 60 and options["shell"] is False
     assert options["env"]["OMP_NUM_THREADS"] == "4"
+    assert options["env"]["PYTHONPATH"] == str(worker.ROOT)
     payload = json.loads(options["input"])
     assert payload["blob_dir"] == str(tmp_path)
     assert payload["job"] == {"synthetic_job": True}

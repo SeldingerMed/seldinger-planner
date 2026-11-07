@@ -173,7 +173,7 @@ def _update_with_revision(
     return False, "stale artifact_version" if exists else "case not found"
 
 
-def create_app(db_path: pathlib.Path | str) -> fastapi.FastAPI:
+def create_app(db_path: pathlib.Path | str, *, planning_context_provider=None) -> fastapi.FastAPI:
     app = fastapi.FastAPI(title="Seldinger planning workspace")
     with _connect(db_path) as conn:
         conn.executescript(_SCHEMA)
@@ -363,6 +363,10 @@ def create_app(db_path: pathlib.Path | str) -> fastapi.FastAPI:
                 "",
             ]
         lines += ["## User notes", "", case["notes"] or "(none)", ""]
+        if planning_context_provider is not None:
+            from planner.planning_context import render_context
+
+            lines += render_context(planning_context_provider(case))
         return PlainTextResponse("\n".join(lines), media_type="text/markdown")
 
     return app

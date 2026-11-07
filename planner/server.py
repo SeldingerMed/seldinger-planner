@@ -19,7 +19,6 @@ from planner.planning_sources import PLANNING_SOURCE_BUNDLE
 from planner.providers import ModelClient, ProviderError, ProviderSettings
 from planner.reference_server import ReferenceStore, register_reference_routes
 from planner.source_registry import (
-    IMAGE_ONLY_HASHES,
     ImageSourceRegistry,
     register_image_source_routes,
 )
@@ -72,7 +71,7 @@ def build_app(
     planning_source_store=None,
     geometry_runner=None,
 ):
-    app = create_app(db_path)
+    app = create_app(db_path, planning_context_provider=lambda case: planning_for_brief(case))
     allowed_origins = {
         "http://127.0.0.1:5173",
         "http://localhost:5173",
@@ -121,7 +120,7 @@ def build_app(
         if case is None:
             raise HTTPException(404, "Case not found")
         case["reference_annotation"] = references.optional_for_case(case)
-        if case["image_sha256"] in IMAGE_ONLY_HASHES:
+        if image_sources.find_installed_source_by_hash(case["image_sha256"]) is not None:
             case["image_source"] = image_sources.calibrated_metadata_for_case(case)
         return case
 
@@ -143,6 +142,9 @@ def build_app(
         snapshot["measurements_truncated"] = (
             snapshot["measurements_returned"] < snapshot["measurement_count"]
         )
+        snapshot["computed_context"] = read_planning_context(case_id)
+        if snapshot["computed_context"]["artifact_version"] != payload.artifact_version:
+            raise HTTPException(409, "Case revision changed")
         schema = {
             "type": "object",
             "properties": {},
@@ -151,7 +153,10 @@ def build_app(
         }
         tool = ToolSpec(
             "read_case_plan",
-            "Read the persisted case plan, operator-entered aneurysm worksheet, provenance, notes and manual point-pair evidence. "
+            "Read the persisted case plan, operator-entered worksheet, notes and manual evidence, "
+            "plus bounded computed_context with current accepted-mask metadata, scalar morphometry, "
+            "derived indices and operator-reported sizing arithmetic when present. These are software "
+            "estimates, not validated anatomy, clinical findings, or treatment suitability. "
             "Call with an empty JSON object. Scope is fixed by the server; do not supply case identifiers. "
             "Call this before answering. At most 100 measurements are returned; measurement_count is the total, "
             "measurements_returned is the visible count, and measurements_truncated marks omitted rows. "
@@ -188,15 +193,18 @@ def build_app(
                 502, "Model request failed; no planning state was changed"
             ) from None
         latest = read_case(case_id)
+        latest_context = read_planning_context(case_id)
 
         def reference_revision(case):
             return (case.get("image_source") or case.get("reference_annotation") or {}).get(
                 "reference_revision"
             )
 
-        if latest["artifact_version"] != payload.artifact_version or reference_revision(
-            latest
-        ) != reference_revision(snapshot):
+        if (
+            latest["artifact_version"] != payload.artifact_version
+            or reference_revision(latest) != reference_revision(snapshot)
+            or latest_context != snapshot["computed_context"]
+        ):
             raise HTTPException(
                 409, "Case or reference changed during model request; result discarded"
             )
@@ -233,9 +241,10 @@ def build_app(
         or Path(__file__).resolve().parents[1] / ".runtime" / "inference-results"
     )
 
+    segmentations = SegmentationLedger(db_path)
     register_segmentation_routes(
         app,
-        SegmentationLedger(db_path),
+        segmentations,
         image_sources,
         read_case,
         results_dir,
@@ -258,6 +267,100 @@ def build_app(
         app, device_inputs, device_results, read_geometry
     )
     register_device_calculation_routes(app, device_results, read_sizing)
+
+    from planner.device_db import (
+        CATEGORIES,
+        TERRITORIES,
+        connect,
+        query_devices,
+        seed_default_catalog,
+    )
+
+    # Observe/synchronize the local listing once per application construction,
+    # never as a side effect of a read-only catalog request.
+    with closing(connect(db_path)) as conn:
+        seed_default_catalog(conn)
+
+    from planner.planning_context import freeze, project_context, source_revision
+    from planner.territories import list_territory_plugins
+
+    def read_components(case):
+        geometry = sizing = None
+        if source_revision(case) is not None and case["spatial_units"] == "mm":
+            geometry = freeze(read_geometry(case["case_id"]))
+            sizing = freeze(read_sizing(case["case_id"]))
+        accepted = {
+            role: freeze(segmentations.current(case["case_id"], role=role))
+            for role in ("vessel", "aneurysm")
+        }
+        return geometry, sizing, accepted
+
+    def read_planning_context(case_id):
+        # Independently freeze every provider before projection, then reread all
+        # dependencies. Result IDs change even when the case version does not.
+        try:
+            case = freeze(read_case(case_id))
+            components = read_components(case)
+            context = project_context(case, *components)
+            latest = freeze(read_case(case_id))
+            latest_components = read_components(latest)
+            if latest != case or latest_components != components:
+                raise HTTPException(409, "Planning context changed; reload saved state")
+            return context
+        except (ValueError, TypeError, KeyError, OSError) as exc:
+            raise HTTPException(503, "Computed planning context is unavailable") from exc
+
+    def planning_for_brief(case):
+        context = read_planning_context(case["case_id"])
+        if any(
+            context[key] != case[key] for key in ("case_id", "image_sha256", "artifact_version")
+        ):
+            raise HTTPException(409, "Case changed while preparing brief")
+        return context
+
+    @app.get("/api/cases/{case_id}/planning-context")
+    def get_planning_context(case_id: str):
+        return JSONResponse(read_planning_context(case_id), headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/devices")
+    def list_unified_devices(category: str | None = None, territory: str | None = None):
+        if (
+            category is not None
+            and category not in CATEGORIES
+            or territory is not None
+            and territory not in TERRITORIES
+        ):
+            raise HTTPException(422, "Unknown catalog category or territory")
+        with closing(connect(db_path)) as conn:
+            devices = query_devices(conn, category=category, territory=territory)
+        return {
+            "clinical_suitability_established": False,
+            "devices": devices,
+            "scope": "shared_catalog_listing_not_verified_current_ifu",
+        }
+
+    @app.get("/api/territories")
+    def list_territories():
+        return {
+            "clinical_suitability_established": False,
+            "execution_scope": "declarative_plugins_and_supplied_measurement_calculators",
+            "territories": list_territory_plugins(),
+        }
+
+    @app.get("/api/cases/{case_id}/territory-analysis")
+    def case_territory_analysis(case_id: str, territory: str = "neurovascular"):
+        if territory not in TERRITORIES:
+            raise HTTPException(422, "Unknown territory")
+        context = read_planning_context(case_id)
+        if territory == "neurovascular":
+            return context["territory_summary"]
+        return {
+            "case_id": case_id,
+            "territory": territory,
+            "findings": [],
+            "clinical_suitability_established": False,
+            "status": "territory_measurements_not_available",
+        }
 
     return app
 

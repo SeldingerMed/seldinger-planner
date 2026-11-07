@@ -9,11 +9,15 @@ trusted configuration, never by caller assertions.
 
 from __future__ import annotations
 
+import gzip
 import hashlib
+import io
 import json
 import math
+import re
+import struct
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 CALIBRATED_SOURCE_ID = "zenodo-case006-calibrated"
 CALIBRATED_ROOT = (
@@ -55,7 +59,7 @@ _CITATION = (
 )
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     raise ValueError(f"calibrated source store: {message}")
 
 
@@ -138,7 +142,8 @@ def _validate_manifest(manifest: Any) -> dict[str, Any]:
         _fail("image sha256 missing")
     recorded_bytes = image.get("bytes")
     if (
-        not _is_native_int(recorded_bytes)
+        not isinstance(recorded_bytes, int)
+        or isinstance(recorded_bytes, bool)
         or recorded_bytes <= 0
         or recorded_bytes > MAX_IMAGE_BYTES
     ):
@@ -298,3 +303,177 @@ class PlanningSourceStore(CalibratedSourceStore):
             expected_manifest_sha256=expected_manifest_sha256,
             expected_image_sha256=expected_image_sha256,
         )
+
+
+INSTALLED_SOURCES_ROOT = Path(__file__).resolve().parent.parent / ".runtime" / "installed-sources"
+_ALLOWED_CUSTOM_DTYPES = {
+    "int16": (4, 16),
+    "int32": (8, 32),
+    "uint8": (2, 8),
+    "uint16": (512, 16),
+    "float32": (16, 32),
+}
+
+
+def _validate_installed_nifti(payload: bytes, image: dict[str, Any]) -> None:
+    """Validate the exact hashed bytes, without importing an imaging stack.
+
+    Phase 1 accepts single-file NIfTI-1 with explicit sform calibration. It
+    deliberately rejects qform-only/NIfTI-2 sources rather than guessing a frame.
+    """
+    limit = 352 + MAX_TOTAL_VOXELS * 4 + 65536
+    try:
+        if payload[:2] == b"\x1f\x8b":
+            with gzip.GzipFile(fileobj=io.BytesIO(payload)) as stream:
+                raw = stream.read(limit + 1)
+        else:
+            raw = payload
+    except (OSError, EOFError) as exc:
+        raise ValueError("Invalid compressed NIfTI") from exc
+    if len(raw) > limit or len(raw) < 352:
+        _fail("NIfTI decompressed size out of bounds")
+    endian = "<" if struct.unpack_from("<i", raw)[0] == 348 else ">"
+    if struct.unpack_from(endian + "i", raw)[0] != 348 or raw[344:348] != b"n+1\x00":
+        _fail("installed image must be single-file NIfTI-1")
+    dims = struct.unpack_from(endian + "8h", raw, 40)
+    if dims[0] != 3 or list(dims[1:4]) != image["shape_xyz"]:
+        _fail("NIfTI grid does not match manifest")
+    datatype, bits = struct.unpack_from(endian + "2h", raw, 70)
+    if (datatype, bits) != _ALLOWED_CUSTOM_DTYPES[image["dtype"]]:
+        _fail("NIfTI dtype does not match manifest")
+    if raw[123] & 7 != 2:
+        _fail("NIfTI header units must be mm")
+    offset = struct.unpack_from(endian + "f", raw, 108)[0]
+    if not math.isfinite(offset) or offset < 352 or offset != int(offset):
+        _fail("Invalid NIfTI voxel offset")
+    count = math.prod(image["shape_xyz"])
+    if int(offset) + count * bits // 8 != len(raw):
+        _fail("NIfTI payload length does not match native grid")
+    if struct.unpack_from(endian + "h", raw, 254)[0] <= 0:
+        _fail("Phase 1 installed NIfTI requires an explicit sform")
+    affine = [list(struct.unpack_from(endian + "4f", raw, 280 + i * 16)) for i in range(3)]
+    affine.append([0.0, 0.0, 0.0, 1.0])
+    _validate_affine(affine)
+    if any(
+        not math.isclose(affine[i][j], image["affine_ras"][i][j], rel_tol=1e-6, abs_tol=1e-6)
+        for i in range(4)
+        for j in range(4)
+    ):
+        _fail("NIfTI affine does not match manifest")
+
+
+class InstalledNiftiSourceStore:
+    """Manifest-verified store for any server-installed NIfTI volume source."""
+
+    def __init__(self, root: Path | str, *, source_id: str) -> None:
+        self.root = Path(root)
+        self.source_id = source_id
+
+    def load(self) -> tuple[dict[str, Any], str, dict[str, Path]]:
+        root = self.root
+        if root.is_symlink() or any(parent.is_symlink() for parent in root.parents):
+            _fail("installed source root or ancestor is a symlink")
+        if not root.is_dir():
+            raise FileNotFoundError(f"installed source store: directory not found: {root}")
+        manifest_path = root / "manifest.json"
+        if manifest_path.is_symlink() or not manifest_path.exists():
+            raise FileNotFoundError(f"installed source store: manifest not found: {manifest_path}")
+        manifest_path = _regular_file(manifest_path, "manifest")
+        if manifest_path.stat().st_size > MAX_MANIFEST_BYTES:
+            _fail(f"manifest exceeds {MAX_MANIFEST_BYTES} bytes")
+        with manifest_path.open("rb") as stream:
+            manifest_bytes = stream.read(MAX_MANIFEST_BYTES + 1)
+        if len(manifest_bytes) > MAX_MANIFEST_BYTES:
+            _fail(f"manifest exceeds {MAX_MANIFEST_BYTES} bytes")
+        manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
+        manifest = json.loads(manifest_bytes)
+        if not isinstance(manifest, dict) or manifest.get("clinical_validation") is not False:
+            _fail("installed manifest must be an object with clinical_validation == false")
+        image = manifest.get("image")
+        if not isinstance(image, dict):
+            _fail("installed manifest image must be an object")
+        filename = image.get("filename", IMAGE_FILENAME)
+        if (
+            not isinstance(filename, str)
+            or not filename
+            or filename in {".", ".."}
+            or "/" in filename
+            or "\\" in filename
+        ):
+            _fail("invalid image filename")
+        if image.get("dtype") not in _ALLOWED_CUSTOM_DTYPES:
+            _fail("unsupported image dtype")
+        if image.get("spatial_units") != "mm":
+            _fail("installed image spatial_units must be mm")
+        sha = image.get("sha256")
+        if not isinstance(sha, str) or re.fullmatch(r"[a-f0-9]{64}", sha) is None:
+            _fail("installed image sha256 missing")
+        shape = image.get("shape_xyz")
+        if (
+            not isinstance(shape, list)
+            or len(shape) != 3
+            or any(not _is_native_int(v) or v <= 0 or v > MAX_DIM for v in shape)
+        ):
+            _fail("invalid shape_xyz")
+        if shape[0] * shape[1] * shape[2] > MAX_TOTAL_VOXELS:
+            _fail("image voxel count exceeds limit")
+        _validate_affine(image.get("affine_ras"))
+        crop = manifest.get("crop", {"start_voxels": [0, 0, 0], "size_voxels": list(shape)})
+        if not isinstance(crop, dict):
+            _fail("invalid crop")
+        start = crop.get("start_voxels")
+        if (
+            not isinstance(start, list)
+            or len(start) != 3
+            or any(not _is_native_int(v) or v < 0 for v in start)
+            or crop.get("size_voxels") != shape
+        ):
+            _fail("invalid crop dimensions or start")
+        manifest["crop"] = crop
+        image_path = _regular_file(root / filename, "image")
+        image_size = image_path.stat().st_size
+        if image_size <= 0 or image_size > MAX_IMAGE_BYTES:
+            _fail("image byte size out of bounds")
+        if "bytes" in image and image["bytes"] != image_size:
+            _fail("image byte size does not match manifest")
+        with image_path.open("rb") as stream:
+            payload = stream.read(MAX_IMAGE_BYTES + 1)
+        if not 0 < len(payload) <= MAX_IMAGE_BYTES or len(payload) != image_size:
+            _fail("image changed or exceeds byte cap")
+        if hashlib.sha256(payload).hexdigest() != sha:
+            _fail("image sha256 does not match manifest record")
+        _validate_installed_nifti(payload, image)
+        return manifest, manifest_sha, {"image": image_path}
+
+    def metadata(
+        self,
+        bundle: tuple[dict[str, Any], str, dict[str, Path]],
+        case_id: str | None = None,
+    ) -> dict[str, Any]:
+        data, revision, _paths = bundle
+        image = data["image"]
+        shape = image["shape_xyz"]
+        affine = image["affine_ras"]
+        cols = list(zip(affine[0][:3], affine[1][:3], affine[2][:3]))
+        spacing = [math.sqrt(v[0] ** 2 + v[1] ** 2 + v[2] ** 2) for v in cols]
+        meta: dict[str, Any] = {
+            "source_id": self.source_id,
+            "case_label": data.get("case_label", f"Installed NIfTI source ({self.source_id})"),
+            "source_url": data.get("source_url", "local://installed-source"),
+            "license_url": data.get("license_url"),
+            "citation": data.get("citation", "Server-installed NIfTI source"),
+            "image_sha256": image["sha256"],
+            "image_url": f"/api/image-sources/{self.source_id}/volume",
+            "reference_revision": revision,
+            "spatial_units": "mm",
+            "dimensions": list(shape),
+            "spacing_mm": spacing,
+            "image_affine_ras": affine,
+            "method": "installed_nifti_source",
+            "selection_basis": "server-installed calibrated volume",
+            "clinical_validation": False,
+            "stl_registration_validated": False,
+        }
+        if case_id is not None:
+            meta["case_id"] = case_id
+        return meta

@@ -1,0 +1,71 @@
+{
+  "captured_at": "2026-11-07T18:30:46.919870+00:00",
+  "base_head": "33ea6ff3b3b0bf18fd286f85b53610682066b83d",
+  "branch": "feat/fresh-planning-workspace",
+  "verification_scope": "clean base archive plus explicit Phase 1 overlay; before Git delivery",
+  "local_only_files_sha256": {
+    "plan.md": "a8c39308b56d9a3f9c4124ab04da0c526cc89a34e29fd305e0378499e090e023"
+  },
+  "files_sha256": {
+    "README.md": "0b026cc0e0dbc6ee3f4d638f8d7cb65a4b3004c36bffb2c14ea3038734c6744d",
+    "docs/installed-sources.md": "65f9ebcd508f71513564be8105a92d525184196c60925ac119085837c98cfe9f",
+    "docs/verification/phase1-consolidation.md": "af0c50bb83ccf3f2f54290fd5bf742d23411b7c07ce9c4cb0529b2e3ba11b5fd",
+    "planner/calculators.py": "2be291052210f6901fe34fbd962e37a626a44ecb5267f0dbd195080a915637a5",
+    "planner/device_checks.py": "46b77741ba33e0aecc5b18a03f4040beefacd22b72bfdf24ca35bc206b212f0a",
+    "planner/device_db.py": "7291ba751c949a8f91d116066ed7fb0b30223e6d3a0fbec7503fb8d80998469f",
+    "planner/device_sizing.py": "868f2334dd673778ed5049ffc7cee151d01c97a8fc3087a8819fb97ce5f61308",
+    "planner/geometry_worker.py": "9d8b4a8930e39a75658a948e2063d735577cedb5ed0e7b49a14f0a9658d3ff63",
+    "planner/image_source.py": "24ae1c629339f2705ba421b765ca02a7f8d3597d035beb253c2494a042daae4a",
+    "planner/morphometry_selection.py": "602cdc6624c09c180039ee0b9d069dd97f0e40910bc07aeb52779132b75fa2a7",
+    "planner/planning_context.py": "d1bc09e6c6cbbecde6a2512ffced85c6f435031bcf6cfb994e9f5354650950a8",
+    "planner/segmentation_worker.py": "ddf3521a28897254f7877fcb3a7c3aa6ed93e08ab4e1d9e166245b83794da8cb",
+    "planner/server.py": "56063f0f64d36b6025e838b7d89fe472d12319fa5c7da8fb855eb4227eeff0df",
+    "planner/source_registry.py": "992c02b2f39f155f0dba29212fca15fe634967a566ee7d4871355dcd51b8d499",
+    "planner/territories.py": "378b49a3b10cbc74adfa226526716e91b5996852b0674116dfab93c0cb871feb",
+    "planner/workspace.py": "f00d49cce930bfbfc64ea5f839104d375985b9d61cc775cf494d16e1ef72e361",
+    "tests/ml_runtime/test_installed_source_geometry.py": "aa285a2287f6bf9411801a2588006cf08d3e1678ce10306421f3ce69965812c1",
+    "tests/test_device_checks.py": "460ff5706f621b5004196dcf874fcab34d3f692888d4ac3e8cd4299e5414c947",
+    "tests/test_device_db.py": "1fddaa414d49c3c764dd38c5f6f845abfcaddf8469d8abfcb2b9100c3895767a",
+    "tests/test_device_sizing.py": "d6457d900fd5bf6e59348f46d18ab7bdcc075eb0b6e00d39975e7139b9221ec9",
+    "tests/test_geometry_runtime.py": "48f979224ffa0b20b594983681defe81c30616a33a76d6154b31d500eaf1c9a0",
+    "tests/test_installed_sources.py": "4320cd41e77e5edf2bc2631c76ccbe5d33c920c8220b94e17846f5918ebdc3f5",
+    "tests/test_morphometry_selection.py": "1af3847a023d589769d95c1621a8f554ef41cde26d34ed2ea8076eda2e10c38b",
+    "tests/test_phase1_context.py": "138546a549544e3ee675bd65161db9dcc01216210fcad7c28d0fe674c271b75a",
+    "tests/test_phase1_evidence.py": "aab12e31ff5aa55e784ecb66690ea46043516336e751611cb842b80a4242df8d",
+    "tests/test_territories_and_calculators.py": "5a09dc541a42570aea233aaacbb78c6b81b0d095b45f4a62277750c075667836",
+    "web/src/MorphometryResults.test.tsx": "650c3d0f66d3dba97b403af3905bd8a08bcaed71a475681f89da6503e728d62b",
+    "web/src/MorphometryResults.tsx": "b6403f60ddcba1883640d58b89779f9e371d0c9405663cb3622bab2683a0bb15",
+    "web/src/devices/DeviceStudio.test.tsx": "8b46af758ac1de679127ec13547d8e3e386ac98dad75f636cb630f96bfd3f5c1",
+    "web/src/devices/DeviceStudio.tsx": "98a8a3bb055d95c4bb6e536e074323de0181720ae2acdfbffbfbffdc49d8560f",
+    "web/src/devices/analysis.test.ts": "b700437aa54974c7a22d2fbc20b99eba37d585ff55b086aa86bd4a4e63957215",
+    "web/src/devices/analysis.ts": "4a505bddfb87d2ed12b9c50a499a2b66a820dcbf5a8042dcf2c1c6ec44b96d9b"
+  },
+  "independent_reviews": {
+    "model": "z-ai/glm-5.3-flash",
+    "review": "deleg_cca455cb",
+    "repair_verification": "deleg_11a206b2",
+    "repair_tests_passed": 70,
+    "parent_verified_review_file_hashes": 4,
+    "verdict": "accepted nonclinical Phase 1 software slice; findings reconciled"
+  },
+  "credential_pattern_scan": {
+    "candidate_tree_files": 284,
+    "hits": [],
+    "scope": "bounded high-certainty patterns, not a guarantee of absence"
+  },
+  "observed_results": {
+    "python": "3.12.13",
+    "backend_tests_passed": 666,
+    "backend_tests_skipped": 100,
+    "imaging_tests_passed": 21,
+    "frontend_test_files": 35,
+    "frontend_tests_passed": 208,
+    "production_build": "passed with existing chunk-size warnings",
+    "production_npm_audit_vulnerabilities": 0,
+    "lightweight_pyright_errors": 0,
+    "whole_tree_ruff": "passed lint and format",
+    "real_http_smoke": "passed",
+    "alias_guard_mutation": "caught; throwaway source restored byte-for-byte",
+    "desktop_coil_bench_smoke": "earlier unchanged-frontend receipt; not anatomy or clinical validation"
+  }
+}

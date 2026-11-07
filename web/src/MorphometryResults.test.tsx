@@ -67,6 +67,53 @@ async function renderWith(binding_ = binding) {
 }
 
 describe("MorphometryResults", () => {
+  it("renders an explicitly computed sac volume in cubic millimeters", async () => {
+    const enriched = {
+      ...fixture,
+      current: {
+        ...fixture.current,
+        result: {
+          ...fixture.current.result,
+          sac: { ...fixture.current.result.sac, volume: 24 },
+        },
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(okResponse(enriched))),
+    );
+    await renderWith();
+    expect(await screen.findByText("Sac volume")).toBeInTheDocument();
+    expect(screen.getByText("24.00 mm³")).toBeInTheDocument();
+  });
+
+  it.each([Infinity, Number.NaN, -1, 0])(
+    "rejects a supplied invalid volume %s without retaining other current numbers",
+    async (volume) => {
+      const enriched = {
+        ...fixture,
+        current: {
+          ...fixture.current,
+          result: {
+            ...fixture.current.result,
+            sac: { ...fixture.current.result.sac, volume },
+          },
+        },
+      };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => Promise.resolve(okResponse(enriched))),
+      );
+      await renderWith();
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(screen.queryByText("Current estimate")).not.toBeInTheDocument();
+      expect(screen.queryByText("Sac volume")).not.toBeInTheDocument();
+    },
+  );
+
   it("accepts the actual stale producer shape without old numbers", async () => {
     const stale = {
       ...fixture,

@@ -38,12 +38,14 @@ export type DeviceSpec = {
   shape: string;
   wireCount: number | null;
   displayWireCount: number;
+  primaryDiameterMm?: number;
   sizeCoverage: string;
   wireCountBasis: string;
   sizes: {
     diameterMm: number;
     lengthMm: number | null;
     heightMm: number | null;
+    primaryDiameterMm?: number;
     sku: string | null;
     catheter?: string;
     minimumIdInch?: number;
@@ -80,6 +82,27 @@ export function pathLength(path: Triple[]) {
 }
 export const referenceOnly = (d: DeviceSpec) =>
   /reference only/i.test(d.usStatus);
+export function resolveCoilPrimaryDiameterMm(
+  device: DeviceSpec,
+  p: Placement,
+): number | null {
+  const exact = device.sizes.find(
+    (s) =>
+      Math.abs(s.diameterMm - p.diameter) < 1e-6 &&
+      s.lengthMm !== null &&
+      Math.abs(s.lengthMm - p.coilLength) < 1e-6,
+  );
+  // Only an exact SKU diameter+length match resolves a per-SKU primary
+  // diameter. A same-diameter SKU with a different length is a different
+  // SKU and must never be substituted. The device-level value is used only
+  // when the manufacturer declares one usable primary diameter.
+  const candidate = exact?.primaryDiameterMm ?? device.primaryDiameterMm;
+  return typeof candidate === "number" &&
+    Number.isFinite(candidate) &&
+    candidate > 0
+    ? candidate
+    : null;
+}
 export function comparePlacement(
   device: DeviceSpec,
   p: Placement,
@@ -147,11 +170,42 @@ export function comparePlacement(
       "CTA-derived section extrema are not the IFU's independent orthogonal angiographic measurements. No automatic +1/−1 SKU selection is made here.",
     );
   } else {
-    metrics.push({
-      label: "Planned secondary coil-centerline length",
-      value: p.coilLength,
-      unit: "mm",
-    });
+    if (Number.isFinite(p.coilLength) && p.coilLength > 0)
+      metrics.push({
+        label: "Planned secondary coil-centerline length",
+        value: p.coilLength,
+        unit: "mm",
+      });
+    const wireDiameterMm = resolveCoilPrimaryDiameterMm(device, p);
+    const coilVolumeMm3 =
+      wireDiameterMm !== null &&
+      Number.isFinite(p.coilLength) &&
+      p.coilLength > 0
+        ? Math.PI * Math.pow(wireDiameterMm / 2, 2) * p.coilLength
+        : null;
+    if (
+      coilVolumeMm3 !== null &&
+      Number.isFinite(coilVolumeMm3) &&
+      coilVolumeMm3 > 0
+    ) {
+      metrics.push({
+        label: "Coil wire volume",
+        value: coilVolumeMm3,
+        unit: "mm³",
+      });
+      if (
+        a?.sacVolume &&
+        Number.isFinite(a.sacVolume) &&
+        a.sacVolume > 0 &&
+        Number.isFinite((coilVolumeMm3 / a.sacVolume) * 100)
+      ) {
+        metrics.push({
+          label: "Packing volume density",
+          value: (coilVolumeMm3 / a.sacVolume) * 100,
+          unit: "%",
+        });
+      }
+    }
     notes.push(
       "Coiling approach: assess neck containment and whether an adjunct is required. The displayed coil skeleton is not a prediction of how a specific heat-set coil will deploy.",
     );
