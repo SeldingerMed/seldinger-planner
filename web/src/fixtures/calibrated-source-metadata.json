@@ -1,0 +1,51 @@
+{
+  "source_id": "zenodo-case006-calibrated",
+  "case_label": "Zenodo case 006 calibrated context",
+  "source_url": "https://doi.org/10.5281/zenodo.15697196",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "citation": "Zenodo record 15697196, public deidentified case 006 (CC BY 4.0), calibrated context crop prepared from DICOM-derived mm calibration.",
+  "image_sha256": "88f6e5a67dee23439c864d9e32d771fdd24abee55b904b8260fe30e3ddcd40a3",
+  "image_url": "/api/image-sources/zenodo-case006-calibrated/volume",
+  "reference_revision": "cb4f1ced10ae6b3b2e6d7cc9273c5f3f4fbc0478dba6a74588f083b3626c478f",
+  "spatial_units": "mm",
+  "dimensions": [
+    56,
+    77,
+    50
+  ],
+  "spacing_mm": [
+    0.4882810115814209,
+    0.4882810115814209,
+    0.625
+  ],
+  "image_affine_ras": [
+    [
+      -0.4882810115814209,
+      0.0,
+      0.0,
+      -1.6640048027038574
+    ],
+    [
+      0.0,
+      -0.4882810115814209,
+      0.0,
+      33.06099319458008
+    ],
+    [
+      0.0,
+      0.0,
+      0.625,
+      -22.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "method": "calibrated_context_crop",
+  "selection_basis": "reference-informed candidate context",
+  "clinical_validation": false,
+  "stl_registration_validated": false
+}

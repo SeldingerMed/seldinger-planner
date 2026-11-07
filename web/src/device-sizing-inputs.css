@@ -1,0 +1,56 @@
+.sizing-inputs {
+  border-top: 1px solid #2b4247;
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.sizing-inputs h3 {
+  margin: 0;
+  font-size: 12px;
+}
+.sizing-inputs .sizing-help {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #94a9af;
+}
+.sizing-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  color: #c1d7d9;
+}
+.sizing-field input,
+.sizing-field textarea {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  padding: 7px;
+  box-sizing: border-box;
+}
+.sizing-field textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.sizing-field input[aria-invalid="true"] {
+  border-color: #d59681;
+}
+.sizing-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sizing-actions button {
+  width: 100%;
+  white-space: normal;
+  font-size: 10px;
+}
+.sizing-note {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #dfc393;
+}

@@ -1,0 +1,15 @@
+# Input API/store independent review reconciliation
+
+The read-only reviewer inspected `planner/device_inputs_server.py` and `planner/device_inputs_state.py` only, not tests, result state, frontend or clinical behavior. No reproducible blocker was identified within that scope. This is not clearance for a complete sizing product, source authenticity, mathematical/clinical accuracy or later code.
+
+## Bounded caveats and resolution
+
+1. **PUT can commit before a later 409.** Accepted as a deliberate reload-required protocol boundary, not a claim that the write was rolled back. A parent regression now performs the input write, commits it, mutates case notes before source confirmation, receives409, verifies exactly one durable input row, verifies its values are suppressed as stale, and confirms retry with the old request does not add another row. Clients must reload source and saved input revision before another write. The UI component contract explicitly requires this behavior for any unconfirmed PUT.
+2. **GET spans input/source read transactions.** Existing regression changes the case between the input read and source reread and verifies409 rather than a mixed source envelope. Responses describe a coherent snapshot, not protection against subsequent independent mutations.
+3. **Stale records are not fully validated before suppression.** Retained: stale reads expose no old measurements, provenance or hash. The last opaque input revision is returned so optimistic replacement does not resurrect old history. This is stale-output suppression, not an audit of every historical row's integrity. Current records undergo schema and data-hash checks.
+4. **Scalar units are a contract, not a measured fact.** All six field definitions are millimeters; the API is gated by a confirmed-mm source and the component contract requires explicit mm labels. Operator entry cannot establish the physical units or anatomical correctness of independently obtained numbers. No automatic conversion or clinical validation is claimed.
+5. **Whitespace and HTTP decimal spelling.** Provenance notes intentionally preserve the entered string after nonblank/length validation; silently stripping text is not required. Leading-zero Content-Length values remain accepted as decimal HTTP syntax, with independent digit-length and streamed-byte caps. Neither changes stored numerical semantics.
+
+No production code changed for these review caveats. The new postcommit regression passed with the existing implementation. Focused input HTTP suite: **18 passed**, 0.40s. Complete lightweight base suite: **490 passed, 96 skipped**, 3.52s. Targeted Ruff, formatting and diff whitespace checks passed. Existing live all-null real-case API receipts remain separately scoped; no fake real-case dimensions were entered.
+
+The input component is still delegated and not integrated at this checkpoint. Materialized result state has a separate parent review; the source-bound calculation API/results UI and end-to-end sizing invalidation remain unfinished. All follow-up remains local/uncommitted, not a publication or deployment.

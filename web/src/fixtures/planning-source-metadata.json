@@ -1,0 +1,51 @@
+{
+  "source_id": "zenodo-case006-planning-context",
+  "case_label": "Zenodo case 006 planning context",
+  "source_url": "https://doi.org/10.5281/zenodo.15697196",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "citation": "Zenodo record 15697196, public deidentified case 006 (CC BY 4.0), calibrated context crop prepared from DICOM-derived mm calibration.",
+  "image_sha256": "26b8a3e766cf1306796286c8d10dfef41192930919df9029f9be0779b8080473",
+  "image_url": "/api/image-sources/zenodo-case006-planning-context/volume",
+  "reference_revision": "92834342c650ecae3733cac33aec096f01ff699c4f25c234fdb0b8738ae6f18e",
+  "spatial_units": "mm",
+  "dimensions": [
+    200,
+    200,
+    180
+  ],
+  "spacing_mm": [
+    0.4882810115814209,
+    0.4882810115814209,
+    0.625
+  ],
+  "image_affine_ras": [
+    [
+      -0.4882810115814209,
+      0.0,
+      0.0,
+      33.49222946166992
+    ],
+    [
+      0.0,
+      -0.4882810115814209,
+      0.0,
+      63.334415435791016
+    ],
+    [
+      0.0,
+      0.0,
+      0.625,
+      -63.25
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "method": "calibrated_context_crop",
+  "selection_basis": "reference-informed candidate context",
+  "clinical_validation": false,
+  "stl_registration_validated": false
+}

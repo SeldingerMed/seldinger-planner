@@ -1,0 +1,227 @@
+{
+  "clinical_suitability_established": false,
+  "device_checks_version": "historical-label-range-checks-v1",
+  "pipeline": {
+    "catalog_scope": "historical_source_only",
+    "clinical_suitability_established": false,
+    "note": "Historical FDA source rows only; not a current complete commercial catalog. device_id values are internal identifiers, not manufacturer SKUs.",
+    "rows": [
+      {
+        "device_id": "PIPELINE-HIST-2_50",
+        "labeled_diameter_mm": 2.5,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20
+        ],
+        "self_expanded_diameter_mm": 2.75
+      },
+      {
+        "device_id": "PIPELINE-HIST-2_75",
+        "labeled_diameter_mm": 2.75,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20
+        ],
+        "self_expanded_diameter_mm": 3.0
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_00",
+        "labeled_diameter_mm": 3.0,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 3.25
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_25",
+        "labeled_diameter_mm": 3.25,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 3.5
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_50",
+        "labeled_diameter_mm": 3.5,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 3.75
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_75",
+        "labeled_diameter_mm": 3.75,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.0
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_00",
+        "labeled_diameter_mm": 4.0,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.25
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_25",
+        "labeled_diameter_mm": 4.25,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.5
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_50",
+        "labeled_diameter_mm": 4.5,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.75
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_75",
+        "labeled_diameter_mm": 4.75,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 5.0
+      },
+      {
+        "device_id": "PIPELINE-HIST-5_00",
+        "labeled_diameter_mm": 5.0,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 5.25
+      }
+    ],
+    "source": {
+      "revision": "71012-001 Rev. 5 (12/2018)",
+      "scope": "historical_directions_for_use",
+      "table": "Table 1",
+      "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf10/P100018S015C.pdf"
+    },
+    "source_instructions": {
+      "family_parent_vessel_range_mm": [
+        2.0,
+        5.0
+      ],
+      "fully_expanded_diameter": "largest_target_vessel",
+      "labeled_diameter": "approximates_target_vessel",
+      "labeled_length_rule": "at_least_neck_length_plus_6mm",
+      "proximal_distal_differ": "match_larger_vessel"
+    }
+  },
+  "rules": {
+    "pipeline_coverage_margin_mm": 6.0,
+    "pipeline_parent_range_mm": [
+      2.0,
+      5.0
+    ],
+    "web_diameter_margin_mm": 1.0,
+    "web_dome_family_range_mm": [
+      3.0,
+      10.0
+    ],
+    "web_height_margin_mm": 1.0
+  },
+  "validated_sizing": false,
+  "version_basis": "canonical_catalog_and_rule_data_sha256",
+  "web": {
+    "catalog_status": "not_available",
+    "required_inputs": [
+      "average_sac_diameter",
+      "smallest_sac_height",
+      "dome_diameter"
+    ],
+    "rows": [],
+    "source": {
+      "revision": "LBA0040, Rev Q 12/2018",
+      "section": "sizing_instructions",
+      "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf17/P170032C.pdf"
+    }
+  },
+  "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf"
+}
