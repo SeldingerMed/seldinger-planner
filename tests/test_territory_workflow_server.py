@@ -184,6 +184,43 @@ def test_changed_case_suppresses_old_inputs_and_results(tmp_path, monkeypatch):
     )
 
 
+def test_poststore_acknowledgement_race_returns409_despite_committed_rows(tmp_path, monkeypatch):
+    import sqlite3
+
+    from planner.territory_workflow_state import TerritoryWorkflowLedger
+    from planner.territory_workflows import compute_workflow, validate_inputs
+
+    client, case, revision = configured(tmp_path, monkeypatch)
+    actual = TerritoryWorkflowLedger.save
+
+    def raced(self, identity, mode, expected, inputs, result):
+        result_id, stored_revision = actual(self, identity, mode, expected, inputs, result)
+        changed = tavr_inputs()
+        changed["left_ostium"] = [5, 5, 16]
+        changed = validate_inputs(mode, changed)
+        actual(self, identity, mode, stored_revision, changed, compute_workflow(mode, changed))
+        return result_id, stored_revision
+
+    monkeypatch.setattr(TerritoryWorkflowLedger, "save", raced)
+    route = f"/api/cases/{case['case_id']}/territory-workflows/tavr"
+    response = client.put(
+        route,
+        json={
+            "artifact_version": case["artifact_version"],
+            "reference_revision": revision,
+            "workflow_revision": 0,
+            "inputs": tavr_inputs(),
+        },
+    )
+    assert response.status_code == 409
+    with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM territory_workflow_results").fetchone()[0] == 2
+    current = client.get(route)
+    assert current.status_code == 200
+    assert current.json()["workflow_revision"] == 2
+    assert current.json()["current"]["result"]["left_coronary_height_mm"] == 6
+
+
 def saved_tavr(tmp_path, monkeypatch):
     client, case, revision = configured(tmp_path, monkeypatch)
     route = f"/api/cases/{case['case_id']}/territory-workflows/tavr"

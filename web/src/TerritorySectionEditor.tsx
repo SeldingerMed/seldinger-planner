@@ -3,7 +3,7 @@
  * coordinate strings apply only via the explicit Apply plane action, which
  * clears any prior contour. Plane viewport is an explicit field-of-view span.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { NVImage } from "@niivue/niivue";
 import ObliqueSection from "./ObliqueSection";
 import { planeBasis, type Vec3, type PlaneBounds } from "./obliqueSlice";
@@ -58,17 +58,23 @@ export default function TerritorySectionEditor({
   } catch {
     basis = null;
   }
-  const viewport: PlaneBounds = {
-    minX: -span / 2,
-    maxX: span / 2,
-    minY: -span / 2,
-    maxY: span / 2,
-  };
-  const section = {
-    plane_origin: value.origin,
-    plane_normal: value.normal,
-    contour_world: value.contour,
-  };
+  const viewport = useMemo<PlaneBounds>(
+    () => ({
+      minX: -span / 2,
+      maxX: span / 2,
+      minY: -span / 2,
+      maxY: span / 2,
+    }),
+    [span],
+  );
+  const section = useMemo(
+    () => ({
+      plane_origin: value.origin,
+      plane_normal: value.normal,
+      contour_world: value.contour,
+    }),
+    [value.origin, value.normal, value.contour],
+  );
 
   const guard = (): boolean => {
     if (disabled) {

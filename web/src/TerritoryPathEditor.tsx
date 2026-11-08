@@ -135,6 +135,7 @@ export default function TerritoryPathEditor({
 
   const updateSelected = (update: (p: Profile) => Profile) => {
     if (disabled || selectedProfileIndex < 0) return;
+    setNotice(null);
     const next = value.profiles.map((p, i) =>
       i === selectedProfileIndex ? update(p) : p,
     );
@@ -335,6 +336,12 @@ export default function TerritoryPathEditor({
                             [cls]: regions.length ? regions : null,
                           };
                         });
+                        if (selectedProfile[cls]?.length === 1)
+                          setNotice(
+                            `Last ${cls} region annotation removed; class is unknown. Select No ${cls} observed to declare zero.`,
+                          );
+                        //Deleting an annotation is not an assessment of absence.
+                        //The explicit No-observed action is the sole zero declaration.
                         setSelectedLayer("lumen");
                       }}
                     >

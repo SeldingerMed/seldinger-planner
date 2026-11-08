@@ -153,7 +153,6 @@ export default function App() {
     setGeometryDirty(false);
     setDeviceDirty(false);
     setFile(null);
-    setTerritoryDirty(false);
     setDigest("");
     setCase(null);
     setNotes("");

@@ -40,6 +40,53 @@ const ok = (value: unknown) =>
     status: 200,
     headers: { "Content-Type": "application/json" },
   });
+test("a definitive 422 rejection preserves an editable draft without claiming a possible commit", async () => {
+  const fetcher = vi
+    .fn()
+    .mockResolvedValueOnce(ok(producer))
+    .mockResolvedValueOnce(new Response("", { status: 422 }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<TerritoryStudio {...props} />);
+  await screen.findByTestId("metric-left_coronary_height_mm");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Set left coronary ostium" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save and calculate" }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("alert")).toHaveTextContent("nothing was stored");
+  expect(
+    screen.getByRole("button", { name: "Save and calculate" }),
+  ).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "Set left coronary ostium" }),
+  ).toBeEnabled();
+  expect(
+    screen.queryByTestId("metric-left_coronary_height_mm"),
+  ).not.toBeInTheDocument();
+  expect(fetcher).toHaveBeenCalledTimes(2);
+});
+test("a 409 acknowledgement can follow a commit and must still lock retries", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(ok(producer))
+      .mockResolvedValueOnce(new Response("", { status: 409 })),
+  );
+  render(<TerritoryStudio {...props} />);
+  await screen.findByTestId("metric-left_coronary_height_mm");
+  fireEvent.click(
+    screen.getByRole("button", { name: "Set left coronary ostium" }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save and calculate" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "may have been stored",
+  );
+  expect(
+    screen.getByRole("button", { name: "Save and calculate" }),
+  ).toBeDisabled();
+});
+
 test("a genuinely deferred old response cannot repopulate a changed-source workspace", async () => {
   const pending: Array<(value: Response) => void> = [];
   vi.stubGlobal(

@@ -138,18 +138,6 @@ test("opens calibrated image-only source with mm evidence and model controls, no
         return new Promise<Response>((resolve) => {
           finishCompute = resolve;
         });
-      if (url.includes("/territory-workflows/"))
-        return new Response(
-          JSON.stringify({
-            case_id: "calibrated-ui-fixture",
-            image_sha256: metadata.image_sha256,
-            artifact_version: "1",
-            reference_revision: metadata.reference_revision,
-            mode: url.split("/").at(-1),
-            workflow_revision: 0,
-            current: { status: "not_computed" },
-          }),
-        );
       if (url.endsWith("/segmentations"))
         return new Response(
           JSON.stringify({ current: { vessel: null, aneurysm: null } }),
@@ -279,31 +267,6 @@ test("opens calibrated image-only source with mm evidence and model controls, no
       .getAllByTestId("native-cta-binding")
       .every((e) => e.textContent === "bound"),
   ).toBe(true);
-  // Real App mode routing and dirty feedback, with explicit synthetic UI bytes.
-  fireEvent.click(screen.getByRole("button", { name: "Cardiac and aortic" }));
-  await screen.findByRole("heading", { name: "Territory planning" });
-  await screen.findByRole("button", { name: "Set left coronary ostium" });
-  expect(
-    screen.queryByRole("button", { name: "Run aneurysm model" }),
-  ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Pick geometry point" }));
-  fireEvent.click(
-    screen.getByRole("button", { name: "Set left coronary ostium" }),
-  );
-  expect(screen.getByRole("button", { name: "Neurovascular" })).toBeDisabled();
-  expect(
-    screen.getByRole("button", { name: "Open calibrated CTA" }),
-  ).toBeDisabled();
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: "Discard draft and reload saved workflow",
-    }),
-  );
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Neurovascular" })).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Neurovascular" }));
-  await screen.findByRole("button", { name: "Run aneurysm model" });
   fireEvent.click(
     screen.getByRole("button", { name: "Bind wrong-file native fixture" }),
   );

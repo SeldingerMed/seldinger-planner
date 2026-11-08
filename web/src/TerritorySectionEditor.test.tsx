@@ -69,6 +69,34 @@ function setup(
   );
 }
 
+test("unchanged applied geometry does not resample on unrelated cursor updates", () => {
+  harness.sample.mockReturnValue({
+    width: 2,
+    height: 2,
+    rgba: new Uint8ClampedArray(16),
+    outside: 0,
+  });
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    createImageData: () => ({ data: new Uint8ClampedArray(16) }),
+    putImageData: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(HTMLCanvasElement.prototype, "toDataURL").mockReturnValue(
+    "data:image/png;base64,test",
+  );
+  const onChange = vi.fn();
+  const { rerender } = setup(onChange);
+  expect(harness.sample).toHaveBeenCalledOnce();
+  rerender(
+    <TerritorySectionEditor
+      value={initial}
+      onChange={onChange}
+      volume={image}
+      cursor={[4, 5, 6]}
+    />,
+  );
+  expect(harness.sample).toHaveBeenCalledOnce();
+});
+
 test("positive typing: Use cursor fills origin draft, Apply plane emits new plane with cleared contour", () => {
   const onChange = vi.fn();
   setup(onChange, {

@@ -26,6 +26,11 @@ export class RevisionConflictError extends Error {
     super("Case changed. Reload saved state to review it before saving again.");
   }
 }
+export class WorkspaceRequestError extends Error {
+  constructor(public readonly status: number) {
+    super(`Workspace request failed (${status}).`);
+  }
+}
 export async function api<T>(
   path: string,
   body?: unknown,
@@ -38,7 +43,7 @@ export async function api<T>(
   });
   if (!response.ok) {
     if (response.status === 409) throw new RevisionConflictError();
-    throw new Error(`Workspace request failed (${response.status}).`);
+    throw new WorkspaceRequestError(response.status);
   }
   return response.json();
 }

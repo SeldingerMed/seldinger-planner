@@ -137,6 +137,25 @@ beforeEach(() => {
   );
 });
 
+test.each([false, true])(
+  "removing the last annotation explicitly announces unknown, never invents observed zero (prior zero %s)",
+  (priorZero) => {
+    const { calls } = setup({
+      ...base,
+      profiles: [profile(0, [0, 0, 0], [1, 0, 0])],
+    });
+    click("Profile at station 0");
+    if (priorZero) click("No thrombus observed");
+    click("Add thrombus region");
+    click("Remove thrombus region 1");
+    expect(calls.at(-1)!.profiles[0].thrombus).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("class is unknown");
+    click("No thrombus observed");
+    expect(calls.at(-1)!.profiles[0].thrombus).toEqual([]);
+    expect(screen.queryByText(/class is unknown/)).not.toBeInTheDocument();
+  },
+);
+
 test("duplicate and blank station drafts never append an ambiguous profile", () => {
   const { calls } = setup({
     ...base,

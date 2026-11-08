@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./territory.css";
 import type { NVImage } from "@niivue/niivue";
-import { api, type CaseState } from "./api";
+import { api, WorkspaceRequestError, type CaseState } from "./api";
 import type { Vec3 } from "./obliqueSlice";
 import TerritorySectionEditor, { type Section } from "./TerritorySectionEditor";
 import TerritoryPathEditor, {
@@ -339,15 +339,21 @@ export default function TerritoryStudio({
         error: "",
       });
       callbacks.current.onDirtyChange?.(false);
-    } catch {
+    } catch (error) {
       if (live.current !== capturedKey || epoch.current !== ticket) return;
       setSnapshot((old) =>
         old?.key === capturedKey
           ? {
               ...old,
-              locked: true,
+              //422 is guaranteed to precede the ledger write.409 is NOT:
+              // a post-store snapshot/acknowledgement race can return409.
+              locked: !(
+                error instanceof WorkspaceRequestError && error.status === 422
+              ),
               error:
-                "Save could not be confirmed. It may have been stored. Reload saved workflow before retrying.",
+                error instanceof WorkspaceRequestError && error.status === 422
+                  ? "Annotations were rejected; nothing was stored. Correct the draft and save again."
+                  : "Save could not be confirmed. It may have been stored. Reload saved workflow before retrying.",
             }
           : old,
       );

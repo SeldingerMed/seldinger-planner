@@ -12,22 +12,28 @@ vi.mock("./Viewer", () => ({
     file: File;
     onNativeVolume: (v: unknown) => void;
     onLoaded: (v: unknown) => void;
+    onLocation: (point: [number, number, number]) => void;
   }) => (
-    <button
-      onClick={() => {
-        p.onNativeVolume({
-          file: p.file,
-          image: { synthetic: "UI fixture only" },
-        });
-        p.onLoaded({
-          dimensions: source.dimensions,
-          spacing_mm: source.spacing_mm,
-          spatial_units: "mm",
-        });
-      }}
-    >
-      Load synthetic installed volume
-    </button>
+    <>
+      <button
+        onClick={() => {
+          p.onNativeVolume({
+            file: p.file,
+            image: { synthetic: "UI fixture only" },
+          });
+          p.onLoaded({
+            dimensions: source.dimensions,
+            spacing_mm: source.spacing_mm,
+            spatial_units: "mm",
+          });
+        }}
+      >
+        Load synthetic installed volume
+      </button>
+      <button onClick={() => p.onLocation([16, 16, 16])}>
+        Pick native point
+      </button>
+    </>
   ),
 }));
 import App from "./App";
@@ -104,4 +110,25 @@ test("actual App enables territory workflows for an operator-opened, server-inst
   expect(
     screen.queryByRole("button", { name: "Run aneurysm model" }),
   ).not.toBeInTheDocument();
+  // Dedicated mode/dirty feedback tracer, separate from the long public-neuro test.
+  fireEvent.click(screen.getByRole("button", { name: "Pick native point" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Set left coronary ostium" }),
+  );
+  expect(screen.getByRole("button", { name: "Neurovascular" })).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Open calibrated CTA" }),
+  ).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Discard draft and reload saved workflow",
+    }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Neurovascular" })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Neurovascular" }));
+  expect(
+    await screen.findByRole("heading", { name: /^Aneurysm worksheet/ }),
+  ).toBeInTheDocument();
 });
