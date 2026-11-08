@@ -400,7 +400,10 @@ export default function TerritoryStudio({
       </div>
       <p className="muted small">
         Operator-traced geometry in physical RAS millimeters. Each workflow
-        saves its own annotations and measurements.
+        saves its own annotations and measurements. Contours allow up to 128
+        points each; the separate workflow-wide budget is 8192 annotated
+        positions, including section origins, across all paths and tissue
+        regions. A one-megabyte request limit also applies.
       </p>
       {!eligible && (
         <p>

@@ -156,6 +156,24 @@ test.each([false, true])(
   },
 );
 
+test("an empty path has no valid profile station", () => {
+  setup({ path: [], profiles: [] });
+  click("Add profile at station");
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Append path points before choosing a profile station",
+  );
+});
+
+test("invalid profile station explains the rejection without changing the path", () => {
+  const { calls } = setup(base);
+  fireEvent.change(screen.getByLabelText("Profile station"), {
+    target: { value: "99" },
+  });
+  click("Add profile at station");
+  expect(calls).toHaveLength(0);
+  expect(screen.getByRole("status")).toHaveTextContent("integer path index");
+});
+
 test("an unchanged cursor cannot append a duplicate or clear existing profiles", () => {
   const { calls } = setup({
     path: [

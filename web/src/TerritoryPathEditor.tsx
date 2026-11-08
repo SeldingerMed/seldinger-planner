@@ -107,23 +107,39 @@ export default function TerritoryPathEditor({
 
   const addProfile = () => {
     if (disabled) return;
-    if (stationDraft.trim() === "") return;
     const station = Number(stationDraft);
     if (
+      stationDraft.trim() === "" ||
       !Number.isInteger(station) ||
       station < 0 ||
-      station >= value.path.length ||
-      value.profiles.some((p) => p.station === station) ||
-      value.profiles.length >= MAX_PROFILES
-    )
+      station >= value.path.length
+    ) {
+      setNotice(
+        value.path.length
+          ? `Choose an integer path index from 0 to ${value.path.length - 1}`
+          : "Append path points before choosing a profile station",
+      );
       return;
+    }
+    if (value.profiles.some((p) => p.station === station)) {
+      setNotice("A profile already exists at this station; select it to edit.");
+      return;
+    }
+    if (value.profiles.length >= MAX_PROFILES) {
+      setNotice(
+        "Profile limit 32 reached; remove a profile before adding another.",
+      );
+      return;
+    }
     const tangent = tangentAt(value.path, station);
     if (
       !tangent ||
       !tangent.every(Number.isFinite) ||
       Math.hypot(...tangent) <= 1e-12
-    )
+    ) {
+      setNotice("The selected station needs a nonzero path tangent.");
       return;
+    }
     const next = [
       ...value.profiles,
       {

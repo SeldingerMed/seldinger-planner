@@ -108,7 +108,7 @@ def section_metrics(origin, normal, contour):
     origin = point3(origin)
     n, u, v = plane_basis(normal)
     if not isinstance(contour, (list, tuple)) or not 3 <= len(contour) <= MAX_CONTOUR_POINTS:
-        raise ValueError("Section contour must contain three to 512 points")
+        raise ValueError(f"Section contour must contain three to {MAX_CONTOUR_POINTS} points")
     points = [point3(p) for p in contour]
     if points[0] == points[-1]:
         points.pop()

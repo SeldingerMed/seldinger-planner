@@ -73,6 +73,65 @@ def configured(tmp_path, monkeypatch, *, voxel_payload=None):
     return client, case, metadata.json()["reference_revision"]
 
 
+def test_global_point_budget_is_independent_of_per_field_maxima(tmp_path, monkeypatch):
+    import math
+
+    from planner.territory_workflow_server import MAX_ANNOTATION_POINTS, MAX_BODY_BYTES
+    from planner.territory_workflows import input_points, validate_inputs
+
+    client, case, revision = configured(tmp_path, monkeypatch)
+    path = [[1 + i * 29 / 31, 16.0, 16.0] for i in range(32)]
+
+    def ring(origin, radius):
+        return {
+            "origin": origin[:],
+            "normal": [1, 0, 0],
+            "contour": [
+                [
+                    origin[0],
+                    16 + radius * math.cos(2 * math.pi * k / 128),
+                    16 + radius * math.sin(2 * math.pi * k / 128),
+                ]
+                for k in range(128)
+            ],
+        }
+
+    inputs = {
+        "path": path,
+        "suprarenal_index": 0,
+        "neck_start": 1,
+        "neck_end": 30,
+        "sac_index": 31,
+        "profiles": [
+            {
+                "station": i,
+                "section": ring(p, 1),
+                "outer_wall": ring(p, 3),
+                "thrombus": None,
+                "calcification": None,
+            }
+            for i, p in enumerate(path)
+        ],
+        "left_access": None,
+        "right_access": None,
+    }
+    admitted = validate_inputs("aortic_peripheral", inputs)
+    assert len(list(input_points(admitted))) > MAX_ANNOTATION_POINTS
+    body = {
+        "artifact_version": case["artifact_version"],
+        "reference_revision": revision,
+        "workflow_revision": 0,
+        "inputs": inputs,
+    }
+    assert len(json.dumps(body).encode()) < MAX_BODY_BYTES
+    route = f"/api/cases/{case['case_id']}/territory-workflows/aortic_peripheral"
+    response = client.put(route, json=body)
+    assert response.status_code == 422, response.text
+    assert response.json()["detail"] == "Annotation point count exceeds its bound"
+    retained = client.get(route).json()
+    assert retained["workflow_revision"] == 0 and retained["current"]["status"] == "not_computed"
+
+
 def test_modes_have_independent_revisions_and_real_geometry_roundtrips(tmp_path, monkeypatch):
     from test_territory_profiles import access_payload, aortic_inputs, coronary_inputs
 

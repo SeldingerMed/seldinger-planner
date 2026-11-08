@@ -69,6 +69,46 @@ function setup(
   );
 }
 
+test("the 129th contour pick is bounded without discarding the existing trace", () => {
+  const onChange = vi.fn();
+  const contour: Array<Vec3> = Array.from({ length: 127 }, (_, i) => [
+    Math.cos((i * 2 * Math.PI) / 128),
+    Math.sin((i * 2 * Math.PI) / 128),
+    30,
+  ]);
+  const { rerender } = setup(onChange, { value: { ...initial, contour } });
+  Object.defineProperty(SVGSVGElement.prototype, "getScreenCTM", {
+    configurable: true,
+    value: () => ({
+      a: 1,
+      b: 0,
+      c: 0,
+      d: 1,
+      e: 0,
+      f: 0,
+      inverse: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }),
+    }),
+  });
+  fireEvent.click(document.querySelector("svg")!, { clientX: 2, clientY: 3 });
+  expect(onChange).toHaveBeenCalledOnce();
+  const atLimit = onChange.mock.calls[0][0];
+  expect(atLimit.contour).toHaveLength(128);
+  rerender(
+    <TerritorySectionEditor
+      value={atLimit}
+      onChange={onChange}
+      volume={image}
+      cursor={null}
+    />,
+  );
+  onChange.mockClear();
+  fireEvent.click(document.querySelector("svg")!, { clientX: 4, clientY: 5 });
+  expect(onChange).not.toHaveBeenCalled();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Contour limit 128 reached",
+  );
+});
+
 test("unchanged applied geometry does not resample on unrelated cursor updates", () => {
   harness.sample.mockReturnValue({
     width: 2,

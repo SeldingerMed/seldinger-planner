@@ -108,7 +108,7 @@ export default function TerritorySectionEditor({
   };
 
   const pick = (ras: Vec3) => {
-    if (guard()) return;
+    if (guard() || value.contour.length >= 128) return;
     onChange({ ...value, contour: [...value.contour, ras] });
   };
 
@@ -176,6 +176,11 @@ export default function TerritorySectionEditor({
       />
       <div className="territory-section-contour">
         <span>Contour points: {value.contour.length}</span>
+        {value.contour.length >= 128 && (
+          <p role="status">
+            Contour limit 128 reached. Undo a point before adding another.
+          </p>
+        )}
         <button
           type="button"
           disabled={disabled || value.contour.length === 0}

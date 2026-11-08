@@ -16,6 +16,10 @@ Section vertices are physical RAS coordinates. A simple planar ring supplies are
 
 Path profile normals follow the centered previous-to-next chord at interior nodes and a one-sided chord at endpoints. Aortic alpha compares suprarenal-to-neck-start with neck-start-to-neck-end; beta compares that neck axis with neck-end-to-sac. Burdens use trapezoidal integration of class areas divided by corresponding outer-wall area integration over the declared neck interval.
 
+## Independent resource limits
+
+Per-field maxima are independent, not a promise that every combination of maxima can be submitted together. Each contour permits 128 vertices; each path permits 128 nodes and 32 profiles; each tissue class permits eight regions. A separate workflow-wide limit of 8,192 annotated positions includes section origins and all main/access/tissue paths; the request body is independently capped at 1,000,000 bytes. The App states the aggregate budget. A real default-API test confirms that a structurally valid 32-profile lumen/wall trace is rejected by the aggregate guard before storage, while the measured 8,030-point example is accepted. Raising the aggregate ceiling to the full structural Cartesian maximum would materially expand the bounded compute envelope and is intentionally not part of this release.
+
 ## Real App/API browser exercise
 
 An isolated API served the production frontend, a fresh SQLite database and a generated 32³ signed-short NIfTI gradient with identity millimeter affine. Public samples/references and model calls were disabled in that instance. This was a software/geometry exercise on explicit synthetic bytes, not an anatomical dataset study.
@@ -38,7 +42,7 @@ Desktop and 430×932 portrait layouts were inspected. Portrait document width an
 
 ## Automated verification
 
-Clean-candidate results: **752 backend tests passed,108 optional tests skipped;129 numerical tests passed;21 imaging-geometry tests passed;304 frontend tests passed**. Base tests used Python3.12.13, numerical/geometry checks Python3.11.15, and the final frontend run Node24.22.2. Ruff, formatting, TypeScript/build, API/server Pyright and dependency audit passed with zero vulnerabilities. Geometry tests used a separate runtime populated from the numerical dependency lock; no trained-model run is claimed.
+Clean-candidate results: **754 backend tests passed,108 optional tests skipped;129 numerical tests passed;21 imaging-geometry tests passed;307 frontend tests passed**. Base tests used Python3.12.13, numerical/geometry checks Python3.11.15, and the final frontend run Node24.22.2. Ruff, formatting, TypeScript/build, API/server Pyright and dependency audit passed with zero vulnerabilities. Geometry tests used a separate runtime populated from the numerical dependency lock; no trained-model run is claimed.
 
 Clean-candidate checks and exact file hashes are recorded in `phase3-artifacts.json`. The publication candidate excludes local `plan.md` and all pre-existing unrelated work. Local mixed-checkout totals are not substituted for clean-candidate totals.
 
@@ -54,7 +58,9 @@ The backend independent review substantiated no defects in its bounded geometry/
 - Applied section and viewport objects are memoized. In the real native-volume browser, an unrelated landmark update retained the same existing image node with zero image mutations. Geometry/source/window/bounds invalidation remains covered separately.
 - Removed the duplicate dirty-state reset. Moved Phase3 mode/dirty assertions into the dedicated native-source integration tracer rather than extending the already-long public-neuro test; no timeout was raised.
 
-The repair candidate reran all752 base and304 frontend tests. The source lint excluded only locally provisioned third-party `.runtime` virtual environments; the CI backend has no such generated directories. The numerical129 and imaging21 evidence carries forward for their unchanged source files.
+The repair candidate reran all 754 base and 307 frontend tests. The source lint excluded only locally provisioned third-party `.runtime` virtual environments; the CI backend has no such generated directories. The 129 numerical and 21 imaging-geometry tests were also rerun on the final clean candidate.
+
+Contour picking stops at 128 vertices with an explicit limit notice. The guard test proves a successful 128th pick before rejecting the 129th and fails when the cap is removed. Invalid, duplicate, empty-path and degenerate-tangent profile stations now explain why no profile was added. The contour-bound error interpolates the shared limit.
 
 Additional review refinements prevent a duplicate cursor append before it can clear profiles, share the 128-point contour bound between geometry and Pydantic, and preserve drafts for the independently proven pre-write 413 body rejection.
 

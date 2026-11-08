@@ -7,6 +7,13 @@ import pytest
 from planner.territory_geometry import section_metrics
 
 
+def test_contour_bound_message_uses_the_current_shared_limit():
+    from planner.territory_geometry import MAX_CONTOUR_POINTS, section_metrics
+
+    with pytest.raises(ValueError, match=f"three to {MAX_CONTOUR_POINTS} points"):
+        section_metrics([0, 0, 0], [0, 0, 1], [[0, 0, 0]] * (MAX_CONTOUR_POINTS + 1))
+
+
 def test_self_crossing_annular_trace_with_nonzero_shoelace_area_is_rejected():
     # A pentagram has nonzero shoelace area but is not a simple annular ring.
     outer = [[math.cos(2 * math.pi * i / 5), math.sin(2 * math.pi * i / 5), 0] for i in range(5)]
