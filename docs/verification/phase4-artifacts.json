@@ -5,7 +5,7 @@
     ".github/workflows/native-ingest.yml": "a80390b8cb08f0dd460cf23535586feb53e6561cab1c6ad4acb8f84fd5ee52f8",
     "docs/local-imaging.md": "d4c3d4bb986b7de5dac016d97381bd511dd708b936fabffdba01d53618e7eb50",
     "docs/plans/phase4-local-imaging.md": "e6b948fa0bcc7aafe4d7ed1dc9ef1e0dfe823219abaf676f0ec8daaf23c584c2",
-    "docs/verification/phase4-local-imaging.md": "3b93a45aa5e2fa01d8883ae08cf263cb79969630234f6daa99b3813cf6f8029c",
+    "docs/verification/phase4-local-imaging.md": "ceb80500513ded6a6021e4fb0c948709acf21b9d32449abf6b938cb4bdf87ef3",
     "planner/advanced_context.py": "f59af37d3e4ada5bfeb9129cf1fc293c3fbff87e7044e264762e8733e04eeaec",
     "planner/dicom_ingest.py": "e2416a437da0b517198d66357a03b7d1e6d2311015e89d95052e5487d581ac5d",
     "planner/local_brief.py": "91feaa6612f03930053ae5a4429fceb3698a4ee594dba9b2faba4d4a6e5a5c84",
@@ -39,23 +39,24 @@
     "web/src/nativeSampling.test.ts": "29cd19f5483388ed49d9230cbc6ddcb8089e3c72cc9c5aae8e8c08bf78dd7670",
     "web/src/nativeSampling.ts": "06c60af067616f22668d4307092e62bf80227907299bcd769b8ff67fa9e1179f",
     "web/src/reformatScene.producer.test.ts": "e7d566cd5f65fcfdc2fa61964abf3117923a4f45ad7bc6dd105cd734185121fa",
-    "web/src/reformatScene.test.ts": "516a3f017a61a4aa5af4b510ccdbca9a8a6ea28307a264049aaa01d6f01faf05",
-    "web/src/reformatScene.ts": "cd0fda2f0d62051a033b4890f9b63c6f2a5ae90cbd0a356b36008a439cc15aa2",
+    "web/src/reformatScene.test.ts": "2e3542718a356d240acbba244e1d632a0ba4f2751e127331ca002943eb2c32cc",
+    "web/src/reformatScene.ts": "e37162d1d8b605527ed8666032dbf4c8200a75902dab4abc9ff1c1fdae331c8b",
     "web/src/reformats.css": "20a51461fc1060bac935935b0dd2070f9beabe736d17f4da7f97f00854ece064",
     "web/src/rigidFusion.test.ts": "0552da017f4ff780c511a93a2be15fbd098ef39613376fee14f69b37b925270b",
     "web/src/rigidFusion.ts": "f52c5e1c96b4317eb0e6ccd36a9cd8857fbb4f3a7298ac002e31d8ed55b77993",
     "web/src/secondarySource.test.ts": "ac31acdf8a80c00eb6c3d7781b8adeebcb2c6ca0bde5ff61d61d3a5c6c9ca7fb",
     "web/src/secondarySource.ts": "a2bd144a9ab48d6dce93483fa1f31574cf42d4d0fd2c3cbd01d78fdd6330555b",
     "tests/ingest_runtime/test_dicom_ordering.py": "a74a4d406e5d81f8e2fa74d9a6dbfb3d6d07202fa23ade94dc76253028b2aa44",
-    "web/src/calibrated-integration.test.tsx": "78bf0922624eb308be04930839f05c414900f20fa9ee6abd11b0a9192d1ebf26"
+    "web/src/calibrated-integration.test.tsx": "78bf0922624eb308be04930839f05c414900f20fa9ee6abd11b0a9192d1ebf26",
+    "tests/ingest_runtime/test_dicom_stored_bits.py": "094052688b0767cce3de02ef45bcc6f425d1f6e4d0760ec8e678097cf233e967"
   },
   "checks": {
     "backend": {
       "passed": 834,
-      "skipped": 111
+      "skipped": 112
     },
-    "frontend": 380,
-    "ingest": 31,
+    "frontend": 384,
+    "ingest": 36,
     "numerical": 129,
     "model_free_imaging": 52,
     "ruff": "passed",

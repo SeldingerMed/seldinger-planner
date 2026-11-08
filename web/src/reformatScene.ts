@@ -63,6 +63,7 @@ const sceneId = (value: unknown): value is string =>
 function inputsValid(value: unknown): value is SceneInputs {
   if (
     !record(value) ||
+    Object.keys(value).length !== 3 ||
     value.confirmed !== true ||
     value.secondary === undefined
   )
@@ -85,7 +86,7 @@ function inputsValid(value: unknown): value is SceneInputs {
   if (length > 10000) return false;
   const secondary = value.secondary;
   if (secondary === null) return true;
-  if (!record(secondary)) return false;
+  if (!record(secondary) || Object.keys(secondary).length !== 4) return false;
   try {
     validateRigid(secondary.secondary_to_primary_ras);
   } catch {
@@ -102,7 +103,7 @@ function inputsValid(value: unknown): value is SceneInputs {
 }
 
 function resultValid(result: unknown, inputs: SceneInputs): boolean {
-  if (!record(result)) return false;
+  if (!record(result) || Object.keys(result).length !== 5) return false;
   const derived = inputs.path.reduce(
     (sum, p, i) =>
       i === 0
@@ -144,6 +145,7 @@ function metadataValid(
 export function parseScene(value: unknown, identity: Identity): Scene {
   if (
     !record(value) ||
+    Object.keys(value).length !== Object.keys(identity).length + 3 ||
     !Object.entries(identity).every(([k, v]) => value[k] === v) ||
     !Number.isSafeInteger(value.scene_revision) ||
     (value.scene_revision as number) < 0 ||

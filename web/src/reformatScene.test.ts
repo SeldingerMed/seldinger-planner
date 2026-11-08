@@ -282,3 +282,29 @@ it.each(["current", "stale"])(
     ).toThrow();
   },
 );
+
+it.each(["envelope", "inputs", "secondary", "result"])(
+  "rejects unknown keys at %s while admitting the actual baseline",
+  (where) => {
+    const envelope = structuredClone(
+      where === "secondary"
+        ? current(
+            {},
+            { ...inputs, secondary },
+            { ...result, registration_method: "operator_confirmed_rigid_ras" },
+          )
+        : current(),
+    );
+    expect(() => parseScene(envelope, identity)).not.toThrow();
+    const target =
+      where === "envelope"
+        ? envelope
+        : where === "inputs"
+          ? envelope.current.inputs
+          : where === "secondary"
+            ? envelope.current.inputs.secondary
+            : envelope.current.result;
+    Object.assign(target!, { unexpected: "not part of the bounded DTO" });
+    expect(() => parseScene(envelope, identity)).toThrow();
+  },
+);
