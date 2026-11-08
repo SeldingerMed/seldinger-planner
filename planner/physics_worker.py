@@ -281,6 +281,9 @@ def run_local_physics(job, *, blob_dir):
 def main():
     import sys
 
+    from nibabel.filebasedimages import ImageFileError
+    from nibabel.spatialimages import HeaderDataError, HeaderTypeError
+
     try:
         raw = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
         if len(raw) > MAX_INPUT_BYTES:
@@ -290,7 +293,17 @@ def main():
         if len(result.encode()) + 1 > MAX_OUTPUT_BYTES:
             raise ValueError("Numerical output exceeds its bound")
         print(result)
-    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+    except (
+        OSError,
+        EOFError,
+        ValueError,
+        TypeError,
+        KeyError,
+        RuntimeError,
+        ImageFileError,
+        HeaderDataError,
+        HeaderTypeError,
+    ) as exc:
         print(f"Native numerical computation failed: {type(exc).__name__}", file=sys.stderr)
         raise SystemExit(1) from None
 

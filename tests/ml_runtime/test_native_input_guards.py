@@ -172,7 +172,7 @@ def test_decompression_byte_cap(tmp_path, monkeypatch):
     # At-cap decompressed payload is not itself rejected by size alone; a
     # truncated gzip stream is rejected rather than silently truncated.
     truncated = bomb[: len(bomb) // 2]
-    with pytest.raises((ValueError, OSError, EOFError, gzip.BadGzipFile)):
+    with pytest.raises(ValueError):
         native_inputs.decode_bytes(truncated)
 
 

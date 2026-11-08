@@ -204,6 +204,36 @@ def test_proposed_native_path_supports_geometry_after_explicit_station_review(
     assert result["proximal_parent"]["plane_origin"] == tuple(operator["parent_path"][2])
 
 
+def test_cli_sanitizes_decoder_failure_families(monkeypatch, capsys):
+    import io
+    import sys
+    from types import SimpleNamespace
+
+    from planner import physics_worker
+
+    for failure_type in (
+        EOFError,
+        nib.filebasedimages.ImageFileError,
+        nib.spatialimages.HeaderDataError,
+        nib.spatialimages.HeaderTypeError,
+    ):
+
+        def broken(*args, failure_type=failure_type, **kwargs):
+            raise failure_type("private /data/sensitive/image.nii.gz")
+
+        monkeypatch.setattr(physics_worker, "compute_job", broken)
+        monkeypatch.setattr(
+            sys, "stdin", SimpleNamespace(buffer=io.BytesIO(b'{"job":{},"blob_dir":"internal"}'))
+        )
+        with pytest.raises(SystemExit) as failure:
+            physics_worker.main()
+        assert failure.value.code == 1
+        output = capsys.readouterr()
+        assert output.out == ""
+        assert output.err == f"Native numerical computation failed: {failure_type.__name__}\n"
+        assert "Traceback" not in output.err and "/data" not in output.err
+
+
 def _bounded_supervisor_env(tmp_path, monkeypatch, flood_stream=None):
     """Copy a minimal planner stub into tmp_path so the fixed runtime child
     floods one stream or stays silent, and poison-free supervisor env."""

@@ -35,8 +35,11 @@ def decode_bytes(payload):
     import nibabel as nib
 
     if payload[:2] == b"\x1f\x8b":
-        with gzip.GzipFile(fileobj=io.BytesIO(payload)) as stream:
-            raw = stream.read(MAX_RAW_BYTES + 1)
+        try:
+            with gzip.GzipFile(fileobj=io.BytesIO(payload)) as stream:
+                raw = stream.read(MAX_RAW_BYTES + 1)
+        except (EOFError, OSError):
+            raise ValueError("Native artifact decompression failed") from None
     else:
         raw = payload
     if not 352 <= len(raw) <= MAX_RAW_BYTES:
