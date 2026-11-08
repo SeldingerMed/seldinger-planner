@@ -156,6 +156,26 @@ test.each([false, true])(
   },
 );
 
+test.each([
+  [1e-9, false],
+  [1e-7, true],
+] as const)(
+  "cursor spacing %s mm matches server distinctness admission",
+  (spacing, admitted) => {
+    const { calls } = setup({
+      path: [
+        [0, 0, 0],
+        [6 - spacing, 0, 0],
+      ],
+      profiles: [],
+    });
+    click("Append cursor point");
+    expect(calls).toHaveLength(admitted ? 1 : 0);
+    if (!admitted)
+      expect(screen.getByRole("status")).toHaveTextContent("move the cursor");
+  },
+);
+
 test("an empty path has no valid profile station", () => {
   setup({ path: [], profiles: [] });
   click("Add profile at station");

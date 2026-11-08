@@ -42,7 +42,7 @@ Desktop and 430×932 portrait layouts were inspected. Portrait document width an
 
 ## Automated verification
 
-Clean-candidate results: **754 backend tests passed,108 optional tests skipped;129 numerical tests passed;21 imaging-geometry tests passed;307 frontend tests passed**. Base tests used Python3.12.13, numerical/geometry checks Python3.11.15, and the final frontend run Node24.22.2. Ruff, formatting, TypeScript/build, API/server Pyright and dependency audit passed with zero vulnerabilities. Geometry tests used a separate runtime populated from the numerical dependency lock; no trained-model run is claimed.
+Clean-candidate results: **754 backend tests passed,108 optional tests skipped;129 numerical tests passed;21 imaging-geometry tests passed;315 frontend tests passed**. Base tests used Python3.12.13, numerical/geometry checks Python3.11.15, and the final frontend run Node24.22.2. Ruff, formatting, TypeScript/build, API/server Pyright and dependency audit passed with zero vulnerabilities. Geometry tests used a separate runtime populated from the numerical dependency lock; no trained-model run is claimed.
 
 Clean-candidate checks and exact file hashes are recorded in `phase3-artifacts.json`. The publication candidate excludes local `plan.md` and all pre-existing unrelated work. Local mixed-checkout totals are not substituted for clean-candidate totals.
 
@@ -58,13 +58,17 @@ The backend independent review substantiated no defects in its bounded geometry/
 - Applied section and viewport objects are memoized. In the real native-volume browser, an unrelated landmark update retained the same existing image node with zero image mutations. Geometry/source/window/bounds invalidation remains covered separately.
 - Removed the duplicate dirty-state reset. Moved Phase3 mode/dirty assertions into the dedicated native-source integration tracer rather than extending the already-long public-neuro test; no timeout was raised.
 
-The repair candidate reran all 754 base and 307 frontend tests. The source lint excluded only locally provisioned third-party `.runtime` virtual environments; the CI backend has no such generated directories. The 129 numerical and 21 imaging-geometry tests were also rerun on the final clean candidate.
+The repair candidate reran all 754 base and 315 frontend tests. The source lint excluded only locally provisioned third-party `.runtime` virtual environments; the CI backend has no such generated directories. The 129 numerical and 21 imaging-geometry tests were also rerun on the final clean candidate.
 
 Contour picking stops at 128 vertices with an explicit limit notice. The guard test proves a successful 128th pick before rejecting the 129th and fails when the cap is removed. Invalid, duplicate, empty-path and degenerate-tangent profile stations now explain why no profile was added. The contour-bound error interpolates the shared limit.
 
 Additional review refinements prevent a duplicate cursor append before it can clear profiles, share the 128-point contour bound between geometry and Pydantic, and preserve drafts for the independently proven pre-write 413 body rejection.
 
 A proposed write-readback shortcut was intentionally declined after a real default-API measurement: an 8,030-point circular-profile input (31 lumen/wall pairs, 128 vertices per ring) performed **three** complete geometry computations, not five. Observed timings were 0.667347250 s pre-write, 0.659410333 s and 0.675560750 s for the two stored-row integrity reads; the whole PUT took 2.085107916 s and returned 200/revision 1. This is one near-point-cap input on the local machine, not a latency guarantee for all shapes. Fresh persisted-row verification and double-read coherence were retained rather than replaced with a no-recompute acknowledgement path.
+
+The final frontend refinement checks all four path indices for integer/range eligibility and their mode-specific ordering before enabling save, with an explicit ordering message. Integration tests start from actual default-API coronary/aortic response fixtures, prove an admitted edited ordering, then attempt a reversed ordering with no PUT issued. Cursor distinctness now matches the server's 10⁻⁸ mm admission floor; tests reject a 10⁻⁹ mm step but preserve an admitted 10⁻⁷ mm step rather than broadening the tolerance to a suggested 10⁻⁶ mm.
+
+The same-revision reload allegation was disproved in the real TerritoryStudio plus TerritorySectionEditor, not an isolated editor. Immediate and deferred reload tests both restore the saved plane and contour after a 503 without incrementing the stored revision. During a deferred GET, the editor subtree is observably absent because the parent cleared its snapshot; the subsequent remount initializes fresh draft strings. Both regressions are retained in `TerritoryStudio.reload.test.tsx`.
 
 ## Delivery gate
 

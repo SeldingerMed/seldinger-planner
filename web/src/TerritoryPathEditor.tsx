@@ -79,7 +79,7 @@ export default function TerritoryPathEditor({
   const appendCursorPoint = () => {
     if (disabled || !cursor || value.path.length >= MAX_PATH) return;
     const last = value.path.at(-1);
-    if (last && last.every((v, i) => v === cursor[i])) {
+    if (last && Math.hypot(...last.map((v, i) => v - cursor[i])) <= 1e-8) {
       setNotice(
         "Cursor point duplicates the last path point; move the cursor first",
       );

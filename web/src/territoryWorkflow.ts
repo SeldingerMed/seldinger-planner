@@ -31,6 +31,38 @@ const fail = (): never => {
 export function record(value: unknown): value is Data {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
+/** Cheap path-index preflight. Geometry and full admission remain server-authoritative. */
+export function pathIndexError(
+  mode: Exclude<WorkflowMode, "tavr">,
+  inputs: Data,
+  pathLength: number,
+): string {
+  const keys =
+    mode === "coronary_pci"
+      ? ["proximal_reference", "lesion_start", "lesion_end", "distal_reference"]
+      : ["suprarenal_index", "neck_start", "neck_end", "sac_index"];
+  const values = keys.map((k) => inputs[k]);
+  if (
+    !values.every(
+      (v) =>
+        typeof v === "number" &&
+        Number.isInteger(v) &&
+        v >= 0 &&
+        v < pathLength,
+    )
+  )
+    return "Choose all four integer indices within the current path.";
+  const [a, b, c, d] = values as number[];
+  if (
+    mode === "coronary_pci"
+      ? !(a <= b && b < c && c <= d)
+      : !(a < b && b < c && c < d)
+  )
+    return mode === "coronary_pci"
+      ? "Require proximal reference ≤ lesion start < lesion end ≤ distal reference."
+      : "Require suprarenal index < neck start < neck end < sac index.";
+  return "";
+}
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const sha = (value: unknown) =>

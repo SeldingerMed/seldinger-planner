@@ -10,6 +10,7 @@ import TerritoryPathEditor, {
 } from "./TerritoryPathEditor";
 import {
   parseWorkflow,
+  pathIndexError,
   stable,
   record,
   type Workflow,
@@ -291,14 +292,14 @@ export default function TerritoryStudio({
     mode === "coronary_pci"
       ? ["proximal_reference", "lesion_start", "lesion_end", "distal_reference"]
       : ["suprarenal_index", "neck_start", "neck_end", "sac_index"];
+  const indexError =
+    mode === "tavr" ? "" : pathIndexError(mode, inputs, path.length);
   const required =
     mode === "tavr"
       ? Array.isArray(inputs.left_ostium) &&
         Array.isArray(inputs.right_ostium) &&
         (inputs.annulus as Section).contour.length >= 3
-      : path.length >= 2 &&
-        profiles.length > 0 &&
-        indexKeys.every((k) => Number.isInteger(inputs[k]));
+      : path.length >= 2 && profiles.length > 0 && !indexError;
   async function save() {
     if (blocked || writeLock.current || !current || !required) return;
     const ticket = epoch.current,
@@ -483,6 +484,7 @@ export default function TerritoryStudio({
                   </label>
                 ))}
               </div>
+              {indexError && <p role="status">{indexError}</p>}
               {mode === "coronary_pci" ? (
                 <>
                   <p className="muted small">
