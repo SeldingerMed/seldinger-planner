@@ -635,8 +635,14 @@ export default function ReformatStudio({
             type="checkbox"
             checked={current?.confirmed ?? false}
             onChange={(e) =>
+              // Confirmation preserves the dirty draft, unlike edit().
+              !blocked &&
               current &&
-              setSnapshot({ ...current, confirmed: e.target.checked })
+              setSnapshot({
+                ...current,
+                confirmed: e.target.checked,
+                error: "",
+              })
             }
           />
           I confirm this path and any secondary-to-primary registration

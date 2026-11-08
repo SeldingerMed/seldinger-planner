@@ -470,3 +470,29 @@ def test_render_rejects_tampered_envelope_metadata(envelopes):
     ):
         with pytest.raises(ValueError):
             render_with_mutation(mutate)
+
+
+@pytest.mark.parametrize(
+    "mode,key",
+    [
+        ("tavr", "minimum_station"),
+        ("tavr", "maximum_station"),
+        ("tavr", "diameter_basis"),
+        ("coronary_pci", "maximum_station"),
+        ("aortic_peripheral", "diameter_basis"),
+    ],
+)
+def test_mode_specific_station_and_enum_keys_do_not_cross_modes(mode, key):
+    envelopes = load_envelopes()
+    context = project_territory_context(identity_of(mode, envelopes), envelopes)
+    value = (
+        envelopes["coronary_pci"]["current"]["result"]["diameter_basis"]
+        if key == "diameter_basis"
+        else 0
+    )
+    envelopes[mode]["current"]["result"][key] = value
+    with pytest.raises(ValueError, match="unwhitelisted"):
+        project_territory_context(identity_of(mode, envelopes), envelopes)
+    context["modes"][mode]["metrics"][key] = value
+    with pytest.raises(ValueError, match="unwhitelisted"):
+        render_territory_context(context)

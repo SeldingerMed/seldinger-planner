@@ -259,3 +259,27 @@ test.each(["coronary_pci", "aortic_peripheral"] as const)(
     ).toBeDisabled();
   },
 );
+
+test("confirmation clears a previous pre-write error without losing the dirty draft", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify(fixtures.not_confirmed)))
+    .mockResolvedValueOnce(new Response("{}", { status: 422 }));
+  vi.stubGlobal("fetch", fetch);
+  const view = render(<Feedback cursor={[8, 8, 8]} />);
+  await draft(view);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Confirm and save scene" }),
+  );
+  await screen.findByRole("alert");
+  const confirmation = screen.getByRole("checkbox", {
+    name: /I confirm this path/,
+  });
+  fireEvent.click(confirmation);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  fireEvent.click(confirmation);
+  expect(
+    screen.getByRole("button", { name: "Confirm and save scene" }),
+  ).not.toBeDisabled();
+  expect(fetch).toHaveBeenCalledTimes(2);
+});

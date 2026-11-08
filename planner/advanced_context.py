@@ -191,6 +191,8 @@ def _project_metrics(mode, result):
             _reject(f"Producer result {name} must be the known rows array")
         if mode == "aortic_peripheral" and name in _ACCESS_RESULT_KEYS:
             continue  # projected separately as fixed scalar subkeys
+        if name not in required:
+            _reject(f"Producer result contains unwhitelisted key {name!r}")
         if name in STATION_METRICS:
             metrics[name] = _validate_station(value, name)
         elif name in ENUM_METRICS:
@@ -421,6 +423,9 @@ def render_territory_context(context: dict) -> str:
             f"  Result: {_validate_result_id(projection['result_id'])} (calculation "
             f"{context['calculation_version']}, {projection['annotation_source']})"
         )
+        mode_metrics = _MODE_SCALARS[mode] | _REQUIRED_MODE_METRICS[mode]
+        if not isinstance(projection["metrics"], dict) or set(projection["metrics"]) - mode_metrics:
+            _reject("Context contains unwhitelisted mode metrics")
         for line in _render_metrics(projection["metrics"]):
             lines.append(f"  {line}")
         for name in ("left_access", "right_access"):
