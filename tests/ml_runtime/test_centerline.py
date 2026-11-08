@@ -22,6 +22,17 @@ from planner import centerline
 from planner.centerline import propose_centerline
 
 
+def test_same_skeleton_join_is_included_once_between_disjoint_connectors():
+    mask = _tube_along_x(shape=(11, 5, 5), y_radius=2, z_radius=2)
+    affine = np.eye(4)
+    result = propose_centerline(mask, affine, [5.0, 0.0, 0.0], [5.0, 4.0, 4.0])
+    expected = [[5.0, 0.0, 0.0], [5.0, 1.0, 1.0], [5.0, 2.0, 2.0], [5.0, 3.0, 3.0], [5.0, 4.0, 4.0]]
+    np.testing.assert_allclose(result["path_ras"], expected)
+    assert result["point_count"] == 5
+    assert result["path_ras"].count([5.0, 2.0, 2.0]) == 1
+    _assert_foreground_rounding(mask, affine, result)
+
+
 def _identity_affine(translation=(0.0, 0.0, 0.0)):
     aff = np.eye(4)
     aff[:3, 3] = translation

@@ -36,6 +36,8 @@ def minimize_in_lumen_field(rod, initial_points, wall: LumenWallField, *, stiffn
     affine = metadata["affine_voxel_to_ras_mm"]
     matrix, offset = affine[:3, :3], affine[:3, 3]
     inverse = np.linalg.inv(matrix)
+    # q = (p-t) @ inverse.T means dq[k]/dp[j] = inverse[k,j].
+    # Row sums bound RAS probes on each native axis; columns do not.
     margin = 10 * _FD_MM * np.abs(inverse).sum(axis=1) + 1e-8
     lower = margin
     upper = np.asarray(metadata["shape"], dtype=float) - 1.0 - margin

@@ -58,6 +58,8 @@ Momentum residual, weak continuity residual and the unprojected divergence L2 no
 
 The skeleton path stays on native vessel foreground between voxel-center representatives of the explicit anchors. The grid is bounded to 8,000,000 voxels; the requested output budget is 4 to 32 path points. Corner-only voxel connections are rejected. This is not autonomous anatomical landmark detection.
 
+The server checks native-cell endpoint binding against the actual hash-verified source sform, not a caller/result affine. Off-center anchors are permitted; floating ties are admitted on adjacent cells.
+
 The UI presents the proposal and requires **Use proposed parent path**. That action changes only the draft path and station indices. **Save geometry inputs** is a separate version-bound mutation. Station suggestions are geometric fractions along the path, not anatomical parent-vessel selections. Choose stations outside the accepted sac mask before computing geometry; overlap is rejected. Sections through native mesh rings use the exact operator plane, without a hidden positional offset. Coplanar patches and tangent/open/non-manifold plane edges remain unsupported.
 
 ## UI and evidence scope

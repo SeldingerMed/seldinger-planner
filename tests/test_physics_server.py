@@ -96,9 +96,31 @@ def test_tampered_stored_numerical_output_fails_closed(tmp_path, monkeypatch):
     assert "/private" not in response.text
 
 
+def mock_trusted_grid(monkeypatch):
+    """HTTP-contract fixture: mocked trusted grid matching the injected
+    synthetic provider manifest (grid 56/77/50, affine translations 1/2/3).
+    No real clinical source is read by these injected-runner tests."""
+    from planner import physics_server
+
+    grid = {
+        "shape": [56, 77, 50],
+        "affine": [
+            [-0.5, 0, 0, 1],
+            [0, -0.5, 0, 2],
+            [0, 0, 0.625, 3],
+            [0, 0, 0, 1],
+        ],
+        "units": "mm",
+    }
+    monkeypatch.setattr(physics_server, "_trusted_grid", lambda bundle: grid)
+
+
 def centerline_output(job):
     import hashlib
 
+    start = job["parameters"]["start_ras"]
+    end = job["parameters"]["end_ras"]
+    path = [[start[0], start[1], start[2] + (end[2] - start[2]) * step / 3] for step in range(4)]
     result = {
         "job_sha256": hashlib.sha256(encoded(job).encode()).hexdigest(),
         "method": "native_skeleton_path_proposal",
@@ -106,15 +128,20 @@ def centerline_output(job):
         "device_calibrated": False,
         "operator_confirmation_required": True,
         "spatial_units": "mm",
-        "path_ras": [[0.0, 0.0, float(i)] for i in range(4)],
+        "path_ras": path,
         "proximal_index": 1,
         "distal_index": 2,
-        "length_mm": 3.0,
+        "length_mm": end[2] - start[2],
         "point_count": 4,
         "skeleton_voxel_count": 4,
-        "grid_shape": [4, 4, 4],
+        "grid_shape": [56, 77, 50],
     }
     return result
+
+
+# Physically consistent synthetic anchors on the mocked trusted grid:
+# RAS z=4.875 -> native voxel center k=3, RAS z=6.125 -> native k=5.
+CENTERLINE_ANCHORS = {"start_ras": [0.0, 0.0, 4.875], "end_ras": [0.0, 0.0, 6.125]}
 
 
 def test_centerline_proposal_does_not_save_operator_geometry(tmp_path, monkeypatch):
@@ -123,13 +150,14 @@ def test_centerline_proposal_does_not_save_operator_geometry(tmp_path, monkeypat
     monkeypatch.setattr(
         physics_server, "default_runner", lambda: lambda job, **_: centerline_output(job)
     )
+    mock_trusted_grid(monkeypatch)
     client, cid, version = ready(tmp_path)
     before = client.get(f"/api/cases/{cid}/morphometry").json()
     route = f"/api/cases/{cid}/centerline-proposals"
     body = {
         "artifact_version": version,
         "reference_revision": "b" * 64,
-        "parameters": {"start_ras": [0.0, 0.0, 0.0], "end_ras": [0.0, 0.0, 3.0], "max_points": 32},
+        "parameters": {"max_points": 32} | CENTERLINE_ANCHORS,
     }
     response = client.post(route, json=body)
     assert response.status_code == 200, response.text
@@ -146,17 +174,14 @@ def test_centerline_is_available_before_operator_geometry_is_saved(tmp_path, mon
     monkeypatch.setattr(
         physics_server, "default_runner", lambda: lambda job, **_: centerline_output(job)
     )
+    mock_trusted_grid(monkeypatch)
     client, case, _ = configured(tmp_path)
     response = client.post(
         f"/api/cases/{case['case_id']}/centerline-proposals",
         json={
             "artifact_version": case["artifact_version"],
             "reference_revision": "b" * 64,
-            "parameters": {
-                "start_ras": [0.0, 0.0, 0.0],
-                "end_ras": [0.0, 0.0, 3.0],
-                "max_points": 32,
-            },
+            "parameters": {"max_points": 32} | CENTERLINE_ANCHORS,
         },
     )
     assert response.status_code == 200, response.text
@@ -191,6 +216,44 @@ def test_replacement_during_solve_is_rejected_before_result_persistence(tmp_path
     client, _cid, route, body = compute_fixture(tmp_path, monkeypatch, runner)
     assert client.post(route, json=body).status_code == 409
     assert client.get(route).json()["current"]["status"] == "not_computed"
+
+
+def test_mask_change_after_persistence_returns_reload409_not500(tmp_path, monkeypatch):
+    import sqlite3
+
+    from fastapi.testclient import TestClient
+
+    from planner.physics_state import PhysicsLedger
+    from planner.segmentation_state import SegmentationLedger
+
+    client, cid, route, body = compute_fixture(tmp_path, monkeypatch)
+    original = PhysicsLedger.snapshot
+    calls = 0
+
+    def racing_snapshot(self, case_id, revision, kind):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            masks = SegmentationLedger(tmp_path / "case.sqlite3")
+            entry = masks.preview(
+                cid,
+                body["artifact_version"],
+                reference_revision=revision,
+                producer="owned_vessel",
+                role="vessel",
+                mask_sha256="9" * 64,
+                provenance={"scope": "synthetic race"},
+            )
+            masks.decide(cid, entry["candidate_id"], body["artifact_version"], "accept")
+        return original(self, case_id, revision, kind)
+
+    monkeypatch.setattr(PhysicsLedger, "snapshot", racing_snapshot)
+    response = TestClient(client.app, raise_server_exceptions=False).post(route, json=body)
+    assert response.status_code == 409, response.text
+    assert "reload saved results" in response.text
+    with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM numerical_results").fetchone()[0] == 1
+    assert client.get(route).json()["current"]["status"] == "stale"
 
 
 def test_busy_gate_prevents_numerical_execution(tmp_path, monkeypatch):
@@ -245,23 +308,20 @@ def test_centerline_worker_cannot_exceed_requested_point_budget(tmp_path, monkey
 
     def runner(job, **_):
         return centerline_output(job) | {
-            "path_ras": [[0.0, 0.0, z] for z in [0.0, 0.75, 1.5, 2.25, 3.0]],
+            "path_ras": [[0.0, 0.0, 4.875 + z * 1.25 / 4] for z in range(5)],
             "point_count": 5,
             "skeleton_voxel_count": 5,
         }
 
     monkeypatch.setattr(physics_server, "default_runner", lambda: runner)
+    mock_trusted_grid(monkeypatch)
     client, cid, version = ready(tmp_path)
     response = client.post(
         f"/api/cases/{cid}/centerline-proposals",
         json={
             "artifact_version": version,
             "reference_revision": "b" * 64,
-            "parameters": {
-                "start_ras": [0.0, 0.0, 0.0],
-                "end_ras": [0.0, 0.0, 3.0],
-                "max_points": 4,
-            },
+            "parameters": {"max_points": 4} | CENTERLINE_ANCHORS,
         },
     )
     assert response.status_code == 503
@@ -351,6 +411,7 @@ def test_actual_workspace_projects_sql_integer_revision_before_numerical_routes(
     monkeypatch.setattr(
         physics_server, "default_runner", lambda: lambda job, **_: centerline_output(job)
     )
+    mock_trusted_grid(monkeypatch)
     client, cid, version = ready(tmp_path)
     with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
         raw = conn.execute(
@@ -364,15 +425,75 @@ def test_actual_workspace_projects_sql_integer_revision_before_numerical_routes(
         json={
             "artifact_version": version,
             "reference_revision": "b" * 64,
-            "parameters": {
-                "start_ras": [0.0, 0.0, 0.0],
-                "end_ras": [0.0, 0.0, 3.0],
-                "max_points": 32,
-            },
+            "parameters": {"max_points": 32} | CENTERLINE_ANCHORS,
         },
     )
     assert response.status_code == 200, response.text
     assert response.json()["artifact_version"] == str(raw[0])
+
+
+def test_misanchored_centerline_result_is_sanitized_and_never_stored(tmp_path, monkeypatch):
+    import sqlite3
+
+    from planner import physics_server
+
+    monkeypatch.setattr(
+        physics_server, "default_runner", lambda: lambda job, **_: centerline_output(job)
+    )
+    mock_trusted_grid(monkeypatch)
+    client, cid, version = ready(tmp_path)
+    route = f"/api/cases/{cid}/centerline-proposals"
+    for tampered in (
+        {"grid_shape": [4, 4, 4]},
+        {"path_ras": [[0.0, 0.0, 5.111], [0.0, 0.0, 5.29], [0.0, 0.0, 5.7], [0.0, 0.0, 6.125]]},
+    ):
+        monkeypatch.setattr(
+            physics_server,
+            "default_runner",
+            lambda job, t=tampered, **_: centerline_output(job) | t,
+        )
+        response = client.post(
+            route,
+            json={
+                "artifact_version": version,
+                "reference_revision": "b" * 64,
+                "parameters": {"max_points": 32} | CENTERLINE_ANCHORS,
+            },
+        )
+        assert response.status_code == 503, response.text
+        assert "Traceback" not in response.text
+    with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM numerical_results").fetchone()[0] == 0
+    assert client.get(route).json()["current"]["status"] == "not_computed"
+
+
+def test_tampered_stored_centerline_endpoint_fails_closed_on_read(tmp_path, monkeypatch):
+    import json as jsonlib
+    import sqlite3
+
+    from planner import physics_server
+
+    monkeypatch.setattr(
+        physics_server, "default_runner", lambda: lambda job, **_: centerline_output(job)
+    )
+    mock_trusted_grid(monkeypatch)
+    client, cid, version = ready(tmp_path)
+    route = f"/api/cases/{cid}/centerline-proposals"
+    body = {
+        "artifact_version": version,
+        "reference_revision": "b" * 64,
+        "parameters": {"max_points": 32} | CENTERLINE_ANCHORS,
+    }
+    stored = client.post(route, json=body)
+    assert stored.status_code == 200, stored.text
+    with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+        raw = conn.execute("SELECT result FROM numerical_results").fetchone()[0]
+        result = jsonlib.loads(raw)
+        result["path_ras"][-1] = [0.0, 0.0, 6.7]
+        conn.execute("UPDATE numerical_results SET result=?", (jsonlib.dumps(result),))
+    response = client.get(route)
+    assert response.status_code == 503
+    assert "Traceback" not in response.text
 
 
 def test_physics_read_returns_explicit_not_computed_for_current_geometry(tmp_path):

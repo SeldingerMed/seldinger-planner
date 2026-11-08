@@ -14,14 +14,14 @@ Exported the base Git tree into isolated scratch, then overlaid the explicit Pha
 
 | Check | Observed result |
 |---|---|
-| `env -u PYTHONPATH -u PYTHONHOME uv run pytest -q` | **685 passed, 108 skipped** |
-| Standalone numerical lane, the eight files listed in `docs/native-physics.md` | **114 passed** |
+| `env -u PYTHONPATH -u PYTHONHOME uv run pytest -q` | **695 passed, 108 skipped** |
+| Standalone numerical lane, the eight files listed in `docs/native-physics.md` | **116 passed** |
 | Existing `test_geometry_worker.py`, `test_mask_geometry.py`, `test_installed_source_geometry.py` imaging lane | **21 passed** |
 | `cd web && npm test` | **36 files, 245 passed** |
 | `npm run build` | TypeScript and Vite passed; existing large-chunk advisory remains |
 | `npm audit --omit=dev --audit-level=high` | Zero reported vulnerabilities |
 | Whole-candidate Ruff lint and format | Passed |
-| Pyright 1.1.414, four API/contract modules against `.venv/bin/python` | Zero errors/warnings |
+| Pyright 1.1.414, five API/contract/header modules against `.venv/bin/python` | Zero errors/warnings |
 | Pyright 1.1.414, seven numerical modules against `.runtime/physics-runtime/bin/python` | Zero errors/warnings |
 
 Skipped tests are not passes. Optional model/public-source tests remain separate. Earlier mixed-checkout frontend totals included unrelated coil-rest-shape tests; the final totals above describe the actual publication slice. An inherited host Python 3.14 search path initially contaminated commands; clearing `PYTHONPATH` corrected interpreter isolation without changing dependencies. Bare Pyright also used the wrong analysis environment; the successful checks explicitly selected each runtime and declared file set.
@@ -60,3 +60,20 @@ Final local reviews on the pre-typing-cleanup export:
 - `deleg_325c8c70`: scoped numerical typing cleanup. Parent inspected every delta: annotations, identity casts and an alias of matrix shape only. Corrected FEM-form annotations to arrays rather than scalar floats. No numerical algorithm, boundary condition, cap or parameter change. Both typing lanes and the full checks above were rerun after refreezing.
 
 These are scoped implementation reviews, not scientific or clinical clearance. The configured GitHub review app must separately complete on the exact pushed head, CI must pass, and actionable findings must be resolved before merge. `phase2-artifacts.json` binds the final source/report bytes, excluding itself to avoid a recursive hash.
+
+## Configured GitHub app review and repair checkpoint
+
+The first pushed head `fb129e58808d6238bcbe8a41100eb0613cdc10ac` passed backend, frontend and native-physics CI. The `hermesreview` app completed against that exact head and reported eight minor/nit findings. A successful check was not treated as zero findings or permission to ignore them.
+
+1. **FD inset transpose claim: disproved.** With `q=(p-t)@inverse.T`, `dq[k]/dp[j]=inverse[k,j]`; row sums protect native-axis RAS probes. A rotated anisotropic regression runs the actual optimizer and demonstrates an escaping probe under the proposed column-sum inset. Applying that suggestion in a throwaway copy fails the regression. The correct numerical implementation was retained.
+2. **Post-persistence race: repaired.** A real accepted-mask replacement between the final case read and dependency snapshot reproduced HTTP 500. It now returns 409/reload, with a regression confirming the result row may already be committed and the read is stale, not rolled back.
+3. **Centerline endpoint binding: repaired.** A stdlib-only helper reads the actual hash-verified NIfTI-1 sform header, including big-endian support and bounded header reads. POST and GET bind grid diagnostics/endpoints to that calibration, admit off-center operator anchors within their native cells, and reject misanchored/tampered results. No qform-only support was added. The actual default-runner HTTP tracer passed for anchors 4.2/19.2 and returned native centers 4/19 with exact GET readback.
+4. **Interpreter environment: repaired.** The fixed-runtime supervisor strips inherited `PYTHON*` settings, then deliberately supplies only its own `PYTHONPATH`. Poisoned-environment tests still execute all three real workers; a forwarding spy asserts the exact child environment, interpreter and cwd.
+5. **Test source isolation: repaired.** Supervisor tests copy only source code into a temporary checkout and discover generated sources solely there. They no longer install test sources into the normal checkout's discovery directory. A pytest finalizer alone would not solve hard-kill contamination.
+6. **Shared skeleton join: disproved.** A real thick-tube proposal with two disjoint connectors meeting the same skeleton voxel returns five points and includes the join once. The existing prefix/suffix slices already prevent duplication. A regression preserves that behavior.
+7. **Dead numerical code: removed.** Dropped unused tolerance/form/expression/parameters and corrected helper-return documentation without changing the numerical assembly or boundary conditions.
+8. **Optimizer description: corrected.** RodModel's world-space L-BFGS-B is now distinguished from the worker's native-grid SLSQP path.
+
+Parent reproduced the capped children rather than accepting incomplete GREEN claims: the endpoint helper initially had header-row/inverse defects and unfinished API wiring. These were repaired, and the full clean-candidate checks above plus the actual HTTP tracer were rerun. The final native-grid lane has no imaging-package imports in the API environment. New source-header tests are contract/header tests, not a claim to validate an image body independently of installed-source admission.
+
+CI annotations also identified Node 20 action deprecation and a moving Ubuntu label. Action releases were looked up from their actual repositories, their Node 24 runtimes checked, and immutable commit pins updated. Both workflows now use Ubuntu 24.04. The new pushed revision still requires its own app review/CI gate; this local repair record does not assert that gate completed.

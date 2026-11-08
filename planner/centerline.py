@@ -102,6 +102,8 @@ def propose_centerline(
     if ordered is None:
         raise ValueError("No connected centerline path between the operator anchors")
 
+    # Strip the connector joins, not the skeleton path's endpoints. When
+    # both joins coincide, ordered=[join] includes that shared voxel once.
     ordered = start_connector[:-1] + ordered + list(reversed(end_connector))[1:]
     if len(set(ordered)) != len(ordered):
         raise ValueError("Operator anchors do not define a simple skeleton path")

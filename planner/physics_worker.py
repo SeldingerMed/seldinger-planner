@@ -152,7 +152,8 @@ def run_local_physics(job, *, blob_dir):
     payload = encoded({"job": job, "blob_dir": str(Path(blob_dir).absolute())})
     if len(payload.encode()) > MAX_INPUT_BYTES:
         raise ValueError("Numerical job exceeds its input bound")
-    env = dict(os.environ)
+    env = {key: value for key, value in os.environ.items() if not key.startswith("PYTHON")}
+    # Deliberate: only this interpreter-selecting PYTHONPATH survives.
     env["PYTHONPATH"] = str(ROOT)
     for key in (
         "OMP_NUM_THREADS",

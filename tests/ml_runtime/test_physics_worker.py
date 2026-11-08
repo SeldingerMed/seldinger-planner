@@ -204,12 +204,13 @@ def test_proposed_native_path_supports_geometry_after_explicit_station_review(
 
 
 @pytest.mark.parametrize("kind", ["rod-deployment", "centerline", "stokes-flow"])
-def test_actual_fixed_runtime_supervisor_runs_synthetic_source(tmp_path, monkeypatch, kind):
+def test_actual_fixed_runtime_supervisor_runs_isolated_source_checkout(tmp_path, monkeypatch, kind):
+    """The supervisor must strip inherited PYTHON* state and resolve the
+    planner package and installed sources only from its own ROOT."""
     import shutil
-    import uuid
 
+    from planner import physics_worker
     from planner.physics_contract import encoded
-    from planner.physics_worker import ROOT, run_local_physics
 
     job, directory, source, _vessel, _sac = installed_job(tmp_path, monkeypatch)
     job["kind"] = kind
@@ -231,21 +232,51 @@ def test_actual_fixed_runtime_supervisor_runs_synthetic_source(tmp_path, monkeyp
         for key in ("geometry_result_id", "geometry_dependencies"):
             job["dependencies"].pop(key)
         job["dependencies"]["masks"] = {"vessel": job["dependencies"]["masks"]["vessel"]}
-    # The child resolves an opaque server-installed ID, never a passed path.
-    owned = ROOT / ".runtime" / "installed-sources" / ("synthetic-physics-" + uuid.uuid4().hex)
-    owned.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(source, owned)
-    job["source_id"] = owned.name
+    # Isolated source checkout under tmp_path: copy only the planner package
+    # (no __pycache__) and install the synthetic source into the copy's
+    # .runtime/installed-sources. The real NATIVE_PYTHON is kept, so a pass
+    # proves cwd/PYTHONPATH resolve the copied ROOT and the child discovers
+    # only tmp_path/.runtime/installed-sources.
+    checkout = tmp_path / "isolated-root"
+    shutil.copytree(
+        physics_worker.ROOT / "planner",
+        checkout / "planner",
+        ignore=shutil.ignore_patterns("__pycache__"),
+    )
+    installed = checkout / ".runtime" / "installed-sources" / source.name
+    installed.parent.mkdir(parents=True)
+    shutil.copytree(source, installed)
+    monkeypatch.setattr(physics_worker, "ROOT", checkout)
+    # Poison the parent environment with interpreter-selecting state that the
+    # supervisor must never inherit into the fixed-runtime child.
+    monkeypatch.setenv("PYTHONHOME", str(tmp_path / "poisoned-pythonhome"))
     monkeypatch.setenv("PYTHONPATH", "/unrelated-host-packages")
-    try:
-        result = run_local_physics(job, blob_dir=directory)
-        assert result["job_sha256"] == hashlib.sha256(encoded(job).encode()).hexdigest()
-        assert result["clinical_validation"] is False
-        if kind == "rod-deployment":
-            assert result["max_penetration_mm"] == 0
-        elif kind == "centerline":
-            assert result["operator_confirmation_required"] is True
-        else:
-            assert result["baseline_mean_sac_speed_mm_s"] > 0
-    finally:
-        shutil.rmtree(owned)
+    monkeypatch.setenv("PYTHONUSERBASE", str(tmp_path / "poisoned-user-site"))
+    monkeypatch.setenv("PYTHONSTARTUP", str(tmp_path / "poisoned-startup.py"))
+    monkeypatch.setenv("PYTHONOPTIMIZE", "2")
+    (tmp_path / "poisoned-startup.py").write_text("raise RuntimeError('leaked')\n")
+    import subprocess
+
+    actual_run = subprocess.run
+    calls = []
+
+    def observed_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        return actual_run(*args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", observed_run)
+    result = physics_worker.run_local_physics(job, blob_dir=directory)
+    assert len(calls) == 1
+    command, options = calls[0]
+    assert command[0][0] == str(physics_worker.NATIVE_PYTHON)
+    assert options["cwd"] == checkout
+    assert {k for k in options["env"] if k.startswith("PYTHON")} == {"PYTHONPATH"}
+    assert options["env"]["PYTHONPATH"] == str(checkout)
+    assert result["job_sha256"] == hashlib.sha256(encoded(job).encode()).hexdigest()
+    assert result["clinical_validation"] is False
+    if kind == "rod-deployment":
+        assert result["max_penetration_mm"] == 0
+    elif kind == "centerline":
+        assert result["operator_confirmation_required"] is True
+    else:
+        assert result["baseline_mean_sac_speed_mm_s"] > 0

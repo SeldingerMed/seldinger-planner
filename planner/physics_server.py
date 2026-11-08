@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, model
 
 from planner.geometry_server import GeometryComputeRequest
 from planner.geometry_state import GeometryConflict
+from planner.native_grid import trusted_grid as _trusted_grid
+from planner.native_grid import validate_centerline_binding
 from planner.physics_state import PhysicsLedger, encoded
 from planner.planning_context import freeze
 
@@ -122,7 +124,7 @@ def default_runner():
     return run_local_physics
 
 
-def validate_result(kind, value, job):
+def validate_result(kind, value, job, *, native_grid=None):
     job_sha256 = hashlib.sha256(encoded(job).encode()).hexdigest()
     if not isinstance(value, dict) or value.get("job_sha256") != job_sha256:
         raise ValueError("Numerical result does not match the submitted job")
@@ -272,6 +274,9 @@ def validate_result(kind, value, job):
             or not 1 <= value["skeleton_voxel_count"] <= math.prod(shape)
         ):
             raise ValueError("Invalid centerline grid diagnostics")
+        if native_grid is None:
+            raise ValueError("Missing trusted native grid")
+        validate_centerline_binding(native_grid, job["parameters"], value)
     else:
         raise ValueError("Unsupported numerical output kind")
     return freeze(value)
@@ -315,7 +320,12 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
                     "parameters": parameters,
                     "operator_inputs": inputs,
                 }
-                validate_result(kind, current["result"], job)
+                validate_result(
+                    kind,
+                    current["result"],
+                    job,
+                    native_grid=_trusted_grid(bundle) if kind == "centerline" else None,
+                )
         except (ValueError, TypeError, KeyError, OSError, OverflowError):
             raise HTTPException(503, "Stored numerical evidence is unavailable") from None
         return JSONResponse(
@@ -362,7 +372,10 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
         try:
             try:
                 result = validate_result(
-                    kind, (runner or default_runner())(job, blob_dir=results_dir), job
+                    kind,
+                    (runner or default_runner())(job, blob_dir=results_dir),
+                    job,
+                    native_grid=_trusted_grid(bundle) if kind == "centerline" else None,
                 )
             except (ValueError, TypeError, KeyError, RuntimeError, OSError, OverflowError):
                 raise HTTPException(
@@ -380,10 +393,13 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
                     409, "Numerical dependencies changed before persistence"
                 ) from None
             latest, _bundle = bound(case_id)
-            if (
-                latest != before
-                or ledger.snapshot(case_id, before["reference_revision"], kind) != snapshot
-            ):
+            try:
+                recheck = ledger.snapshot(case_id, before["reference_revision"], kind)
+            except GeometryConflict:
+                raise HTTPException(
+                    409, "Numerical evidence changed; reload saved results"
+                ) from None
+            if latest != before or recheck != snapshot:
                 raise HTTPException(409, "Numerical evidence changed; reload saved results")
             return before | {"kind": kind, "current": current}
         finally:

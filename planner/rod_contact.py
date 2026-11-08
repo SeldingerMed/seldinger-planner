@@ -38,9 +38,11 @@ subtracted so the *surface* must stay inside):
 Contact energy is strictly positive on penetration and exactly zero
 when the rod surface is strictly inside.
 
-Minimization: bounded L-BFGS-B (SciPy) on all node coordinates, finite
-iteration bound (maxiter <= 150) and a loose box around the initial
-configuration; analytic strain gradients and finite-difference wall gradients.
+RodModel.minimize uses bounded L-BFGS-B (SciPy) in world coordinates,
+with maxiter <= 150 and a loose box around the initial configuration.
+The Phase 2 native worker instead calls lumen_contact.minimize_in_lumen_field:
+SLSQP in voxel coordinates with a finite-grid inset. Both use strain
+and finite-difference wall gradients; neither establishes hard feasibility.
 The returned success flag means optimizer convergence, not hard-contact
 feasibility. Inspect the separately returned penetration depth in mm.
 """

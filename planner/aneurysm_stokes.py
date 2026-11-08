@@ -51,7 +51,6 @@ MAX_TOTAL_DOF = 120000
 MIN_FLUID_VOXELS = 4
 MAX_MIN_SIDE_VOXELS = 2
 SHEAR_TOLERANCE = 1e-6
-_INFLUX_REL_TOL = 1e-9
 
 _FLAGS = {
     "prototype_discretization": True,
@@ -129,7 +128,6 @@ def _validate_affine(affine_ras):
     gram = linear.T @ linear
     diag = np.sqrt(np.diag(gram))
     _require(bool(np.all(diag > 0.0)), "affine_ras has a degenerate voxel axis")
-    scale = float(diag.max())
     off = np.abs(gram - np.diag(np.diag(gram)))
     worst = float((off / np.outer(diag, diag)).max())
     _require(
@@ -137,7 +135,7 @@ def _validate_affine(affine_ras):
         "affine_ras shear is not supported; only rigid rotations with "
         "axis-aligned scaling are accepted",
     )
-    return arr, linear, scale
+    return arr, linear
 
 
 def _normalize_normal(neck_normal):
@@ -223,10 +221,10 @@ _CUBE_TETS = np.array(
 )
 
 
-def _build_tets(fluid_idx, amin, amax, flow_axis, linear, affine):
+def _build_tets(fluid_idx, linear, affine):
     """Build the conforming Kuhn tet mesh of the fluid voxel set.
 
-    Returns (p_world, tets, vert_index_coords, fluid_idx).
+    Returns (p_world, tets, local_vertex_indices, edge_count, lower_native_voxel_index).
     DOF budget is checked before any skfem allocation.
     """
     lo = fluid_idx.min(axis=0)
@@ -294,7 +292,6 @@ def _build_tets(fluid_idx, amin, amax, flow_axis, linear, affine):
 
 def _facet_sets(tets, verts, lo, flow_axis):
     """Return boundary facet array and inlet/outlet facet masks (index space)."""
-    tets.shape[1]
     faces = np.concatenate(
         [tets[[1, 2, 3]], tets[[0, 2, 3]], tets[[0, 1, 3]], tets[[0, 1, 2]]], axis=1
     )  # (3, 4*nf)
@@ -317,9 +314,7 @@ def _facet_sets(tets, verts, lo, flow_axis):
     return (faces[:, boundary_cols], inlet_mask, outlet_mask)
 
 
-def _solve_case(
-    mesh, basis_u, basis_p, A, B, C, alpha, inlet_dofs, inlet_value, wall_dofs, direction, nu
-):
+def _solve_case(basis_u, A, B, C, alpha, inlet_dofs, inlet_value, wall_dofs, direction, nu):
     """Solve one (alpha) case; returns (u, p, alg_residual_rel)."""
     import scipy.sparse as sp
     import scipy.sparse.linalg as spla
@@ -403,12 +398,12 @@ def solve_aneurysm_stokes(
     )
     normal = _normalize_normal(neck_normal)
     origin = _validate_origin(neck_origin)
-    affine, linear, _ = _validate_affine(affine_ras)
+    affine, linear = _validate_affine(affine_ras)
 
     lumen = _validate_mask(lumen_mask, "lumen_mask")
     sac = _validate_mask(sac_mask, "sac_mask")
     _require(lumen.shape == sac.shape, "lumen_mask and sac_mask must share a shape")
-    fluid_idx, _sac_idx, amin, amax = _validate_topology(lumen, sac, flow_axis)
+    fluid_idx, _sac_idx, _amin, _amax = _validate_topology(lumen, sac, flow_axis)
     _require(
         int(fluid_idx.shape[0]) <= MAX_FLUID_VOXELS,
         f"fluid voxel count {fluid_idx.shape[0]} exceeds {MAX_FLUID_VOXELS} budget",
@@ -427,9 +422,7 @@ def solve_aneurysm_stokes(
     )
     from skfem.helpers import div, grad, inner
 
-    p_world, tets, verts, _n_edges, lo = _build_tets(
-        fluid_idx, amin, amax, flow_axis, linear, affine
-    )
+    p_world, tets, verts, _n_edges, lo = _build_tets(fluid_idx, linear, affine)
     boundary_faces, inlet_mask, outlet_mask = _facet_sets(tets, verts, lo, flow_axis)
 
     mesh = MeshTet(p_world.astype(np.float64), tets.astype(np.int64))
@@ -484,10 +477,6 @@ def solve_aneurysm_stokes(
     direction = linear[:, flow_axis] / np.linalg.norm(linear[:, flow_axis])
 
     # Slab must overlap the fluid domain.
-    @LinearForm
-    def unit(v, w):
-        return 1.0
-
     tet_centroids = mesh.p[:, mesh.t].mean(axis=1)
     d_cent = np.abs(normal @ (tet_centroids - origin[:, None]))
     _require(
@@ -511,9 +500,7 @@ def solve_aneurysm_stokes(
 
     def run(alpha):
         u, p, res_rel, momentum_rel = _solve_case(
-            mesh,
             basis_u,
-            basis_p,
             A,
             B,
             C,
