@@ -10,6 +10,12 @@ Current accepted-mask metadata, scalar morphometry, derived indices and saved op
 
 Additional server-installed NIfTI-1 sources can be discovered by an opaque source ID and a verified manifest under `.runtime/installed-sources/`. This bounded path requires millimeter units and explicit sform calibration, preserves hash/revision checks and rejects malformed or tampered sources. It is not a generic clinical-data upload service. See the [installed-source contract](docs/installed-sources.md).
 
+## Phase 2 native numerical workers
+
+The device studio now pairs the analytical bench with bounded native-mask rod and Stokes/Brinkman research workers. Results are persisted against exact source, accepted-mask, case and geometry identities. Hypothetical mechanics/flow inputs and diagnostic residuals are not device calibration or physiological validation. Mask-derived parent-path proposals require operator confirmation, review of geometric station suggestions, and a separate save.
+
+See [native numerical setup, API contracts and limits](docs/native-physics.md). The model-free numerical runtime and synthetic numerical tests have a separate CI lane. The exercised browser integration uses production components with generated images/masks, not clinical data or a new full-App source-import validation.
+
 ## Historical hackathon source and original work
 
 The source checkout includes the planning workspace. Images and trained artifacts are installed separately under the source/model contracts below. Public source does not mean a hosted deployment.
@@ -99,7 +105,7 @@ A fresh source checkout can run the basic viewer, local workspace, manual eviden
 
 ## Current verification checkpoint
 
-The later [Phase 1 source verification](docs/verification/phase1-consolidation.md) records the consolidation review, clean-export checks and evidence boundaries. The checkpoint below is historical.
+The [Phase 2 native-physics checkpoint](docs/verification/phase2-physics-centerlines.md) records the clean candidate, synthetic worker/browser evidence and review limits. The later [Phase 1 source verification](docs/verification/phase1-consolidation.md) records the consolidation review, clean-export checks and evidence boundaries. The checkpoint below is historical.
 
 On November 4, 2026, the local backend suite passed **557 tests**, with **97 optional heavyweight skips**. A separate isolated native surface/mask-geometry lane passed **16 synthetic tests**. Ruff lint and format passed. The frontend passed **188 tests**, TypeScript/production build, and the production dependency audit (zero reported vulnerabilities). Vite retains a large-chunk advisory. Skipped real-model tests are not counted as passed, and software checks do not establish clinical performance.
 

@@ -183,6 +183,138 @@ function validateEnvelope(
   return env;
 }
 
+const HEX64 = /^[0-9a-f]{64}$/;
+
+type Proposal = {
+  path: Vec3[];
+  proximal_index: number;
+  distal_index: number;
+  length_mm: number;
+  start_ras: Vec3;
+  end_ras: Vec3;
+};
+
+function nonEmptyString(v: unknown): v is string {
+  return typeof v === "string" && v.length > 0;
+}
+
+function validateProposal(
+  payload: unknown,
+  caseState: CaseState,
+  binding: MorphometryBinding,
+  startRas: Vec3,
+  endRas: Vec3,
+  requestedMaxPoints: number,
+): Proposal | null {
+  if (typeof payload !== "object" || payload === null) return null;
+  const p = payload as Record<string, unknown>;
+  if (p.case_id !== binding.case_id) return null;
+  if (p.image_sha256 !== binding.image_sha256) return null;
+  if (p.reference_revision !== binding.reference_revision) return null;
+  if (p.artifact_version !== caseState.artifact_version) return null;
+  if (p.kind !== "centerline") return null;
+  const cur = p.current;
+  if (typeof cur !== "object" || cur === null) return null;
+  const c = cur as Record<string, unknown>;
+  if (c.status !== "current") return null;
+  if (!nonEmptyString(c.result_id)) return null;
+  const params = c.parameters;
+  if (typeof params !== "object" || params === null) return null;
+  const pr = params as Record<string, unknown>;
+  if (
+    !isFiniteTriple(pr.start_ras) ||
+    !isFiniteTriple(pr.end_ras) ||
+    pr.max_points !== requestedMaxPoints
+  )
+    return null;
+  // The echoed anchors must match the requested (normalized) anchors.
+  const close = (a: unknown, b: Vec3) =>
+    isFiniteTriple(a) &&
+    (a as Vec3).every((v, i) => Math.abs(v - b[i]) <= 1e-12);
+  if (!close(pr.start_ras, startRas) || !close(pr.end_ras, endRas)) return null;
+  const deps = c.dependencies;
+  if (typeof deps !== "object" || deps === null) return null;
+  const d = deps as Record<string, unknown>;
+  if (d.case_id !== binding.case_id) return null;
+  if (d.image_sha256 !== binding.image_sha256) return null;
+  if (d.artifact_version !== caseState.artifact_version) return null;
+  if (d.source_revision !== binding.reference_revision) return null;
+  const masks = d.masks;
+  if (typeof masks !== "object" || masks === null) return null;
+  const vessel = (masks as Record<string, unknown>).vessel;
+  if (typeof vessel !== "object" || vessel === null) return null;
+  const vm = vessel as Record<string, unknown>;
+  if (
+    !nonEmptyString(vm.candidate_id) ||
+    typeof vm.mask_sha256 !== "string" ||
+    !HEX64.test(vm.mask_sha256) ||
+    typeof vm.segmentation_revision !== "number" ||
+    !Number.isSafeInteger(vm.segmentation_revision) ||
+    vm.segmentation_revision < 1
+  )
+    return null;
+  const res = c.result;
+  if (typeof res !== "object" || res === null) return null;
+  const r = res as Record<string, unknown>;
+  if (typeof r.job_sha256 !== "string" || !HEX64.test(r.job_sha256))
+    return null;
+  if (r.method !== "native_skeleton_path_proposal") return null;
+  if (r.clinical_validation !== false || r.device_calibrated !== false)
+    return null;
+  if (r.operator_confirmation_required !== true) return null;
+  if (r.spatial_units !== "mm") return null;
+  const path = r.path_ras;
+  if (
+    !Array.isArray(path) ||
+    path.length < 4 ||
+    path.length > requestedMaxPoints ||
+    !path.every(isFiniteTriple)
+  )
+    return null;
+  const seen = new Set(path.map((q) => (q as Vec3).join(",")));
+  if (seen.size !== path.length) return null;
+  const pi = r.proximal_index;
+  const di = r.distal_index;
+  if (
+    typeof pi !== "number" ||
+    typeof di !== "number" ||
+    !Number.isInteger(pi) ||
+    !Number.isInteger(di) ||
+    pi === di ||
+    !(pi > 0 && pi < path.length - 1) ||
+    !(di > 0 && di < path.length - 1)
+  )
+    return null;
+  if (
+    typeof r.length_mm !== "number" ||
+    !Number.isFinite(r.length_mm) ||
+    r.length_mm <= 0
+  )
+    return null;
+  if (r.point_count !== path.length) return null;
+  if (
+    typeof r.skeleton_voxel_count !== "number" ||
+    !Number.isInteger(r.skeleton_voxel_count) ||
+    r.skeleton_voxel_count <= 0
+  )
+    return null;
+  const grid = r.grid_shape;
+  if (
+    !Array.isArray(grid) ||
+    grid.length !== 3 ||
+    !grid.every((g) => typeof g === "number" && Number.isInteger(g) && g > 0)
+  )
+    return null;
+  return {
+    path: path as Vec3[],
+    proximal_index: pi,
+    distal_index: di,
+    length_mm: r.length_mm,
+    start_ras: [...startRas],
+    end_ras: [...endRas],
+  };
+}
+
 function fmt(v: number): string {
   return v.toFixed(2);
 }
@@ -242,6 +374,7 @@ export default function MorphometryInputs({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  const [proposal, setProposal] = useState<Proposal | null>(null);
   const epochRef = useRef(0);
 
   const callbacks = {
@@ -283,12 +416,14 @@ export default function MorphometryInputs({
       setState({ phase: "idle", scope: null, saved: null });
       setDraft(null);
       setNote("");
+      setProposal(null);
       return;
     }
     const epoch = ++epochRef.current;
     setState({ phase: "loading", scope, saved: null });
     setDraft(null);
     setNote("");
+    setProposal(null);
     const b = binding!;
     api<Envelope>(`/cases/${encodeURIComponent(b.case_id)}/morphometry`)
       .then((payload) => {
@@ -485,10 +620,94 @@ export default function MorphometryInputs({
       });
   }
 
+  function handlePropose() {
+    if (locked || draft === null) return;
+    const anchors = draft.parent_path;
+    if (anchors.length < 2) return;
+    const first = anchors[0];
+    const last = anchors[anchors.length - 1];
+    if (!isFiniteTriple(first) || !isFiniteTriple(last)) return;
+    if (samePoint(first, last)) return;
+    const b = binding!;
+    const startRas: Vec3 = [...first];
+    const endRas: Vec3 = [...last];
+    const requestedMaxPoints = 32;
+    const epoch = ++epochRef.current;
+    const releaseOwner = callbacksRef.current.onBusy;
+    setBusy(true);
+    releaseOwner(true);
+    setNote("");
+    api<unknown>(
+      `/cases/${encodeURIComponent(b.case_id)}/centerline-proposals`,
+      {
+        artifact_version: caseState.artifact_version,
+        reference_revision: b.reference_revision,
+        parameters: {
+          start_ras: startRas,
+          end_ras: endRas,
+          max_points: requestedMaxPoints,
+        },
+      },
+      "POST",
+    )
+      .then((payload) => {
+        if (epochRef.current !== epoch) return;
+        const p = validateProposal(
+          payload, caseState, b, startRas, endRas, requestedMaxPoints,
+        );
+        if (!p) {
+          callbacksRef.current.onError(
+            new Error("Centerline proposal did not match the case."),
+          );
+          return;
+        }
+        setProposal(p);
+        setNote(
+          "Review the proposed parent path and stations before using it.",
+        );
+      })
+      .catch((e) => {
+        if (epochRef.current === epoch) callbacksRef.current.onError(e);
+      })
+      .finally(() => {
+        // Release the exact busy owner captured at request start, even if
+        // the response was superseded by a scope or anchor change.
+        setBusy(false);
+        releaseOwner(false);
+      });
+  }
+
+  function useProposedPath() {
+    if (locked || draft === null || proposal === null) return;
+    setDraft({
+      ...draft,
+      parent_path: proposal.path.map((p) => [...p] as Vec3),
+      proximal_index: proposal.proximal_index,
+      distal_index: proposal.distal_index,
+    });
+    setProposal(null);
+    setNote("");
+  }
+
   const pathLen = draft?.parent_path.length ?? 0;
   const canCapture = !locked && location !== null;
   const canSave = !locked && dirty && draft !== null;
   const canCompute = !locked && !dirty && state.saved !== null;
+  const anchorsEligible =
+    draft !== null &&
+    pathLen >= 2 &&
+    isFiniteTriple(draft.parent_path[0]) &&
+    isFiniteTriple(draft.parent_path[pathLen - 1]) &&
+    !samePoint(draft.parent_path[0], draft.parent_path[pathLen - 1]);
+  const canPropose = !locked && anchorsEligible;
+  // A retained proposal is only offered while the draft still carries the
+  // exact anchors the proposal was computed from.
+  const proposalUsable =
+    draft !== null &&
+    proposal !== null &&
+    pathLen >= 2 &&
+    samePoint(draft.parent_path[0], proposal.start_ras) &&
+    samePoint(draft.parent_path[pathLen - 1], proposal.end_ras);
 
   return (
     <section
@@ -536,6 +755,10 @@ export default function MorphometryInputs({
           ) : null}
           {pathLen >= 4 ? (
             <>
+              <p className="field-label">
+                For mask geometry, choose parent stations outside the accepted
+                sac mask. Proposal stations are geometric suggestions.
+              </p>
               <label className="field-label">
                 Proximal station
                 <select
@@ -638,7 +861,43 @@ export default function MorphometryInputs({
             >
               Compute mask geometry
             </button>
+            <button
+              type="button"
+              disabled={!canPropose}
+              onClick={handlePropose}
+            >
+              Propose centerline
+            </button>
           </div>
+          {proposalUsable && proposal ? (
+            <div data-testid="centerline-proposal">
+              <p className="field-label">
+                Proposed parent path ({proposal.path.length} points,{" "}
+                <span data-testid="proposal-length">
+                  {proposal.length_mm.toFixed(2)} mm
+                </span>
+                ), proximal station{" "}
+                <span data-testid="proposed-proximal-index">
+                  {proposal.proximal_index}
+                </span>{" "}
+                and distal station{" "}
+                <span data-testid="proposed-distal-index">
+                  {proposal.distal_index}
+                </span>
+                . Confirm before it replaces the draft path.
+              </p>
+              <ol>
+                {proposal.path.map((p, i) => (
+                  <li key={i} data-testid="proposed-path-point">
+                    {p.map(fmt).join(", ")}
+                  </li>
+                ))}
+              </ol>
+              <button type="button" disabled={locked} onClick={useProposedPath}>
+                Use proposed parent path
+              </button>
+            </div>
+          ) : null}
           {note ? (
             <p role="alert" className="field-label">
               {note}
