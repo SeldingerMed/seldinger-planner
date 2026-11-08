@@ -49,7 +49,7 @@ MAX_BBOX_VOXELS = 32768
 MAX_FLUID_VOXELS = 1000
 MAX_TOTAL_DOF = 120000
 MIN_FLUID_VOXELS = 4
-MAX_MIN_SIDE_VOXELS = 2
+MIN_SIDE_VOXELS = 2
 SHEAR_TOLERANCE = 1e-6
 
 _FLAGS = {
@@ -98,10 +98,10 @@ def _validate_mask(mask, name):
     _require(arr.ndim == 3, f"{name} must be a 3-D array")
     _require(arr.size <= MAX_GRID_VOXELS, f"{name} grid exceeds its voxel budget")
     _require(
-        arr.shape[0] >= MAX_MIN_SIDE_VOXELS
-        and arr.shape[1] >= MAX_MIN_SIDE_VOXELS
-        and arr.shape[2] >= MAX_MIN_SIDE_VOXELS,
-        f"{name} must have at least {MAX_MIN_SIDE_VOXELS} voxels per side",
+        arr.shape[0] >= MIN_SIDE_VOXELS
+        and arr.shape[1] >= MIN_SIDE_VOXELS
+        and arr.shape[2] >= MIN_SIDE_VOXELS,
+        f"{name} must have at least {MIN_SIDE_VOXELS} voxels per side",
     )
     if arr.dtype == bool:
         return arr.astype(np.uint8)

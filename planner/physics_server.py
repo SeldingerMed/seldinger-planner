@@ -327,6 +327,18 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
                     job,
                     native_grid=_trusted_grid(bundle) if kind == "centerline" else None,
                 )
+        except GeometryConflict:
+            # Re-bind to distinguish a missing/ineligible/changed case from
+            # contradictory evidence under the same valid source identity.
+            try:
+                after, _ = bound(case_id)
+            except (ValueError, TypeError, KeyError, OSError, OverflowError):
+                raise HTTPException(503, "Stored numerical evidence is unavailable") from None
+            if after != before:
+                raise HTTPException(
+                    409, "Numerical evidence changed while reading; reload"
+                ) from None
+            raise HTTPException(503, "Stored numerical evidence is unavailable") from None
         except (ValueError, TypeError, KeyError, OSError, OverflowError):
             raise HTTPException(503, "Stored numerical evidence is unavailable") from None
         return JSONResponse(

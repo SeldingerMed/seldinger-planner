@@ -267,9 +267,12 @@ def test_flags_state_prototype_limitations():
 
 def test_zero_resistance_treated_equals_baseline():
     base = _solve(resistance_pa_s_per_mm2=0.0)
-    treated = base
+    treated = _solve(resistance_pa_s_per_mm2=0.0)
     assert treated["sac_mean_speed_relative_change_pct"] == 0.0
     assert treated["sac_mean_speed_treated_mm_s"] == treated["sac_mean_speed_baseline_mm_s"]
+    assert treated["sac_mean_speed_treated_mm_s"] == pytest.approx(
+        base["sac_mean_speed_baseline_mm_s"], rel=1e-12
+    )
 
 
 def test_inlet_velocity_linearity_known_value():

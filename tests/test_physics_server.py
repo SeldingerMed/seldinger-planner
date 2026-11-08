@@ -59,6 +59,60 @@ def test_sqlite_failures_are_sanitized_including_ambiguous_commits(tmp_path, mon
     _INFERENCE_GATE.release()
 
 
+@pytest.mark.parametrize("change,status", [("delete", 404), ("units", 409)])
+def test_concurrent_case_eligibility_change_is_not_storage_corruption(
+    tmp_path, monkeypatch, change, status
+):
+    import sqlite3
+
+    from planner.physics_state import PhysicsLedger
+
+    client, cid, route, body = compute_fixture(tmp_path, monkeypatch)
+    assert client.post(route, json=body).status_code == 200
+    actual = PhysicsLedger.current
+
+    def changed(self, *args, **kwargs):
+        with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+            if change == "delete":
+                conn.execute("DELETE FROM cases WHERE case_id=?", (cid,))
+            else:
+                conn.execute("UPDATE cases SET spatial_units='unknown' WHERE case_id=?", (cid,))
+        return actual(self, *args, **kwargs)
+
+    monkeypatch.setattr(PhysicsLedger, "current", changed)
+    response = client.get(route)
+    assert response.status_code == status, response.text
+    assert "Traceback" not in response.text
+
+
+def test_malformed_provider_during_conflict_rebind_stays_sanitized(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from planner.geometry_state import GeometryConflict
+    from planner.physics_state import PhysicsLedger
+    from planner.source_registry import ImageSourceRegistry
+
+    client, _cid, route, _body = compute_fixture(tmp_path, monkeypatch)
+    actual = ImageSourceRegistry.load_for_case
+    conflict_seen = False
+
+    def load(self, *args, **kwargs):
+        if conflict_seen:
+            raise ValueError("private /data/source")
+        return actual(self, *args, **kwargs)
+
+    def conflicted(*args, **kwargs):
+        nonlocal conflict_seen
+        conflict_seen = True
+        raise GeometryConflict("changed")
+
+    monkeypatch.setattr(ImageSourceRegistry, "load_for_case", load)
+    monkeypatch.setattr(PhysicsLedger, "current", conflicted)
+    response = TestClient(client.app, raise_server_exceptions=False).get(route)
+    assert response.status_code == 503, response.text
+    assert "/data" not in response.text
+
+
 def rod_output(job):
     import hashlib
 
