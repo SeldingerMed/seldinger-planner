@@ -1,0 +1,114 @@
+.native-reformat-studio header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.native-reformat-studio fieldset {
+  border: 1px solid #33434d;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 16px 0;
+  min-width: 0;
+}
+.native-reformat-studio legend {
+  padding: 0 8px;
+  color: #ccdce4;
+}
+.native-reformat-studio label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  font-size: 12px;
+  color: #c9d4d9;
+}
+.native-reformat-studio input:not([type="checkbox"]):not([type="range"]),
+.native-reformat-studio textarea {
+  background: #0d151b;
+  color: #e4e9eb;
+  border: 1px solid #415660;
+  border-radius: 5px;
+  padding: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.native-reformat-studio textarea {
+  font-family: monospace;
+  resize: vertical;
+}
+.native-point-inputs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.native-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+.native-reformat-studio label.native-confirm {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 10px;
+}
+.native-confirm input {
+  flex: none;
+  margin-top: 2px;
+}
+.native-reformat-studio ol {
+  max-height: 180px;
+  overflow: auto;
+  font-size: 12px;
+  color: #acbec8;
+  padding-left: 28px;
+}
+.native-view-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+}
+.native-render-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+.native-render-figure {
+  margin: 0;
+  min-width: 0;
+  background: #04090d;
+  border: 1px solid #2c404c;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.native-render-figure canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  background: #04090d;
+}
+.native-render-figure figcaption {
+  padding: 10px;
+  color: #b9ccd6;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.native-reformat-studio [role="alert"] {
+  color: #ffb8aa;
+  font-size: 13px;
+}
+.native-reformat-studio [role="status"] {
+  color: #d9c589;
+  font-size: 12px;
+}
+.native-reformat-studio button:focus-visible,
+.native-reformat-studio input:focus-visible,
+.native-reformat-studio textarea:focus-visible {
+  outline: 2px solid #7ac7d9;
+  outline-offset: 3px;
+}

@@ -1,0 +1,24 @@
+name: Native ingestion checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  native-ingest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      SELDINGER_RUN_INGEST_TESTS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          version: '0.13.5'
+          python-version: '3.12'
+      - run: uv venv --python 3.12 .runtime/ingest-runtime
+      - run: uv pip sync --python .runtime/ingest-runtime/bin/python --require-hashes requirements/ingest.txt
+      - run: .runtime/ingest-runtime/bin/python -m pytest -q tests/ingest_runtime
