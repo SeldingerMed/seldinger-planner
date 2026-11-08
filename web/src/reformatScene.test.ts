@@ -266,3 +266,19 @@ describe("parseScene", () => {
     expectThrows({ ...current(), secondary_metadata: secondaryMetadata });
   });
 });
+
+it.each(["current", "stale"])(
+  "rejects unknown %s-status envelope keys",
+  (status) => {
+    const envelope = status === "current" ? current() : structuredClone(stale);
+    expect(() =>
+      parseScene(
+        {
+          ...envelope,
+          current: { ...envelope.current, unexpected: "not admitted" },
+        },
+        identity,
+      ),
+    ).toThrow();
+  },
+);

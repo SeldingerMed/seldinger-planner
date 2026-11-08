@@ -165,7 +165,12 @@ export function parseScene(value: unknown, identity: Identity): Scene {
   }
   if (!sceneId(current.scene_id) || revision < 1) return fail();
   if (current.status === "stale") {
-    if (current.inputs !== null || current.result !== null) return fail();
+    if (
+      Object.keys(current).length !== 4 ||
+      current.inputs !== null ||
+      current.result !== null
+    )
+      return fail();
     if (value.secondary_metadata !== null) return fail();
     return {
       ...identity,
@@ -180,6 +185,7 @@ export function parseScene(value: unknown, identity: Identity): Scene {
     };
   }
   if (
+    Object.keys(current).length !== 6 ||
     current.status !== "current" ||
     !record(current.dependencies) ||
     stable(current.dependencies) !==

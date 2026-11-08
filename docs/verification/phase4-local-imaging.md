@@ -42,7 +42,7 @@ The task-owned Chrome targets and download context were closed/disposed. The iso
 
 ## Exact candidate
 
-The clean export from the Phase 3 merge, overlaid only with the intended Phase 4 files, passed 834 backend tests (111 optional skips), 377 frontend tests, 31 ingestion tests, 129 numerical tests and 52 model-free imaging tests. Ruff, explicit-runtime API/ingest Pyright, TypeScript/build and the production dependency audit passed. The final Chrome download was 2668 bytes, SHA-256 `ca1ee8f5175759ebc31ebc1eacbacde381accd981f4b08e3b37d8f8f0c9afbf4`, and retained the exact current scene, scalar results and display settings. The fresh registered pixel again matched [50,127,127,255]; the refreshed narrow viewport remained 430 pixels wide.
+The clean export from the Phase 3 merge, overlaid only with the intended Phase 4 files, passed 834 backend tests (111 optional skips), 380 frontend tests, 31 ingestion tests, 129 numerical tests and 52 model-free imaging tests. Ruff, explicit-runtime API/ingest Pyright, TypeScript/build and the production dependency audit passed. The final Chrome download was 2668 bytes, SHA-256 `ca1ee8f5175759ebc31ebc1eacbacde381accd981f4b08e3b37d8f8f0c9afbf4`, and retained the exact current scene, scalar results and display settings. The fresh registered pixel again matched [50,127,127,255]; the refreshed narrow viewport remained 430 pixels wide.
 
 The companion [artifact manifest](phase4-artifacts.json) binds the source and verification artifacts. Removing the brief snapshot recheck in a throwaway candidate made the materialized-result race regression fail with an unsafe 200 instead of 409; restoring the exact guard restored green tests. Earlier mixed-checkout totals are not substituted for clean-candidate evidence. The local `plan.md` and eight other unrelated files remain outside the commit and are checked by their preserved hashes.
 
@@ -58,3 +58,6 @@ Repository-app review found that stretched CPR used the first pixel-center stati
 
 
 A subsequent review exposed globally recognized station/enum keys crossing the per-mode scalar whitelist. Five real-producer-derived negative cases now reject those keys in both projection and rendering. Confirmation toggles clear a prior pre-write error while preserving the dirty draft, with an explicit blocked-state handler guard. The optional duplicate-frame-build optimization was deferred: on a bounded 128-point helix, the measured extra frame lookup averaged 0.0173 ms versus 1.187 ms for the stretched raster. This is one local timing observation, not a general performance guarantee.
+
+
+Failed scene reload now releases the discarded draft's parent dirty lock only for the live request owner. The real-parent regression first reproduced the stranded workspace and now verifies recovery without an enabled native display. Current and stale DTO variants reject unknown keys. One CI run hit the existing multi-stage calibrated-integration test's 5000 ms whole-test limit, without an assertion failure; that single comprehensive flow now has a bounded 15000 ms budget, with all of its original assertions retained. The complete clean frontend suite passes.

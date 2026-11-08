@@ -149,8 +149,10 @@ export default function ReformatStudio({
         }
       }
     } catch {
-      if (live.current === owned)
+      if (live.current === owned) {
+        callbacks.current.onDirtyChange?.(false);
         setLoadError("Saved scene could not be loaded. Reload before editing.");
+      }
     } finally {
       release();
     }

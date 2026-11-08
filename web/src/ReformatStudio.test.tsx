@@ -14,7 +14,9 @@ import type { Vec3 } from "./obliqueSlice";
 import fixtures from "./__fixtures__/phase4-reformat-scenes.json";
 import ReformatStudio from "./ReformatStudio";
 vi.mock("./NativeReformatView", () => ({
-  default: () => <div data-testid="native-display" />,
+  default: ({ disabled }: { disabled: boolean }) => (
+    <div data-testid="native-display" data-disabled={String(disabled)} />
+  ),
 }));
 const volume = {
   hdr: {
@@ -282,4 +284,43 @@ test("confirmation clears a previous pre-write error without losing the dirty dr
     screen.getByRole("button", { name: "Confirm and save scene" }),
   ).not.toBeDisabled();
   expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test("failed explicit reload releases a discarded draft's parent dirty lock", async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify(fixtures.not_confirmed)))
+    .mockRejectedValueOnce(new Error("offline"));
+  vi.stubGlobal("fetch", fetch);
+  function Owner() {
+    const [dirty, setDirty] = useState(false);
+    const [busy, setBusy] = useState(false);
+    return (
+      <>
+        <button disabled={dirty || busy}>Other workspace action</button>
+        <ReformatStudio
+          {...props}
+          onDirtyChange={setDirty}
+          onBusy={setBusy}
+          disabled={busy}
+        />
+      </>
+    );
+  }
+  render(<Owner />);
+  await screen.findByText(/Scene revision 0/);
+  appendCursor();
+  expect(
+    screen.getByRole("button", { name: "Other workspace action" }),
+  ).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved scene" }));
+  await screen.findByRole("alert");
+  expect(
+    screen.getByRole("button", { name: "Other workspace action" }),
+  ).not.toBeDisabled();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(screen.getByTestId("native-display")).toHaveAttribute(
+    "data-disabled",
+    "true",
+  );
 });
