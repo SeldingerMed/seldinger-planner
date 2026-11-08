@@ -37,7 +37,7 @@ const sha = (value: unknown): value is string =>
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
-function validate(meta: unknown): asserts meta is CalibratedSourceMetadata {
+export function validate(meta: unknown): asserts meta is CalibratedSourceMetadata {
   if (typeof meta !== "object" || meta === null)
     throw new Error("Invalid calibrated source metadata.");
   const m = meta as Record<string, unknown>;

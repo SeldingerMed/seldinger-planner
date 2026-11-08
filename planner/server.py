@@ -270,6 +270,9 @@ def build_app(
     from planner.physics_server import register_physics_routes
 
     register_physics_routes(app, db_path, image_sources, read_case, results_dir)
+    from planner.territory_workflow_server import register_territory_workflow_routes
+
+    register_territory_workflow_routes(app, db_path, image_sources, read_case)
 
     from planner.device_db import (
         CATEGORIES,

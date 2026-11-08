@@ -9,6 +9,11 @@ import AneurysmWorksheet from "./AneurysmWorksheet";
 import SegmentationPanel from "./SegmentationPanel";
 import MorphometryResults from "./MorphometryResults";
 import MorphometryInputs from "./MorphometryInputs";
+import TerritoryStudio from "./TerritoryStudio";
+import {
+  findNativeCaseSource,
+  type NativeCaseSource,
+} from "./nativeCaseSource";
 import DeviceReference from "./DeviceReference";
 import DeviceSizingInputs from "./DeviceSizingInputs";
 import DeviceSizingPanel from "./DeviceSizingPanel";
@@ -35,6 +40,13 @@ const coordinate = (p: Point3 | null) =>
   p ? p.map((v) => v.toFixed(1)).join(" / ") : "Select a location in the scan";
 export default function App() {
   const [studioOpen, setStudioOpen] = useState(false);
+  const [territoryWorkspace, setTerritoryWorkspace] = useState(false);
+  const [nativeSource, setNativeSource] = useState<NativeCaseSource | null>(
+    null,
+  );
+  const [nativeSourceError, setNativeSourceError] = useState("");
+  const [territoryDirty, setTerritoryDirty] = useState(false);
+  const [territoryBusy, setTerritoryBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [nativeVolume, setNativeVolume] = useState<NativeVolume | null>(null);
   const [digest, setDigest] = useState("");
@@ -58,7 +70,7 @@ export default function App() {
   const [geometryInputsDirty, setGeometryDirty] = useState(false);
   const [deviceDirty, setDeviceDirty] = useState(false);
   const [deviceEpoch, setDeviceEpoch] = useState(0);
-  const geometryDirty = geometryInputsDirty || deviceDirty;
+  const geometryDirty = geometryInputsDirty || deviceDirty || territoryDirty;
   const [geometryEpoch, setGeometryEpoch] = useState(0);
   const [source, setSource] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -67,7 +79,11 @@ export default function App() {
   const [deviceBusy, setDeviceBusy] = useState(false);
   const [deviceCalculationBusy, setDeviceCalculationBusy] = useState(false);
   const busy =
-    workspaceBusy || geometryBusy || deviceBusy || deviceCalculationBusy;
+    workspaceBusy ||
+    geometryBusy ||
+    deviceBusy ||
+    deviceCalculationBusy ||
+    territoryBusy;
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -115,18 +131,29 @@ export default function App() {
       setConfirmed(false);
     }
   }, []);
+  const territoryEdited = useCallback((dirty: boolean) => {
+    setTerritoryDirty(dirty);
+    if (dirty) {
+      setAnswer(null);
+      setConfirmed(false);
+    }
+  }, []);
   function failVolume(message: string) {
     setNativeVolume(null);
+    setTerritoryDirty(false);
     setSegmentation(null);
     setReference(null);
     setRequestedReference(null);
     setRequestedCalibrated(null);
     setCalibratedSource(null);
+    setNativeSource(null);
+    setNativeSourceError("");
     setConflict(false);
     setPlanDirty(false);
     setGeometryDirty(false);
     setDeviceDirty(false);
     setFile(null);
+    setTerritoryDirty(false);
     setDigest("");
     setCase(null);
     setNotes("");
@@ -153,6 +180,7 @@ export default function App() {
     setBusy(true);
     setError("");
     setCase(null);
+    setTerritoryDirty(false);
     setNativeVolume(null);
     setSegmentation(null);
     setA(null);
@@ -165,6 +193,8 @@ export default function App() {
     setRequestedReference(requested);
     setRequestedCalibrated(calibrated);
     setCalibratedSource(null);
+    setNativeSource(null);
+    setNativeSourceError("");
     setShowReference(true);
     setReferenceStatus("off");
     setMode("linked");
@@ -233,6 +263,18 @@ export default function App() {
             "Calibrated source revision could not be verified for this case.",
           );
         setCalibratedSource(verified);
+        setNativeSource(verified);
+      }
+      if (!requestedCalibrated && result.spatial_units === "mm") {
+        try {
+          setNativeSource(await findNativeCaseSource(result));
+          setNativeSourceError("");
+        } catch {
+          setNativeSource(null);
+          setNativeSourceError(
+            "Server-linked native source could not be verified. Territory editing remains off.",
+          );
+        }
       }
       setCase(result);
       setNotes(result.notes);
@@ -300,7 +342,24 @@ export default function App() {
         )
           throw new Error("Calibrated source revision changed.");
         setCalibratedSource(verified);
+        setNativeSource(verified);
       }
+      if (!requestedCalibrated) {
+        setNativeSource(null);
+        try {
+          setNativeSource(
+            latest.spatial_units === "mm"
+              ? await findNativeCaseSource(latest)
+              : null,
+          );
+          setNativeSourceError("");
+        } catch {
+          setNativeSourceError(
+            "Server-linked native source could not be verified. Territory editing remains off.",
+          );
+        }
+      }
+      setTerritoryDirty(false);
       setReloadEpoch((value) => value + 1);
       setA(null);
       setB(null);
@@ -476,7 +535,9 @@ export default function App() {
           <DeviceStudio
             file={file}
             caseState={caseState}
-            sourceRevision={(calibratedSource || reference)?.reference_revision ?? null}
+            sourceRevision={
+              (calibratedSource || reference)?.reference_revision ?? null
+            }
             onClose={() => setStudioOpen(false)}
           />
         </Suspense>
@@ -487,11 +548,17 @@ export default function App() {
         </div>
         <div className="brand">
           <h1>Seldinger Planner</h1>
-          <span>NEUROVASCULAR WORKSPACE</span>
+          <span>IMAGE-GUIDED WORKSPACE</span>
         </div>
         <span className="build-tag">RESEARCH BUILD / 01</span>
         <div className="top-actions">
-          <button className="ds-studio-open" onClick={() => setStudioOpen(true)} disabled={busy || geometryDirty || conflict}>Device studio</button>
+          <button
+            className="ds-studio-open"
+            onClick={() => setStudioOpen(true)}
+            disabled={busy || geometryDirty || conflict}
+          >
+            Device studio
+          </button>
           <button onClick={openCalibrated} disabled={busy || geometryDirty}>
             Open calibrated CTA
           </button>
@@ -762,171 +829,233 @@ export default function App() {
         </section>
         <aside className="planning-panel">
           <div className="eyebrow">03 / PLANNING</div>
-          <h2>Aneurysm planning.</h2>
-          <nav className="planning-nav" aria-label="Planning sections">
-            <a href="#mask-geometry">Geometry</a>
-            <a href="#device-reference">Devices</a>
-            <a href="#aneurysm-plan">Plan</a>
-            <a href="#model-segmentation">Models</a>
-            <a href="#manual-evidence">Evidence</a>
-            <a href="#muse-discussion">Muse ↗</a>
-          </nav>
-          {caseState && calibratedSource && (
-            <section id="mask-geometry" className="planning-section">
-              <MorphometryResults
-                key={geometryEpoch}
-                caseState={caseState}
-                binding={calibratedSource}
-                nativeVolume={
-                  nativeVolume?.file === file &&
-                  digest === caseState.image_sha256
-                    ? nativeVolume.image
-                    : null
-                }
-                windowRange={windowRange}
-                disabled={
-                  busy ||
-                  conflict ||
-                  geometryDirty ||
-                  planDirty ||
-                  notes !== caseState.notes
-                }
-                onFocus={setFocus}
-              />
-              <details className="geometry-editor">
-                <summary>Set geometry landmarks</summary>
-                <MorphometryInputs
-                  key={`${caseState.case_id}:${reloadEpoch}`}
-                  caseState={caseState}
-                  binding={calibratedSource}
-                  location={location}
-                  disabled={
-                    busy ||
-                    conflict ||
-                    deviceDirty ||
-                    planDirty ||
-                    notes !== caseState.notes
-                  }
-                  onRevision={segmentationAccepted}
-                  onComputed={() => {
-                    setGeometryEpoch((value) => value + 1);
-                    setAnswer(null);
-                  }}
-                  onDirtyChange={geometryEdited}
-                  onBusy={setGeometryBusy}
-                  onError={reportRequestError}
-                  onFocus={setFocus}
-                />
-              </details>
-            </section>
-          )}
-          {caseState && calibratedSource && (
-            <section id="device-reference" className="planning-section">
-              <DeviceReference
-                key={`${geometryEpoch}:${deviceEpoch}`}
-                caseState={caseState}
-                binding={calibratedSource}
-                disabled={
-                  busy ||
-                  conflict ||
-                  geometryDirty ||
-                  planDirty ||
-                  notes !== caseState.notes
-                }
-              />
-              <details className="geometry-editor">
-                <summary>Enter independent sizing values</summary>
-                <DeviceSizingInputs
-                  key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}`}
-                  caseState={caseState}
-                  binding={calibratedSource}
-                  disabled={
-                    busy ||
-                    conflict ||
-                    geometryInputsDirty ||
-                    planDirty ||
-                    notes !== caseState.notes
-                  }
-                  onDirty={deviceEdited}
-                  onBusy={setDeviceBusy}
-                  onSaved={() => {
-                    setDeviceEpoch((value) => value + 1);
-                    setAnswer(null);
-                    setConfirmed(false);
-                  }}
-                  onConflict={(message) => {
-                    setError(message);
-                    setConflict(true);
-                    setAnswer(null);
-                  }}
-                />
-              </details>
-              <DeviceSizingPanel
-                key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}:${deviceEpoch}`}
-                caseState={caseState}
-                binding={calibratedSource}
-                disabled={
-                  workspaceBusy ||
-                  geometryBusy ||
-                  deviceBusy ||
-                  conflict ||
-                  geometryDirty ||
-                  planDirty ||
-                  notes !== caseState.notes
-                }
-                onBusy={setDeviceCalculationBusy}
-                onCalculated={() => {
-                  setAnswer(null);
-                  setConfirmed(false);
-                }}
-                onConflict={() => {
-                  setError(
-                    "Sizing calculation could not be confirmed. Reload saved state before retrying.",
-                  );
-                  setConflict(true);
-                  setAnswer(null);
-                }}
-              />
-            </section>
-          )}
-          {caseState ? (
-            <AneurysmWorksheet
-              key={`${caseState.case_id}:${reloadEpoch}`}
-              caseId={caseState.case_id}
-              plan={caseState.aneurysm_plan ?? null}
-              measurements={caseState.measurements}
-              spatialUnits={caseState.spatial_units}
-              location={location}
-              disabled={busy || conflict || geometryDirty}
-              onSave={saveAneurysmPlan}
-              onFocus={setFocus}
-              onDirtyChange={planEdited}
-            />
-          ) : (
-            <section className="planning-section" id="aneurysm-plan">
-              <p className="muted small">
-                Open a volume to mark the target and build a case plan.
-              </p>
-            </section>
-          )}
-          {caseState && (
-            <SegmentationPanel
-              key={caseState.case_id}
-              caseState={caseState}
-              reference={calibratedSource || reference}
-              location={location}
-              windowRange={windowRange}
+          <h2>Procedure planning.</h2>
+          <div
+            className="territory-modes"
+            role="group"
+            aria-label="Planning workspace"
+          >
+            <button
+              aria-pressed={!territoryWorkspace}
+              disabled={busy || conflict || geometryDirty || planDirty}
+              onClick={() => setTerritoryWorkspace(false)}
+            >
+              Neurovascular
+            </button>
+            <button
+              aria-pressed={territoryWorkspace}
               disabled={
+                !caseState ||
+                !nativeSource ||
                 busy ||
                 conflict ||
                 geometryDirty ||
+                planDirty
+              }
+              onClick={() => setTerritoryWorkspace(true)}
+            >
+              Cardiac and aortic
+            </button>
+          </div>
+          {nativeSourceError && (
+            <p className="muted small">{nativeSourceError}</p>
+          )}
+          <nav className="planning-nav" aria-label="Planning sections">
+            {territoryWorkspace ? (
+              <a href="#territory-workflows">Workflows</a>
+            ) : (
+              <>
+                <a href="#mask-geometry">Geometry</a>
+                <a href="#device-reference">Devices</a>
+                <a href="#aneurysm-plan">Plan</a>
+                <a href="#model-segmentation">Models</a>
+              </>
+            )}
+            <a href="#manual-evidence">Evidence</a>
+            <a href="#muse-discussion">Muse ↗</a>
+          </nav>
+          {territoryWorkspace && caseState && nativeSource && (
+            <TerritoryStudio
+              caseState={caseState}
+              binding={nativeSource}
+              volume={
+                nativeVolume?.file === file && digest === caseState.image_sha256
+                  ? nativeVolume.image
+                  : null
+              }
+              cursor={location}
+              disabled={
+                busy ||
+                conflict ||
+                geometryInputsDirty ||
+                deviceDirty ||
                 planDirty ||
                 notes !== caseState.notes
               }
-              onOverlay={setSegmentation}
-              onAccepted={segmentationAccepted}
-              onError={reportRequestError}
+              onDirtyChange={territoryEdited}
+              onBusy={setTerritoryBusy}
             />
+          )}
+          {!territoryWorkspace && (
+            <>
+              {caseState && calibratedSource && (
+                <section id="mask-geometry" className="planning-section">
+                  <MorphometryResults
+                    key={geometryEpoch}
+                    caseState={caseState}
+                    binding={calibratedSource}
+                    nativeVolume={
+                      nativeVolume?.file === file &&
+                      digest === caseState.image_sha256
+                        ? nativeVolume.image
+                        : null
+                    }
+                    windowRange={windowRange}
+                    disabled={
+                      busy ||
+                      conflict ||
+                      geometryDirty ||
+                      planDirty ||
+                      notes !== caseState.notes
+                    }
+                    onFocus={setFocus}
+                  />
+                  <details className="geometry-editor">
+                    <summary>Set geometry landmarks</summary>
+                    <MorphometryInputs
+                      key={`${caseState.case_id}:${reloadEpoch}`}
+                      caseState={caseState}
+                      binding={calibratedSource}
+                      location={location}
+                      disabled={
+                        busy ||
+                        conflict ||
+                        deviceDirty ||
+                        planDirty ||
+                        notes !== caseState.notes
+                      }
+                      onRevision={segmentationAccepted}
+                      onComputed={() => {
+                        setGeometryEpoch((value) => value + 1);
+                        setAnswer(null);
+                      }}
+                      onDirtyChange={geometryEdited}
+                      onBusy={setGeometryBusy}
+                      onError={reportRequestError}
+                      onFocus={setFocus}
+                    />
+                  </details>
+                </section>
+              )}
+              {caseState && calibratedSource && (
+                <section id="device-reference" className="planning-section">
+                  <DeviceReference
+                    key={`${geometryEpoch}:${deviceEpoch}`}
+                    caseState={caseState}
+                    binding={calibratedSource}
+                    disabled={
+                      busy ||
+                      conflict ||
+                      geometryDirty ||
+                      planDirty ||
+                      notes !== caseState.notes
+                    }
+                  />
+                  <details className="geometry-editor">
+                    <summary>Enter independent sizing values</summary>
+                    <DeviceSizingInputs
+                      key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}`}
+                      caseState={caseState}
+                      binding={calibratedSource}
+                      disabled={
+                        busy ||
+                        conflict ||
+                        geometryInputsDirty ||
+                        planDirty ||
+                        notes !== caseState.notes
+                      }
+                      onDirty={deviceEdited}
+                      onBusy={setDeviceBusy}
+                      onSaved={() => {
+                        setDeviceEpoch((value) => value + 1);
+                        setAnswer(null);
+                        setConfirmed(false);
+                      }}
+                      onConflict={(message) => {
+                        setError(message);
+                        setConflict(true);
+                        setAnswer(null);
+                      }}
+                    />
+                  </details>
+                  <DeviceSizingPanel
+                    key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}:${deviceEpoch}`}
+                    caseState={caseState}
+                    binding={calibratedSource}
+                    disabled={
+                      workspaceBusy ||
+                      geometryBusy ||
+                      deviceBusy ||
+                      conflict ||
+                      geometryDirty ||
+                      planDirty ||
+                      notes !== caseState.notes
+                    }
+                    onBusy={setDeviceCalculationBusy}
+                    onCalculated={() => {
+                      setAnswer(null);
+                      setConfirmed(false);
+                    }}
+                    onConflict={() => {
+                      setError(
+                        "Sizing calculation could not be confirmed. Reload saved state before retrying.",
+                      );
+                      setConflict(true);
+                      setAnswer(null);
+                    }}
+                  />
+                </section>
+              )}
+              {caseState ? (
+                <AneurysmWorksheet
+                  key={`${caseState.case_id}:${reloadEpoch}`}
+                  caseId={caseState.case_id}
+                  plan={caseState.aneurysm_plan ?? null}
+                  measurements={caseState.measurements}
+                  spatialUnits={caseState.spatial_units}
+                  location={location}
+                  disabled={busy || conflict || geometryDirty}
+                  onSave={saveAneurysmPlan}
+                  onFocus={setFocus}
+                  onDirtyChange={planEdited}
+                />
+              ) : (
+                <section className="planning-section" id="aneurysm-plan">
+                  <p className="muted small">
+                    Open a volume to mark the target and build a case plan.
+                  </p>
+                </section>
+              )}
+              {caseState && (
+                <SegmentationPanel
+                  key={caseState.case_id}
+                  caseState={caseState}
+                  reference={calibratedSource || reference}
+                  location={location}
+                  windowRange={windowRange}
+                  disabled={
+                    busy ||
+                    conflict ||
+                    geometryDirty ||
+                    planDirty ||
+                    notes !== caseState.notes
+                  }
+                  onOverlay={setSegmentation}
+                  onAccepted={segmentationAccepted}
+                  onError={reportRequestError}
+                />
+              )}
+            </>
           )}
           <section className="planning-section" id="manual-evidence">
             <h3>
