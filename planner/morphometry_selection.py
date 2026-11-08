@@ -47,33 +47,42 @@ def _edge_plane_point(pi, pj, di, dj):
 
 
 def _plane_segments(tris, o, n):
-    """Intersection segments of the mesh with the plane, per old rules."""
+    """Intersect at the exact plane, including transverse shared mesh edges.
+
+    A shared edge on the plane is counted once only when its two incident
+    faces lie on opposite sides. Coplanar patches, tangent edges and open or
+    non-manifold plane edges remain ambiguous and are rejected.
+    """
     segments = []
-    coplanar_seen = False
-    for a, b, c in tris:
-        d = tuple(
-            (p[0] - o[0]) * n[0] + (p[1] - o[1]) * n[1] + (p[2] - o[2]) * n[2] for p in (a, b, c)
-        )
-        if all(abs(v) <= _PLANE_EPS for v in d):
-            coplanar_seen = True
-            continue
-        pts = []
-        vs = (a, b, c)
+    plane_edges = {}
+    for triangle in tris:
+        d = tuple(sum((p[k] - o[k]) * n[k] for k in range(3)) for p in triangle)
+        signs = tuple(0 if abs(v) <= _PLANE_EPS else (1 if v > 0 else -1) for v in d)
+        if not any(signs):
+            raise MorphometryError(
+                "coplanar surface patch on the section plane; a plausible contour would be ambiguous"
+            )
+        points = {_quant_key(p): p for p, sign in zip(triangle, signs, strict=True) if sign == 0}
         for i in range(3):
             j = (i + 1) % 3
-            di, dj = d[i], d[j]
-            if di * dj < 0.0:
-                t = di / (di - dj)
-                pi, pj = vs[i], vs[j]
-                pts.append(tuple(pi[k] + t * (pj[k] - pi[k]) for k in range(3)))
-            elif abs(di) <= _PLANE_EPS and abs(dj) > _PLANE_EPS:
-                pts.append(vs[i])
-        if len(pts) == 2:
-            segments.append((pts[0], pts[1]))
-    if coplanar_seen:
-        raise MorphometryError(
-            "coplanar surface patch on the section plane; a plausible contour would be ambiguous"
-        )
+            if signs[i] * signs[j] < 0:
+                p = _edge_plane_point(triangle[i], triangle[j], d[i], d[j])
+                points[_quant_key(p)] = p
+        if len(points) != 2:
+            continue
+        keys = tuple(sorted(points))
+        segment = (points[keys[0]], points[keys[1]])
+        if signs.count(0) == 2:
+            side = next(sign for sign in signs if sign)
+            plane_edges.setdefault(keys, []).append((segment, side))
+        else:
+            segments.append(segment)
+    for incidences in plane_edges.values():
+        if len(incidences) != 2:
+            raise MorphometryError("open or non-manifold edge on the section plane")
+        if incidences[0][1] == incidences[1][1]:
+            raise MorphometryError("tangent mesh edge on the section plane is ambiguous")
+        segments.append(incidences[0][0])
     return segments
 
 

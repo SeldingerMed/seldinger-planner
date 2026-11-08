@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CaseState } from "../api";
 import DeviceScene, { type SceneMesh } from "./DeviceScene";
 import PhysicsBench from "./PhysicsBench";
+import NumericalPhysics from "./NumericalPhysics";
 import CoordinateInput from "./CoordinateInput";
 import { flowDiverter, intrasaccular, coilPack } from "./geometry";
 import { binarySTL, lineTubes } from "./mesh";
@@ -147,6 +148,7 @@ export default function DeviceStudio({
     [clip, setClip] = useState(2),
     [ctaOpacity, setCtaOpacity] = useState(0.12),
     [windowRange, setWindow] = useState<[number, number]>([0, 600]);
+  const [loadedIdentity, setLoadedIdentity] = useState<string | null>(null);
   const [anatomy, setAnatomy] = useState<PlanningAnatomy | null>(null),
     [anatomyMeshes, setAnatomyMeshes] = useState<SceneMesh[]>([]),
     [showVessel, setShowVessel] = useState(true),
@@ -169,6 +171,7 @@ export default function DeviceStudio({
     ? `${caseState.case_id}:${caseState.image_sha256}:${caseState.artifact_version}:${sourceRevision}`
     : "bench";
   useEffect(() => {
+    setLoadedIdentity(null);
     setAnatomy(null);
     setAnatomyMeshes([]);
     setScenarios([]);
@@ -285,6 +288,7 @@ export default function DeviceStudio({
         )
           throw new Error("Anatomy changed while loading planning scene.");
         if (active) {
+          setLoadedIdentity(identity);
           setAnatomy(a);
           setAnatomyMeshes(meshes);
         }
@@ -433,6 +437,9 @@ export default function DeviceStudio({
   }
   const canAnatomy = !!(
     file &&
+    loadedIdentity === identity &&
+    !error &&
+    !loading &&
     anatomy &&
     anatomyMeshes.length === 2 &&
     caseState?.spatial_units === "mm"
@@ -881,6 +888,17 @@ export default function DeviceStudio({
               simulate deployment forces.
             </p>
           </details>
+          <NumericalPhysics
+            caseState={view === "anatomy" && canAnatomy ? caseState : null}
+            sourceRevision={
+              view === "anatomy" && canAnatomy ? sourceRevision : null
+            }
+            geometryResultId={
+              view === "anatomy" && canAnatomy
+                ? (anatomy?.geometryResultId ?? null)
+                : null
+            }
+          />
           <PhysicsBench
             key={`${device.id}:${bindingKey(binding)}`}
             category={device.category}

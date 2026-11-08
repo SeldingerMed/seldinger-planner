@@ -1,0 +1,7 @@
+# Model-free Phase 2 numerical worker and synthetic verification runtime.
+numpy==2.4.6
+scipy==1.17.1
+scikit-fem==12.0.2
+nibabel==5.4.2
+scikit-image==0.26.0
+pytest==9.2.0

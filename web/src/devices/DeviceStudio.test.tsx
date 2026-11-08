@@ -35,6 +35,21 @@ vi.mock("./DeviceScene", () => ({
   default: () => <div data-testid="scene" />,
 }));
 import DeviceStudio from "./DeviceStudio";
+it("mounts solved numerics beside the analytic bench but disables native execution without anatomy", () => {
+  render(
+    <DeviceStudio
+      file={null}
+      caseState={null}
+      sourceRevision={null}
+      onClose={() => {}}
+    />,
+  );
+  expect(screen.getByLabelText("Rod radius (mm)")).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Compute solved numerics" }),
+  ).toBeDisabled();
+});
+
 it("restores the actual visual braid state with a saved alternative", () => {
   localStorage.clear();
   render(
@@ -70,15 +85,17 @@ it("never shows a measured-looking coil volume for a coil with no captured SKU d
     />,
   );
   fireEvent.click(screen.getByRole("button", { name: /Target 360/ }));
-  expect(screen.getByRole("heading", { name: "Target 360" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("heading", { name: "Target 360" }),
+  ).toBeInTheDocument();
   // No per-SKU primary diameter is captured for the coil families, so the
   // volume/density metrics must be absent entirely rather than shown from a
   // visualization default.
   expect(screen.queryByText("Coil wire volume")).not.toBeInTheDocument();
+  expect(screen.queryByText("Packing volume density")).not.toBeInTheDocument();
   expect(
-    screen.queryByText("Packing volume density"),
-  ).not.toBeInTheDocument();
-  expect(screen.getByRole("slider", { name: "Secondary coil length (mm)" })).toBeInTheDocument();
+    screen.getByRole("slider", { name: "Secondary coil length (mm)" }),
+  ).toBeInTheDocument();
 });
 
 it("exposes manufacturer-specific models without a CTA and keeps recalled devices out of normal choices", async () => {

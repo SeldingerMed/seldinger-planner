@@ -4,6 +4,7 @@ All meshes are analytic; no data, models, network, or clinical claims.
 """
 
 import math
+from itertools import pairwise
 
 import pytest
 
@@ -12,6 +13,52 @@ from planner.morphometry_selection import clipped_sac_metrics, selected_section_
 
 
 # ------------------------------------------------------------- mesh helpers
+def test_section_through_shared_mesh_ring_uses_exact_plane_not_offset():
+    rings = [
+        [(x, y, z) for x, y in ((0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0))]
+        for z in (0.0, 1.0, 2.0)
+    ]
+    triangles = []
+    for low, high in pairwise(rings):
+        for i in range(4):
+            j = (i + 1) % 4
+            triangles.extend([(low[i], low[j], high[j]), (low[i], high[j], high[i])])
+    result = selected_section_metrics(
+        triangles, (2.0, 2.0, 1.0), (0.0, 0.0, 1.0), spatial_units="mm"
+    )
+    assert result["area"] == pytest.approx(4.0**2)
+    assert result["plane_origin"] == (2.0, 2.0, 1.0)
+    assert all(p[2] == 1.0 for p in result["contour_world"])
+
+
+@pytest.mark.parametrize(
+    "triangles,reason",
+    [
+        ([((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 1.0))], "open or non-manifold"),
+        (
+            [
+                ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 1.0)),
+                ((1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, -1.0, 1.0)),
+            ],
+            "tangent",
+        ),
+        (
+            [
+                ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 1.0)),
+                ((1.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, -1.0, -1.0)),
+                ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 2.0, 1.0)),
+            ],
+            "non-manifold",
+        ),
+    ],
+)
+def test_ambiguous_plane_edge_incidence_is_rejected(triangles, reason):
+    from planner.morphometry_selection import _plane_segments
+
+    with pytest.raises(MorphometryError, match=reason):
+        _plane_segments(triangles, (0.0, 0.0, 0.0), (0.0, 0.0, 1.0))
+
+
 def _unit(x):
     n = math.sqrt(sum(c * c for c in x))
     return tuple(c / n for c in x)

@@ -267,6 +267,9 @@ def build_app(
         app, device_inputs, device_results, read_geometry
     )
     register_device_calculation_routes(app, device_results, read_sizing)
+    from planner.physics_server import register_physics_routes
+
+    register_physics_routes(app, db_path, image_sources, read_case, results_dir)
 
     from planner.device_db import (
         CATEGORIES,
