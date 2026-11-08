@@ -214,8 +214,8 @@ def test_curved_branched_vessel_follows_skeleton():
     end = _to_ras(mask, aff, (10, 1, 5))
     result = propose_centerline(mask, aff, start, end)
     _assert_contract(mask, aff, start, end, result)
-    # lee skeleton cuts one diagonal at the bend: length must follow the
-    # skeleton (>= the axial run) and stay far below nothing; chord is ~10.77
+    # The Lee-skeleton path follows the bend rather than the straight chord;
+    # these physical-length bounds retain that corner-following geometry.
     assert 13.0 <= result["length_mm"] <= 14.0 + 1e-9
     # some interior point must sit at the corner voxel, not on the chord
     inv = np.linalg.inv(aff)
