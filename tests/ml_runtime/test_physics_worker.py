@@ -204,6 +204,15 @@ def test_proposed_native_path_supports_geometry_after_explicit_station_review(
     assert result["proximal_parent"]["plane_origin"] == tuple(operator["parent_path"][2])
 
 
+def test_nonzero_worker_exit_has_distinct_failure_message(tmp_path, monkeypatch):
+    from planner import physics_worker
+
+    # Unit check of the supervisor's error taxonomy, not numerical evidence.
+    monkeypatch.setattr(physics_worker, "_capture_worker", lambda *_: (1, b""))
+    with pytest.raises(RuntimeError, match=r"^Native numerical worker failed$"):
+        physics_worker.run_local_physics({}, blob_dir=tmp_path)
+
+
 def test_cli_sanitizes_decoder_failure_families(monkeypatch, capsys):
     import io
     import sys

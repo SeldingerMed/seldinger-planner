@@ -270,7 +270,7 @@ def run_local_physics(job, *, blob_dir):
     except (OSError, subprocess.TimeoutExpired):
         raise RuntimeError("Native numerical worker failed or exceeded its deadline") from None
     if returncode != 0:
-        raise RuntimeError("Native numerical worker failed or exceeded its output bound")
+        raise RuntimeError("Native numerical worker failed")
     try:
         result = json.loads(stdout)
         if not isinstance(result, dict):

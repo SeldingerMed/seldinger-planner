@@ -303,6 +303,7 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
                 if current["status"] == "current" and kind != "centerline"
                 else None
             )
+            # Deliberate second read: reject a result changed during this read.
             latest = freeze(ledger.current(case_id, before["reference_revision"], kind))
             after, _bundle = bound(case_id)
             if after != before or latest != current:
