@@ -41,14 +41,6 @@ def _resign_mask(job, blob_dir, role, payload):
     return digest
 
 
-def _tamper_mask_payload(job, blob_dir, role, mutate):
-    role_dir = Path(blob_dir) / "blobs"
-    old_digest = job["dependencies"]["masks"][role]["mask_sha256"]
-    payload = (role_dir / f"{old_digest}.nii.gz").read_bytes()
-    new_payload = mutate(payload)
-    return _resign_mask(job, blob_dir, role, new_payload)
-
-
 def test_tampered_mask_bytes_rejected_without_resign(tmp_path, monkeypatch):
     from planner.native_inputs import load_native_masks
 

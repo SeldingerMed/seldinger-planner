@@ -204,6 +204,7 @@ function validateProposal(
   binding: MorphometryBinding,
   startRas: Vec3,
   endRas: Vec3,
+  requestedMaxPoints: number,
 ): Proposal | null {
   if (typeof payload !== "object" || payload === null) return null;
   const p = payload as Record<string, unknown>;
@@ -223,7 +224,7 @@ function validateProposal(
   if (
     !isFiniteTriple(pr.start_ras) ||
     !isFiniteTriple(pr.end_ras) ||
-    pr.max_points !== 32
+    pr.max_points !== requestedMaxPoints
   )
     return null;
   // The echoed anchors must match the requested (normalized) anchors.
@@ -266,7 +267,7 @@ function validateProposal(
   if (
     !Array.isArray(path) ||
     path.length < 4 ||
-    path.length > 32 ||
+    path.length > requestedMaxPoints ||
     !path.every(isFiniteTriple)
   )
     return null;
@@ -630,6 +631,7 @@ export default function MorphometryInputs({
     const b = binding!;
     const startRas: Vec3 = [...first];
     const endRas: Vec3 = [...last];
+    const requestedMaxPoints = 32;
     const epoch = ++epochRef.current;
     const releaseOwner = callbacksRef.current.onBusy;
     setBusy(true);
@@ -640,13 +642,19 @@ export default function MorphometryInputs({
       {
         artifact_version: caseState.artifact_version,
         reference_revision: b.reference_revision,
-        parameters: { start_ras: startRas, end_ras: endRas, max_points: 32 },
+        parameters: {
+          start_ras: startRas,
+          end_ras: endRas,
+          max_points: requestedMaxPoints,
+        },
       },
       "POST",
     )
       .then((payload) => {
         if (epochRef.current !== epoch) return;
-        const p = validateProposal(payload, caseState, b, startRas, endRas);
+        const p = validateProposal(
+          payload, caseState, b, startRas, endRas, requestedMaxPoints,
+        );
         if (!p) {
           callbacksRef.current.onError(
             new Error("Centerline proposal did not match the case."),
