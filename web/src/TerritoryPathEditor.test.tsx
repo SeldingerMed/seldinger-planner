@@ -156,6 +156,22 @@ test.each([false, true])(
   },
 );
 
+test("an unchanged cursor cannot append a duplicate or clear existing profiles", () => {
+  const { calls } = setup({
+    path: [
+      [0, 0, 0],
+      [6, 0, 0],
+    ],
+    profiles: [profile(0, [0, 0, 0], [1, 0, 0])],
+  });
+  click("Append cursor point");
+  expect(calls).toHaveLength(0);
+  expect(screen.getByRole("status")).toHaveTextContent("move the cursor");
+  expect(
+    screen.getByRole("button", { name: "Profile at station 0" }),
+  ).toBeInTheDocument();
+});
+
 test("duplicate and blank station drafts never append an ambiguous profile", () => {
   const { calls } = setup({
     ...base,

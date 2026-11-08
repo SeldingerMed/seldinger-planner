@@ -38,7 +38,7 @@ Desktop and 430×932 portrait layouts were inspected. Portrait document width an
 
 ## Automated verification
 
-Clean-candidate results: **751 backend tests passed,108 optional tests skipped;129 numerical tests passed;21 imaging-geometry tests passed;302 frontend tests passed**. Base tests used Python3.12.13, numerical/geometry checks Python3.11.15, and the final frontend run Node24.22.2. Ruff, formatting, TypeScript/build, API/server Pyright and dependency audit passed with zero vulnerabilities. Geometry tests used a separate runtime populated from the numerical dependency lock; no trained-model run is claimed.
+Clean-candidate results: **752 backend tests passed,108 optional tests skipped;129 numerical tests passed;21 imaging-geometry tests passed;304 frontend tests passed**. Base tests used Python3.12.13, numerical/geometry checks Python3.11.15, and the final frontend run Node24.22.2. Ruff, formatting, TypeScript/build, API/server Pyright and dependency audit passed with zero vulnerabilities. Geometry tests used a separate runtime populated from the numerical dependency lock; no trained-model run is claimed.
 
 Clean-candidate checks and exact file hashes are recorded in `phase3-artifacts.json`. The publication candidate excludes local `plan.md` and all pre-existing unrelated work. Local mixed-checkout totals are not substituted for clean-candidate totals.
 
@@ -48,13 +48,17 @@ The backend independent review substantiated no defects in its bounded geometry/
 
 ### Review repairs and retained policies
 
-- Definitive HTTP422 validation rejections retain the editable draft and explicitly report that nothing was stored. A real self-crossing trace produced422 with workflow revision0; correcting that same draft then stored revision1 through the real App/API.
+- Definitive HTTP 413/422 validation rejections retain the editable draft and explicitly report that nothing was stored. A real self-crossing trace produced422 with workflow revision0; correcting that same draft then stored revision1 through the real App/API.
 - HTTP409 still locks mutation retries: the committed post-store acknowledgement-race test produces409 after two valid rows have committed. The suggestion that every409 is a non-commit was disproved rather than applied.
 - Deleting the last tissue-region annotation returns the class to unknown and now explicitly explains that transition. Only the dedicated No-observed action declares zero. This rule is independent of prior UI history and works for both initially unknown and previously explicit-empty classes.
 - Applied section and viewport objects are memoized. In the real native-volume browser, an unrelated landmark update retained the same existing image node with zero image mutations. Geometry/source/window/bounds invalidation remains covered separately.
 - Removed the duplicate dirty-state reset. Moved Phase3 mode/dirty assertions into the dedicated native-source integration tracer rather than extending the already-long public-neuro test; no timeout was raised.
 
-The repair candidate reran all751 base and302 frontend tests. The source lint excluded only locally provisioned third-party `.runtime` virtual environments; the CI backend has no such generated directories. The numerical129 and imaging21 evidence carries forward for their unchanged source files.
+The repair candidate reran all752 base and304 frontend tests. The source lint excluded only locally provisioned third-party `.runtime` virtual environments; the CI backend has no such generated directories. The numerical129 and imaging21 evidence carries forward for their unchanged source files.
+
+Additional review refinements prevent a duplicate cursor append before it can clear profiles, share the 128-point contour bound between geometry and Pydantic, and preserve drafts for the independently proven pre-write 413 body rejection.
+
+A proposed write-readback shortcut was intentionally declined after a real default-API measurement: an 8,030-point circular-profile input (31 lumen/wall pairs, 128 vertices per ring) performed **three** complete geometry computations, not five. Observed timings were 0.667347250 s pre-write, 0.659410333 s and 0.675560750 s for the two stored-row integrity reads; the whole PUT took 2.085107916 s and returned 200/revision 1. This is one near-point-cap input on the local machine, not a latency guarantee for all shapes. Fresh persisted-row verification and double-read coherence were retained rather than replaced with a no-recompute acknowledgement path.
 
 ## Delivery gate
 

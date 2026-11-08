@@ -34,6 +34,14 @@ def test_true_oblique_rigid_transform_preserves_tavr_dimensions_and_signed_heigh
             assert actual[key] == value
 
 
+def test_geometry_and_http_share_the_same_contour_bound():
+    from planner.territory_geometry import MAX_CONTOUR_POINTS
+    from planner.territory_workflows import Section
+
+    assert MAX_CONTOUR_POINTS == 128
+    assert Section.model_json_schema()["properties"]["contour"]["maxItems"] == MAX_CONTOUR_POINTS
+
+
 def tavr_inputs():
     return {
         "annulus": {

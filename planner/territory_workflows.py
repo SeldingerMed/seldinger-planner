@@ -4,7 +4,14 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt
 
-from planner.territory_geometry import dot, point3, section_metrics, subtract, unit
+from planner.territory_geometry import (
+    MAX_CONTOUR_POINTS,
+    dot,
+    point3,
+    section_metrics,
+    subtract,
+    unit,
+)
 
 CALCULATION_VERSION = "territory-traced-geometry-v1"
 Mode = Literal["tavr", "coronary_pci", "aortic_peripheral"]
@@ -20,7 +27,7 @@ class StrictModel(BaseModel):
 class Section(StrictModel):
     origin: Point
     normal: Point
-    contour: Annotated[list[Point], Field(min_length=3, max_length=128)]
+    contour: Annotated[list[Point], Field(min_length=3, max_length=MAX_CONTOUR_POINTS)]
 
 
 class Profile(StrictModel):

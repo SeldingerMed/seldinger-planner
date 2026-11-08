@@ -3,7 +3,7 @@
 import math
 from itertools import pairwise
 
-MAX_CONTOUR_POINTS = 512
+MAX_CONTOUR_POINTS = 128  # Shared with the typed HTTP Section contract.
 PLANE_TOLERANCE_MM = 1e-4
 
 

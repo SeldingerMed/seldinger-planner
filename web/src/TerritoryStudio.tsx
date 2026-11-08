@@ -341,19 +341,19 @@ export default function TerritoryStudio({
       callbacks.current.onDirtyChange?.(false);
     } catch (error) {
       if (live.current !== capturedKey || epoch.current !== ticket) return;
+      const rejected =
+        error instanceof WorkspaceRequestError &&
+        (error.status === 422 || error.status === 413);
       setSnapshot((old) =>
         old?.key === capturedKey
           ? {
               ...old,
-              //422 is guaranteed to precede the ledger write.409 is NOT:
+              //413/422 are guaranteed to precede the ledger write.409 is NOT:
               // a post-store snapshot/acknowledgement race can return409.
-              locked: !(
-                error instanceof WorkspaceRequestError && error.status === 422
-              ),
-              error:
-                error instanceof WorkspaceRequestError && error.status === 422
-                  ? "Annotations were rejected; nothing was stored. Correct the draft and save again."
-                  : "Save could not be confirmed. It may have been stored. Reload saved workflow before retrying.",
+              locked: !rejected,
+              error: rejected
+                ? "Annotations were rejected; nothing was stored. Correct the draft and save again."
+                : "Save could not be confirmed. It may have been stored. Reload saved workflow before retrying.",
             }
           : old,
       );
