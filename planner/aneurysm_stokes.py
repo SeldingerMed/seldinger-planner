@@ -192,14 +192,9 @@ def _validate_topology(lumen, sac, flow_axis):
     amin = int(fluid_idx[:, flow_axis].min())
     amax = int(fluid_idx[:, flow_axis].max())
     _require(amin < amax, "lumen has zero extent along the flow axis")
-    _require(
-        bool(np.any(np.take(lumen, amin, axis=flow_axis) > 0)),
-        "lumen has no fluid voxels on the inlet (axis-min) face",
-    )
-    _require(
-        bool(np.any(np.take(lumen, amax, axis=flow_axis) > 0)),
-        "lumen has no fluid voxels on the outlet (axis-max) face",
-    )
+    # Nonempty extrema follow from argwhere. _facet_sets validates the
+    # actual inlet/outlet boundary facets after tetrahedralization; the fluid
+    # is intentionally allowed to occupy only an interior portion of the grid.
     return fluid_idx, sac_idx, amin, amax
 
 
@@ -315,7 +310,7 @@ def _facet_sets(tets, verts, lo, flow_axis):
 
 
 def _solve_case(basis_u, A, B, C, alpha, inlet_dofs, inlet_value, wall_dofs, direction, nu):
-    """Solve one (alpha) case; returns (u, p, alg_residual_rel)."""
+    """Solve one (alpha) case; returns (u, p, res_rel, momentum_rel)."""
     import scipy.sparse as sp
     import scipy.sparse.linalg as spla
 

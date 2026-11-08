@@ -361,7 +361,7 @@ def test_actual_fixed_runtime_supervisor_runs_isolated_source_checkout(tmp_path,
     (tmp_path / "poisoned-startup.py").write_text("raise RuntimeError('leaked')\n")
     import subprocess
 
-    loader_names = (
+    forbidden_env = (
         "LD_PRELOAD",
         "LD_LIBRARY_PATH",
         "LD_AUDIT",
@@ -370,15 +370,20 @@ def test_actual_fixed_runtime_supervisor_runs_isolated_source_checkout(tmp_path,
         "DYLD_FRAMEWORK_PATH",
         "DYLD_FALLBACK_LIBRARY_PATH",
         "SHLIB_PATH",
+        "_PYTHON_SYSCONFIGDATA_NAME",
+        "_PYTHON_PROJECT_BASE",
+        "__PYVENV_LAUNCHER__",
+        "API_PRIVATE_SENTINEL",
     )
-    for key in loader_names:
+    for key in forbidden_env:
         monkeypatch.setenv(key, str(tmp_path / "poisoned-loader"))
     actual_run = subprocess.Popen
     calls = []
 
     def observed_run(*args, **kwargs):
         # Assert before spawning: never ask the OS to load the poisoned paths.
-        assert not set(loader_names) & set(kwargs["env"])
+        leaked_names = sorted(set(forbidden_env) & set(kwargs["env"]))
+        assert leaked_names == []
         calls.append((args, kwargs))
         return actual_run(*args, **kwargs)
 

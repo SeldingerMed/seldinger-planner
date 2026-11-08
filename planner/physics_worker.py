@@ -248,10 +248,13 @@ def run_local_physics(job, *, blob_dir):
     payload = encoded({"job": job, "blob_dir": str(Path(blob_dir).absolute())})
     if len(payload.encode()) > MAX_INPUT_BYTES:
         raise ValueError("Numerical job exceeds its input bound")
+    # This model-free worker needs only basic OS/temp/locale context. An
+    # allowlist also excludes underscore interpreter overrides and unrelated
+    # API secrets, rather than chasing new loader/environment prefixes.
     env = {
-        key: value
-        for key, value in os.environ.items()
-        if not key.startswith(("PYTHON", "LD_", "DYLD_")) and key != "SHLIB_PATH"
+        key: os.environ[key]
+        for key in ("PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "TMP", "TEMP")
+        if key in os.environ
     }
     # Deliberate: only this interpreter-selecting PYTHONPATH survives.
     env["PYTHONPATH"] = str(ROOT)
