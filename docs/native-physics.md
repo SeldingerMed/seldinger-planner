@@ -36,7 +36,7 @@ Semantic numerical changes after release must advance the numerical algorithm ve
 - GET/POST `/api/cases/{case_id}/physics/stokes-flow`
 - GET/POST `/api/cases/{case_id}/centerline-proposals`
 
-Computations use the existing local inference gate, a fixed interpreter/module, one-thread numerical libraries, a 120-second worker deadline, 16 KiB input and 64 KiB output limits. Request paths and result fields are whitelisted. Invalid request: 422; stale/ineligible: 409; busy: 429; sanitized runtime/integrity failure: 503. A post-compute 409 can follow persistence and requires reloading saved state, not an assumption of rollback.
+Computations use the existing local inference gate, a fixed interpreter/module, one-thread numerical libraries, a 120-second worker deadline, 16 KiB input and 64 KiB output limits. Request paths and result fields are whitelisted. Schema/type/range errors and preflight native-grid anchor bounds: 422; stale/ineligible case or dependency state: 409; busy: 429; sanitized runtime/integrity or unsupported native-mask computation: 503. An in-grid anchor that does not round to accepted vessel foreground is detected in the isolated worker and deliberately returns sanitized 503, not 422. The API does not decode mask voxels to preflight foreground membership. Such a failure stores no new result; previously saved rows are not deleted. A post-compute 409 can follow persistence and requires reloading saved state, not an assumption of rollback.
 
 ### Rod
 
@@ -58,9 +58,9 @@ Momentum residual, weak continuity residual and the unprojected divergence L2 no
 
 ### Centerline proposal and operator confirmation
 
-The skeleton path stays on native vessel foreground between voxel-center representatives of the explicit anchors. The grid is bounded to 8,000,000 voxels; the requested output budget is 4 to 32 path points. Corner-only voxel connections are rejected. This is not autonomous anatomical landmark detection.
+The skeleton path stays on native vessel foreground between voxel-center representatives of the explicit anchors. The grid is bounded to 8,000,000 voxels; the requested output budget is 4 to 32 path points. Anchor membership requires a shared face-connected (6-neighbour) foreground component. The skeleton and connector searches may use diagonal 26-neighbour steps, weighted in physical RAS millimeters. This is not autonomous anatomical landmark detection.
 
-The server checks native-cell endpoint binding against the actual hash-verified source sform, not a caller/result affine. Off-center anchors are permitted; floating ties are admitted on adjacent cells.
+The server checks native-cell endpoint binding against the actual hash-verified source sform, not a caller/result affine. Off-center anchors are permitted. The worker always selects the nearest native index using Python ties-to-even, then requires that chosen voxel to be vessel foreground; it does not try a foreground-favoring alternative when the even neighbor is background. The separate post-producer binding tolerance admits either adjacent center at a floating tie to avoid false numeric-echo rejection; this broader integrity check does not promise that either cell is eligible for proposal generation.
 
 The UI presents the proposal and requires **Use proposed parent path**. That action changes only the draft path and station indices. **Save geometry inputs** is a separate version-bound mutation. Station suggestions are geometric fractions along the path, not anatomical parent-vessel selections. Choose stations outside the accepted sac mask before computing geometry; overlap is rejected. Sections through native mesh rings use the exact operator plane, without a hidden positional offset. Coplanar patches and tangent/open/non-manifold plane edges remain unsupported.
 

@@ -40,6 +40,21 @@ def test_overlapping_foreground_connectors_keep_simple_anchor_path(reverse):
     assert result["clinical_validation"] is False
 
 
+@pytest.mark.parametrize("foreground_x", [2, 3])
+def test_half_voxel_anchor_uses_declared_ties_to_even_policy(foreground_x):
+    mask = np.zeros((7, 7, 12), dtype=np.uint8)
+    mask[foreground_x, 3, 1:11] = 1
+    args = (mask, np.eye(4), [2.5, 3, 2], [foreground_x, 3, 9])
+    if foreground_x == 3:
+        # Binding tolerance does not promise a foreground-favoring fallback.
+        with pytest.raises(ValueError, match="round to vessel foreground"):
+            propose_centerline(*args)
+    else:
+        result = propose_centerline(*args)
+        assert result["path_ras"][0] == [2, 3, 2]
+        assert result["native_point_policy"] == "nearest_native_index_python_ties_to_even"
+
+
 def test_loop_erasure_does_not_count_removed_detour_as_path_length():
     import numpy as np
 
