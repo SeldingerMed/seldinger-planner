@@ -14,7 +14,7 @@ Exported the base Git tree into isolated scratch, then overlaid the explicit Pha
 
 | Check | Observed result |
 |---|---|
-| `env -u PYTHONPATH -u PYTHONHOME uv run pytest -q` | **695 passed, 108 skipped** |
+| `env -u PYTHONPATH -u PYTHONHOME uv run pytest -q` | **700 passed, 108 skipped** |
 | Standalone numerical lane, the eight files listed in `docs/native-physics.md` | **116 passed** |
 | Existing `test_geometry_worker.py`, `test_mask_geometry.py`, `test_installed_source_geometry.py` imaging lane | **21 passed** |
 | `cd web && npm test` | **36 files, 245 passed** |
@@ -77,3 +77,5 @@ The first pushed head `fb129e58808d6238bcbe8a41100eb0613cdc10ac` passed backend,
 Parent reproduced the capped children rather than accepting incomplete GREEN claims: the endpoint helper initially had header-row/inverse defects and unfinished API wiring. These were repaired, and the full clean-candidate checks above plus the actual HTTP tracer were rerun. The final native-grid lane has no imaging-package imports in the API environment. New source-header tests are contract/header tests, not a claim to validate an image body independently of installed-source admission.
 
 CI annotations also identified Node 20 action deprecation and a moving Ubuntu label. Action releases were looked up from their actual repositories, their Node 24 runtimes checked, and immutable commit pins updated. Both workflows now use Ubuntu 24.04. The new pushed revision still requires its own app review/CI gate; this local repair record does not assert that gate completed.
+
+The second exact head `11042a6aa142b8c609c7fc12855cdc73ab701b84` passed its CI lanes and completed app review. It accepted the prior dispositions and identified a SQLite error-boundary gap plus a stale test-header command. GET/POST now sanitize SQLite failures across the full operation, including after a committed store. Five injected failure cases cover current-read, initial snapshot, store, post-store snapshot and failed acknowledgement; they verify HTTP 503/reload, no path/traceback exposure, correct persisted-row state and released inference gate. These are HTTP/storage contract tests, not numerical evidence. The actual default-worker HTTP tracer was rerun successfully. The test header now names the standalone physics runtime. The following pushed revision requires its own exact-head gate before merge.

@@ -2,6 +2,7 @@
 
 import hashlib
 import math
+import sqlite3
 from typing import Annotated, Literal
 
 from fastapi import HTTPException
@@ -293,7 +294,7 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
         identity = {k: case[k] for k in ("case_id", "image_sha256", "artifact_version")}
         return identity | {"reference_revision": bundle[1]}, bundle
 
-    def read(case_id, kind):
+    def _read(case_id, kind):
         before, bundle = bound(case_id)
         try:
             current = freeze(ledger.current(case_id, before["reference_revision"], kind))
@@ -332,7 +333,24 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
             before | {"kind": kind, "current": current}, headers={"Cache-Control": "no-store"}
         )
 
+    def read(case_id, kind):
+        try:
+            return _read(case_id, kind)
+        except sqlite3.Error:
+            raise HTTPException(
+                503, "Numerical storage is unavailable; reload saved results"
+            ) from None
+
     def compute(case_id, kind, payload):
+        try:
+            return _compute(case_id, kind, payload)
+        except sqlite3.Error:
+            # A failed acknowledgement does not prove the transaction rolled back.
+            raise HTTPException(
+                503, "Numerical storage is unavailable; reload saved results"
+            ) from None
+
+    def _compute(case_id, kind, payload):
         before, bundle = bound(case_id)
         if (
             before["artifact_version"] != payload.artifact_version

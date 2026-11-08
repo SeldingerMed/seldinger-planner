@@ -8,8 +8,8 @@ resistance parameter. It is NOT patient-specific validated CFD and NOT a
 manufacturer-device-calibrated flow model. No clinical claims.
 
 Run with:
-  env -u PYTHONPATH SELDINGER_RUN_MODEL_TESTS=1 \
-      .runtime/ml-runtime/bin/python -m pytest tests/ml_runtime/test_aneurysm_stokes.py -q
+  env -u PYTHONPATH -u PYTHONHOME SELDINGER_RUN_MODEL_TESTS=1 \
+      .runtime/physics-runtime/bin/python -m pytest tests/ml_runtime/test_aneurysm_stokes.py -q
 """
 
 import os

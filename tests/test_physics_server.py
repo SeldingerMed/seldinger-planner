@@ -1,8 +1,62 @@
 """Synthetic HTTP/ledger tests. Injected runners are not numerical evidence."""
 
+import pytest
 from test_phase1_context import ready
 
 from planner.physics_state import encoded
+
+
+@pytest.mark.parametrize("failure", ["read", "snapshot", "store", "post_snapshot", "post_store"])
+def test_sqlite_failures_are_sanitized_including_ambiguous_commits(tmp_path, monkeypatch, failure):
+    import sqlite3
+
+    from fastapi.testclient import TestClient
+
+    from planner.physics_state import PhysicsLedger
+    from planner.segmentation_server import _INFERENCE_GATE
+
+    client, _cid, route, body = compute_fixture(tmp_path, monkeypatch)
+    actual_store = PhysicsLedger.store
+    actual_snapshot = PhysicsLedger.snapshot
+    snapshots = 0
+
+    def broken(*args, **kwargs):
+        raise sqlite3.OperationalError("database locked /private/sensitive.sqlite")
+
+    if failure == "read":
+        monkeypatch.setattr(PhysicsLedger, "current", broken)
+    elif failure == "snapshot":
+        monkeypatch.setattr(PhysicsLedger, "snapshot", broken)
+    elif failure == "store":
+        monkeypatch.setattr(PhysicsLedger, "store", broken)
+    elif failure == "post_snapshot":
+
+        def snapshot(self, *args, **kwargs):
+            nonlocal snapshots
+            snapshots += 1
+            if snapshots == 2:
+                return broken()
+            return actual_snapshot(self, *args, **kwargs)
+
+        monkeypatch.setattr(PhysicsLedger, "snapshot", snapshot)
+    else:
+
+        def store(self, *args, **kwargs):
+            actual_store(self, *args, **kwargs)
+            return broken()
+
+        monkeypatch.setattr(PhysicsLedger, "store", store)
+    api = TestClient(client.app, raise_server_exceptions=False)
+    response = api.get(route) if failure == "read" else api.post(route, json=body)
+    assert response.status_code == 503, response.text
+    assert "reload saved results" in response.text
+    assert "/private" not in response.text and "Traceback" not in response.text
+    with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM numerical_results").fetchone()[0] == int(
+            failure.startswith("post_")
+        )
+    assert _INFERENCE_GATE.acquire(blocking=False)
+    _INFERENCE_GATE.release()
 
 
 def rod_output(job):
