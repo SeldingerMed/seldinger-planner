@@ -143,6 +143,102 @@ def compute_job(job, *, blob_dir):
     return result
 
 
+def _capture_worker(payload, env):
+    """POSIX bounded pipes: service input and both output streams concurrently."""
+    import os
+    import selectors
+    import signal
+    import subprocess
+    import time
+
+    deadline = time.monotonic() + DEADLINE_SECONDS
+    selector = selectors.DefaultSelector()
+    try:
+        process = subprocess.Popen(
+            [str(NATIVE_PYTHON), "-m", "planner.physics_worker"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=ROOT,
+            env=env,
+            shell=False,
+            start_new_session=True,
+        )
+    except BaseException:
+        selector.close()
+        raise
+    completed = False
+    stdout = bytearray()
+    counts = {"stdout": 0, "stderr": 0}
+    offset = 0
+    assert process.stdin is not None and process.stdout is not None and process.stderr is not None
+    streams = (process.stdin, process.stdout, process.stderr)
+
+    def close_stream(stream):
+        selector.unregister(stream)
+        stream.close()
+
+    try:
+        for name, stream in zip(("stdin", "stdout", "stderr"), streams, strict=True):
+            os.set_blocking(stream.fileno(), False)
+            selector.register(
+                stream,
+                selectors.EVENT_WRITE if name == "stdin" else selectors.EVENT_READ,
+                (name, stream),
+            )
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Native numerical worker exceeded its deadline")
+            for key, _events in selector.select(remaining):
+                name, stream = key.data
+                if name == "stdin":
+                    try:
+                        offset += os.write(stream.fileno(), memoryview(payload)[offset:])
+                    except BlockingIOError:
+                        continue
+                    except BrokenPipeError:
+                        close_stream(stream)
+                        continue
+                    if offset == len(payload):
+                        close_stream(stream)
+                else:
+                    try:
+                        chunk = os.read(
+                            stream.fileno(), min(8192, MAX_OUTPUT_BYTES + 1 - counts[name])
+                        )
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        close_stream(stream)
+                        continue
+                    counts[name] += len(chunk)
+                    if counts[name] > MAX_OUTPUT_BYTES:
+                        raise RuntimeError("Native numerical worker exceeded its output bound")
+                    if name == "stdout":
+                        stdout.extend(chunk)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("Native numerical worker exceeded its deadline")
+        code = process.wait(timeout=remaining)
+        completed = True
+        return code, bytes(stdout)
+    finally:
+        selector.close()
+        try:
+            if not completed:
+                # Unreaped child reserves its owned session/group ID. Kill
+                # before wait, including descendants holding inherited pipes.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=5)
+        finally:
+            for stream in streams:
+                stream.close()
+
+
 def run_local_physics(job, *, blob_dir):
     import os
     import subprocess
@@ -167,23 +263,13 @@ def run_local_physics(job, *, blob_dir):
     ):
         env[key] = "1"
     try:
-        completed = subprocess.run(
-            [str(NATIVE_PYTHON), "-m", "planner.physics_worker"],
-            input=payload,
-            cwd=ROOT,
-            env=env,
-            capture_output=True,
-            text=True,
-            shell=False,
-            timeout=DEADLINE_SECONDS,
-            check=False,
-        )
+        returncode, stdout = _capture_worker(payload.encode(), env)
     except (OSError, subprocess.TimeoutExpired):
         raise RuntimeError("Native numerical worker failed or exceeded its deadline") from None
-    if completed.returncode != 0 or len(completed.stdout.encode()) > MAX_OUTPUT_BYTES:
+    if returncode != 0:
         raise RuntimeError("Native numerical worker failed or exceeded its output bound")
     try:
-        result = json.loads(completed.stdout)
+        result = json.loads(stdout)
         if not isinstance(result, dict):
             raise TypeError("Invalid numerical response")
         encoded(result)
@@ -201,7 +287,7 @@ def main():
             raise ValueError("Numerical input exceeds its bound")
         payload = json.loads(raw)
         result = encoded(compute_job(payload["job"], blob_dir=payload["blob_dir"]))
-        if len(result.encode()) > MAX_OUTPUT_BYTES:
+        if len(result.encode()) + 1 > MAX_OUTPUT_BYTES:
             raise ValueError("Numerical output exceeds its bound")
         print(result)
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:

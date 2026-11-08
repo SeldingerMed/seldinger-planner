@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import time
 
 import pytest
 
@@ -203,6 +204,79 @@ def test_proposed_native_path_supports_geometry_after_explicit_station_review(
     assert result["proximal_parent"]["plane_origin"] == tuple(operator["parent_path"][2])
 
 
+def _bounded_supervisor_env(tmp_path, monkeypatch, flood_stream=None):
+    """Copy a minimal planner stub into tmp_path so the fixed runtime child
+    floods one stream or stays silent, and poison-free supervisor env."""
+    from planner import physics_worker
+
+    checkout = tmp_path / "stub-root"
+    (checkout / "planner").mkdir(parents=True)
+    (checkout / "planner" / "__init__.py").write_text("")
+    (checkout / "planner" / "physics_contract.py").write_text(
+        "def encoded(value):\n    import json\n    return json.dumps(value, separators=(',', ':'))\n"
+    )
+    statement = {
+        "stdout": 'sys.stdout.write("x" * 65536)',
+        "stderr": 'sys.stderr.write("x" * 65536)',
+        "silence": "time.sleep(600)",
+    }[flood_stream or "silence"]
+    body = "\n".join(
+        "    " + line
+        for line in ([statement] * 200 if flood_stream in ("stdout", "stderr") else [statement])
+    )
+    (checkout / "planner" / "physics_worker.py").write_text(
+        "import sys, time\n"
+        "def main():\n"
+        "    open('started_marker.txt', 'w').write('started')\n"
+        f"{body}\n"
+        "    open('exit_marker.txt', 'w').write('exited')\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    compile((checkout / "planner/physics_worker.py").read_text(), "worker-stub", "exec")
+    monkeypatch.setattr(physics_worker, "ROOT", checkout)
+    monkeypatch.setattr(physics_worker, "MAX_OUTPUT_BYTES", 1024)
+    monkeypatch.setattr(physics_worker, "DEADLINE_SECONDS", 2.0)
+    return checkout, physics_worker
+
+
+def test_supervisor_terminates_runaway_stdout_flood_before_exit(tmp_path, monkeypatch):
+    """Oversized stdout must be caught during execution and the owned child
+    killed and reaped, never buffered unboundedly."""
+    checkout, physics_worker = _bounded_supervisor_env(tmp_path, monkeypatch, "stdout")
+    start = time.monotonic()
+    with pytest.raises(RuntimeError, match="output bound"):
+        physics_worker.run_local_physics({"kind": "bogus"}, blob_dir=tmp_path)
+    assert time.monotonic() - start < 15
+    assert (checkout / "started_marker.txt").exists(), "fixture did not execute"
+    assert not (checkout / "exit_marker.txt").exists(), "child was not killed"
+
+
+def test_supervisor_terminates_runaway_stderr_flood_before_exit(tmp_path, monkeypatch):
+    checkout, physics_worker = _bounded_supervisor_env(tmp_path, monkeypatch, "stderr")
+    start = time.monotonic()
+    with pytest.raises(RuntimeError, match="output bound"):
+        physics_worker.run_local_physics({"kind": "bogus"}, blob_dir=tmp_path)
+    assert time.monotonic() - start < 15
+    assert (checkout / "started_marker.txt").exists(), "fixture did not execute"
+    assert not (checkout / "exit_marker.txt").exists(), "child was not killed"
+
+
+def test_supervisor_enforces_total_deadline_on_silent_child(tmp_path, monkeypatch):
+    checkout, physics_worker = _bounded_supervisor_env(tmp_path, monkeypatch, "silence")
+    start = time.monotonic()
+    with pytest.raises(RuntimeError, match="deadline"):
+        # Larger than Linux's common pipe capacity; the silent child never
+        # reads stdin, so a blocking upfront write would defeat the deadline.
+        physics_worker.run_local_physics(
+            {"kind": "bogus", "padding": "x" * 12000}, blob_dir=tmp_path
+        )
+    elapsed = time.monotonic() - start
+    assert elapsed < 10, elapsed
+    assert (checkout / "started_marker.txt").exists(), "fixture did not execute"
+    assert not (checkout / "exit_marker.txt").exists(), "child was not killed"
+
+
 @pytest.mark.parametrize("kind", ["rod-deployment", "centerline", "stokes-flow"])
 def test_actual_fixed_runtime_supervisor_runs_isolated_source_checkout(tmp_path, monkeypatch, kind):
     """The supervisor must strip inherited PYTHON* state and resolve the
@@ -269,7 +343,7 @@ def test_actual_fixed_runtime_supervisor_runs_isolated_source_checkout(tmp_path,
     )
     for key in loader_names:
         monkeypatch.setenv(key, str(tmp_path / "poisoned-loader"))
-    actual_run = subprocess.run
+    actual_run = subprocess.Popen
     calls = []
 
     def observed_run(*args, **kwargs):
@@ -278,7 +352,7 @@ def test_actual_fixed_runtime_supervisor_runs_isolated_source_checkout(tmp_path,
         calls.append((args, kwargs))
         return actual_run(*args, **kwargs)
 
-    monkeypatch.setattr(subprocess, "run", observed_run)
+    monkeypatch.setattr(subprocess, "Popen", observed_run)
     result = physics_worker.run_local_physics(job, blob_dir=directory)
     assert len(calls) == 1
     command, options = calls[0]

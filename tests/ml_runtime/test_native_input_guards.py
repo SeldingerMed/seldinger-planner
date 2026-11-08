@@ -41,6 +41,32 @@ def _resign_mask(job, blob_dir, role, payload):
     return digest
 
 
+def test_inactive_nifti_dimensions_do_not_invent_fourth_dimension():
+    """NIfTI dim[0], not inactive dim entries, defines data dimensionality.
+
+    Spec: https://nifti.nimh.nih.gov/nifti-1/documentation/nifti1fields/nifti1fields_pages/dim.html/document_view.html
+    """
+    import struct
+
+    from planner.native_grid import parse_grid_header
+
+    image = nib.Nifti1Image(np.zeros((4, 5, 6), dtype=np.uint8), np.eye(4))
+    image.header.set_xyzt_units("mm")
+    original = image.to_bytes()
+    for inactive in (0, 1, 2):
+        payload = bytearray(original)
+        struct.pack_into("<h", payload, 40 + 2 * 5, inactive)
+        parsed = nib.Nifti1Image.from_bytes(bytes(payload))
+        assert parsed.shape == (4, 5, 6)
+        assert np.asarray(parsed.dataobj).shape == (4, 5, 6)
+        assert parse_grid_header(bytes(payload))["shape"] == [4, 5, 6]
+    payload = bytearray(original)
+    struct.pack_into("<h", payload, 40, 4)
+    struct.pack_into("<h", payload, 48, 2)
+    with pytest.raises(ValueError):
+        parse_grid_header(bytes(payload))
+
+
 def test_tampered_mask_bytes_rejected_without_resign(tmp_path, monkeypatch):
     from planner.native_inputs import load_native_masks
 

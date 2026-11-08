@@ -537,6 +537,32 @@ function proposeButton() {
 }
 
 describe("MorphometryInputs centerline proposal", () => {
+  it("blocks repeated proposal clicks using internal busy without parent feedback", async () => {
+    let finish!: (r: Response) => void;
+    const fetchMock = vi.fn((_url: string, init?: RequestInit) =>
+      init?.method === "POST"
+        ? new Promise<Response>((resolve) => { finish = resolve; })
+        : Promise.resolve(okResponse(fixture)),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    renderInputs(); // onBusy is a spy only; disabled remains false.
+    await waitReady();
+    const button = proposeButton();
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    expect(baseProps.onBusy.mock.calls).toEqual([[true]]);
+    await act(async () => {
+      finish(okResponse(proposalFixture(SAVED_FIRST, SAVED_LAST)));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(button).not.toBeDisabled());
+    expect(baseProps.onBusy.mock.calls).toEqual([[true], [false]]);
+    expect(baseProps.onError).not.toHaveBeenCalled();
+  });
+
   it("rejects a proposal whose nested source revision contradicts the envelope", async () => {
     const real = structuredClone(nativeProposal.proposal);
     real.current.dependencies.source_revision = "0".repeat(64);
@@ -810,10 +836,10 @@ describe("MorphometryInputs centerline proposal", () => {
     async (_label, mutate) => {
       await buildAnchoredDraft();
       const before = screen.getByTestId("parent-path-count").textContent;
+      const candidate = proposalFixture();
+      mutate(candidate);
       routeFetch((_url, init) =>
-        init?.method === "POST"
-          ? okResponse(mutate(proposalFixture()))
-          : undefined,
+        init?.method === "POST" ? okResponse(candidate) : undefined,
       );
       fireEvent.click(proposeButton());
       await waitFor(() => expect(baseProps.onError).toHaveBeenCalled());
