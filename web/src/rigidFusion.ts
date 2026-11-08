@@ -16,7 +16,7 @@ export function validateRigid(value: unknown): number[][] {
         ),
     )
   )
-    throw new Error("Rigid transform must be a finite4×4 matrix");
+    throw new Error("Rigid transform must be a finite 4×4 matrix");
   const m = value as number[][];
   if (m[3].some((v, i) => v !== [0, 0, 0, 1][i]))
     throw new Error("Rigid transform needs a homogeneous row");
@@ -73,7 +73,7 @@ export function createFusionSampler(
   validateWindow(options.secondary_window);
   const alpha = options.opacity;
   if (!Number.isFinite(alpha) || alpha < 0 || alpha > 1)
-    throw new Error("Opacity must be between0 and1");
+    throw new Error("Opacity must be between 0 and 1");
   return {
     sample(point: Vec3) {
       const p = base.sample(point);

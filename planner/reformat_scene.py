@@ -52,7 +52,7 @@ def digest(value):
 
 def validate_rigid(matrix):
     if len(matrix) != 4 or any(len(row) != 4 for row in matrix):
-        raise ValueError("Rigid matrix must be4x4")
+        raise ValueError("Rigid matrix must be 4x4")
     if matrix[3] != [0, 0, 0, 1]:
         raise ValueError("Rigid matrix requires homogeneous row")
     r = [row[:3] for row in matrix[:3]]

@@ -285,7 +285,7 @@ export function sampleCPR(
   const { frames, length_mm } = buildPathFrames(path, width, roll);
   const sampler = createNativeSampler(volume);
   // Stretched = ruled CPR along the fixed initial (rolled) transverse direction.
-  const fixedU = frames[0].u;
+  const fixedU = pointAlongPath(path, 0, roll).u;
   const rgba = new Uint8ClampedArray(4 * width * height);
   const [lo, hi] = window;
   const scale = 255 / (hi - lo);

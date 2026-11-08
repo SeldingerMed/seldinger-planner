@@ -108,8 +108,8 @@ def series_dir(tmp_path: Path) -> Path:
     """Synthetic oblique CT series with deliberately shuffled filenames."""
     d = tmp_path / "series"
     d.mkdir()
-    for k in range(SLICES):
-        name = f"scan-{((k * 37) % SLICES):02d}-x.dcm"
+    for k in reversed(range(SLICES)):
+        name = f"scan-{((k * 5) % SLICES):02d}-x.dcm"
         pydicom.dcmwrite(d / name, _make_slice(k), enforce_file_format=True)
     return d
 

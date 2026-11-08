@@ -396,7 +396,7 @@ def _series(datasets):
             _fail("Mixed slice geometry or scalar encoding")
     records.sort(key=lambda rec: float(rec["ipp"] @ normal))
     if len(records) < 2 or len(records) > 2048:
-        _fail("Volume requires2..2048 spatial slices")
+        _fail("Volume requires 2..2048 spatial slices")
     positions = np.array([r["ipp"] for r in records])
     delta = np.diff(positions, axis=0)
     step = delta.mean(axis=0)

@@ -460,3 +460,35 @@ test("window lower/upper bounds map to black/white; options are validated", () =
     sampleCPR(volume(), straight, { ...opts, mode: "bogus" as never }),
   ).toThrow();
 });
+
+test("stretched direction is anchored at the real path start across raster widths", () => {
+  const path: Vec3[] = [
+    [12, -3, 15],
+    [12.1, -3, 15],
+    [12.1, 3, 15],
+  ];
+  const u = pointAlongPath(path, 0).u;
+  expect(u).toEqual([0, 1, 0]);
+  for (const width of [2, 64]) {
+    const raster = sampleCPR(volume(), path, {
+      mode: "stretched",
+      width_px: width,
+      height_px: 2,
+      span_mm: 1,
+      roll_degrees: 0,
+      window: [0, 40],
+    });
+    const frames = buildPathFrames(path, width).frames;
+    for (let j = 0; j < 2; j++)
+      for (let i = 0; i < width; i++) {
+        const off = (j + 0.5) / 2 - 0.5;
+        const p = frames[i].point.map((v, k) => v + off * u[k]) as Vec3;
+        const expected = new Uint8ClampedArray([
+          (intensityAt(p) * 255) / 40,
+        ])[0];
+        const at = (j * width + i) * 4;
+        expect(raster.rgba[at + 3]).toBe(255);
+        expect(raster.rgba[at]).toBe(expected);
+      }
+  }
+});

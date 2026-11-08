@@ -192,7 +192,7 @@ export default function ReformatStudio({
       )
         throw new Error("Point must be inside the verified RAS/mm image");
       if (current.path.length >= 128)
-        throw new Error("Path is limited to128 points");
+        throw new Error("Path is limited to 128 points");
       const path = [...current.path, p];
       if (path.length > 1) buildPathFrames(path, 2);
       edit({ path });
