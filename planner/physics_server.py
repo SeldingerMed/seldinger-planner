@@ -348,18 +348,18 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
     def read(case_id, kind):
         try:
             return _read(case_id, kind)
-        except sqlite3.Error:
+        except (sqlite3.Error, ValueError, TypeError, KeyError, OSError, OverflowError, EOFError):
             raise HTTPException(
-                503, "Numerical storage is unavailable; reload saved results"
+                503, "Numerical evidence is unavailable; reload saved results"
             ) from None
 
     def compute(case_id, kind, payload):
         try:
             return _compute(case_id, kind, payload)
-        except sqlite3.Error:
+        except (sqlite3.Error, ValueError, TypeError, KeyError, OSError, OverflowError, EOFError):
             # A failed acknowledgement does not prove the transaction rolled back.
             raise HTTPException(
-                503, "Numerical storage is unavailable; reload saved results"
+                503, "Numerical evidence is unavailable; reload saved results"
             ) from None
 
     def _compute(case_id, kind, payload):

@@ -147,6 +147,62 @@ def test_integer_json_numbers_are_accepted_by_strict_request_contract(tmp_path, 
     assert client.get(route).json()["current"] == response.json()["current"]
 
 
+@pytest.mark.parametrize("phase", ["post_runner", "post_store", "post_snapshot"])
+def test_post_compute_integrity_failures_are_sanitized_without_rollback_claim(
+    tmp_path, monkeypatch, phase
+):
+    import sqlite3
+
+    from fastapi.testclient import TestClient
+
+    from planner.physics_state import PhysicsLedger
+    from planner.segmentation_server import _INFERENCE_GATE
+    from planner.source_registry import ImageSourceRegistry
+
+    active = False
+
+    def runner(job, **_):
+        nonlocal active
+        if phase == "post_runner":
+            active = True
+        return rod_output(job)
+
+    client, _cid, route, body = compute_fixture(tmp_path, monkeypatch, runner)
+    actual_load = ImageSourceRegistry.load_for_case
+    actual_store = PhysicsLedger.store
+    actual_snapshot = PhysicsLedger.snapshot
+
+    def load(self, *args, **kwargs):
+        if active and phase in ("post_runner", "post_store"):
+            raise ValueError("private /data/source")
+        return actual_load(self, *args, **kwargs)
+
+    def store(self, *args, **kwargs):
+        nonlocal active
+        result = actual_store(self, *args, **kwargs)
+        active = True
+        return result
+
+    def snapshot(self, *args, **kwargs):
+        if active and phase == "post_snapshot":
+            raise ValueError("private /data/snapshot")
+        return actual_snapshot(self, *args, **kwargs)
+
+    monkeypatch.setattr(ImageSourceRegistry, "load_for_case", load)
+    monkeypatch.setattr(PhysicsLedger, "store", store)
+    monkeypatch.setattr(PhysicsLedger, "snapshot", snapshot)
+    response = TestClient(client.app, raise_server_exceptions=False).post(route, json=body)
+    assert response.status_code == 503, response.text
+    assert "reload saved results" in response.text
+    assert "/data" not in response.text and "Traceback" not in response.text
+    with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM numerical_results").fetchone()[0] == int(
+            phase != "post_runner"
+        )
+    assert _INFERENCE_GATE.acquire(blocking=False)
+    _INFERENCE_GATE.release()
+
+
 def rod_output(job):
     import hashlib
 
