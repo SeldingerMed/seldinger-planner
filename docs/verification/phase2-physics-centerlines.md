@@ -14,10 +14,10 @@ Exported the base Git tree into isolated scratch, then overlaid the explicit Pha
 
 | Check | Observed result |
 |---|---|
-| `env -u PYTHONPATH -u PYTHONHOME uv run pytest -q` | **703 passed, 108 skipped** |
+| `env -u PYTHONPATH -u PYTHONHOME uv run pytest -q` | **706 passed, 108 skipped** |
 | Standalone numerical lane, the eight files listed in `docs/native-physics.md` | **121 passed** |
 | Existing `test_geometry_worker.py`, `test_mask_geometry.py`, `test_installed_source_geometry.py` imaging lane | **21 passed** |
-| `cd web && npm test` | **36 files, 246 passed** |
+| `cd web && npm test` | **36 files, 247 passed** |
 | `npm run build` | TypeScript and Vite passed; existing large-chunk advisory remains |
 | `npm audit --omit=dev --audit-level=high` | Zero reported vulnerabilities |
 | Whole-candidate Ruff lint and format | Passed |
@@ -91,3 +91,7 @@ The fifth exact head `b5b41003e0072aec7e399ded06a04b55145baba3` passed all CI la
 The sixth exact head `6633712206886b2ec54756f1af2099721f2b2cb8` passed CI and app review. The deleted-case read race was reproduced 503 and repaired to 404 by re-binding on GeometryConflict; unit-ineligibility already returned 409 and retains that behavior. Malformed data during that re-bind remains sanitized 503, not mislabeled as a normal conflict. Three focused HTTP regressions cover these outcomes. Renamed the private minimum-side constant without changing its value or comparison. The zero-resistance check already compared different baseline/treated values, so the alleged self-equality tautology was incorrect; it now also performs an independent repeat and cross-run comparison for clarity/determinism. Full clean backend/numerical, both typing lanes and actual default-worker HTTP were rerun.
 
 The optional header-cache suggestion was deliberately declined for this bounded prototype. Centerline GET is not the UI's recurring numerical-read path, no measured latency problem was supplied, and retaining fresh source-byte verification avoids a persistent memo and its new lifetime/eviction/integrity obligations. Header inflation itself remains bounded to 353 bytes, not the full image. A future measured performance issue can justify a separately scoped, content-keyed bounded cache; no performance optimization is claimed here.
+
+The seventh head `eeb4aec6fce41e253c3f2a4d69a9a4a72317d42c` passed all CI lanes and completed app review. The reported StrictFloat integer rejection was disproved in the pinned environment: StrictFloat accepts integer JSON tokens. Three complete HTTP-route tests now send raw integer tokens for rod stiffness, flow speed and all-integer anchors, with 200/GET equality; existing bool/string rejections remain green. The actual default-worker tracer also passes all-integer anchors with exact GET readback. No permissive coercion or request-type change was added. These HTTP fixtures are contract evidence, not physical-accuracy evidence.
+
+The shared DeviceStudio error finding was real. A focused child reproduced the save-failure lock, then separated anatomy-load failure from unrelated operation messages. Parent reproduced the test and extended it: after entering anatomy view and valid hypothetical rod inputs, failed local save keeps both anatomy and numerical controls enabled; a changed source followed by actual load failure immediately disables both again. The loaded-identity/loading/unit/mesh guards remain. Replaced joined-string key-list comparison with exact elementwise keys in numerical parameter matching. Full clean backend 706/frontend 247, API typing, build and audit passed after the final overlay. The existing browser screenshots still cover the previously exercised production-component flow; these additional error transitions are component regressions, not a claim of another browser capture. The optional-cache disposition was reconciled through the app's own scoped resolve action and disappeared from its current open-finding summary.

@@ -113,6 +113,40 @@ def test_malformed_provider_during_conflict_rebind_stays_sanitized(tmp_path, mon
     assert "/data" not in response.text
 
 
+@pytest.mark.parametrize("kind", ["rod-deployment", "stokes-flow", "centerline"])
+def test_integer_json_numbers_are_accepted_by_strict_request_contract(tmp_path, monkeypatch, kind):
+    import json
+
+    runner = {
+        "rod-deployment": rod_output,
+        "stokes-flow": flow_output,
+        "centerline": centerline_output,
+    }[kind]
+    client, cid, route, body = compute_fixture(tmp_path, monkeypatch, lambda job, **_: runner(job))
+    if kind == "rod-deployment":
+        body["parameters"]["ea_n"] = 8
+    elif kind == "stokes-flow":
+        route = f"/api/cases/{cid}/physics/stokes-flow"
+        body["parameters"] = {
+            "flow_axis": 2,
+            "inlet_velocity_mm_s": 120,
+            "viscosity_pa_s": 0.0035,
+            "neck_thickness_mm": 1,
+            "resistance_pa_s_per_mm2": 0,
+        }
+    else:
+        mock_trusted_grid(monkeypatch)
+        route = f"/api/cases/{cid}/centerline-proposals"
+        body.pop("geometry_result_id")
+        body["parameters"] = {"start_ras": [0, 0, 8], "end_ras": [0, 0, 13], "max_points": 32}
+    # Send exact integer JSON tokens, not Python float values disguised as an
+    # integer-compatibility test. Injected output is HTTP-contract evidence only.
+    raw = json.dumps(body, separators=(",", ":"))
+    response = client.post(route, content=raw, headers={"Content-Type": "application/json"})
+    assert response.status_code == 200, response.text
+    assert client.get(route).json()["current"] == response.json()["current"]
+
+
 def rod_output(job):
     import hashlib
 

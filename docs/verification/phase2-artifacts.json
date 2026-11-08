@@ -9,7 +9,7 @@
     "README.md": "de04108c5d29df37911e5f06f9450142706a856127ed397820ef4756f1cc3808",
     "docs/native-physics.md": "33f037531c038ea3d53843c4015c50a2861ca7a9b3f136b66e2b1e900e05cf20",
     "docs/plans/phase2-physics-centerlines.md": "eddad75098a4b3c50980b27bd11bc1e45ffc24efba7d89eb40323ca5654a4044",
-    "docs/verification/phase2-physics-centerlines.md": "c9119d72f6294ae503f5fd8b2fbc2e0a991d9e481039de63b6338d9ebf4f046d",
+    "docs/verification/phase2-physics-centerlines.md": "ca839962e4a6ee712fbd04bc3ea4f71ae1c7428991c797ab2faec3bd00c4347f",
     "planner/aneurysm_stokes.py": "37116f7a5e258ef195850e6ebcef8bb606334405efaf29cc72338c328dfdb9d0",
     "planner/centerline.py": "64ace05b7914d076c18feaa524600a1ccd9ab5c25518c9e167db42f25f2d0a78",
     "planner/lumen_contact.py": "213ebb95ec8d9a560d3bc0ff80db387cc5cd3bd155339c09850d1ad319758b1b",
@@ -35,13 +35,13 @@
     "tests/ml_runtime/test_rod_contact.py": "1ad050c0fe8472bdc299a0e32cb232bf8ee51dd2439816725969b9dcbe7e54eb",
     "tests/test_morphometry_selection.py": "84c236f639b87480e8e59006bcb2192efb85de48a39f49f61f97029c20a6afdd",
     "tests/test_native_grid.py": "4bbb5ff75fc86185ee9c86efd7f20af0b04b67030003175962a9728748aa39a1",
-    "tests/test_physics_server.py": "3a5c0d03ebffcb8158743d73371f8f110e329521bc4fb6dc98b8da53211324cd",
+    "tests/test_physics_server.py": "33b6b9d31894b3f0c37172dd1d20605893ca942429384c2f0b5b346158f1b703",
     "web/src/MorphometryInputs.test.tsx": "914092020808250b53f188a95e87390756bd2e316bbae2d47d96787e2dadcd36",
     "web/src/MorphometryInputs.tsx": "737f7ca225af1689109a41469ea1be29a443aeab8804b89313a367607db9a21e",
-    "web/src/devices/DeviceStudio.test.tsx": "06ec4233649e82c4fbad8fea958a1d377f6963096918a2f093ea73351ba94667",
-    "web/src/devices/DeviceStudio.tsx": "fb1bbf1fe224a9166670ef606a1dcd3802a752f563a51d56e3f15debabc2c411",
+    "web/src/devices/DeviceStudio.test.tsx": "6f1c6e9c70298ad8f61686db041e42b2035cbbc5d998dc31a730d8e5aaec1e15",
+    "web/src/devices/DeviceStudio.tsx": "29b60145b776e2afc0c37f6756b676832b96b9f3abcd4d7d3232a5b27a89882c",
     "web/src/devices/NumericalPhysics.test.tsx": "d38163dce9902ac6720f95e033ecec615febff92881a0b6d801eceaac68dabe9",
-    "web/src/devices/NumericalPhysics.tsx": "5bf092702c5b83e7910a2491b64842a62a6fb60f7a0677fd3bd905c02043c9fa",
+    "web/src/devices/NumericalPhysics.tsx": "d7e984703473e2798cd51bdfe96bb8ffa7d2ca02e3ba64ec4a1b00135ea371be",
     "web/src/fixtures/phase2-native-proposal.json": "5527d728292b73023bc76677d9b44afe7a0d2796372bb0cb4b4614931df67790"
   }
 }

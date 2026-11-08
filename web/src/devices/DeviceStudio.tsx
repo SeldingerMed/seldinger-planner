@@ -149,6 +149,10 @@ export default function DeviceStudio({
     [ctaOpacity, setCtaOpacity] = useState(0.12),
     [windowRange, setWindow] = useState<[number, number]>([0, 600]);
   const [loadedIdentity, setLoadedIdentity] = useState<string | null>(null);
+  // Initial anatomy-load failures must be tracked separately from
+  // operational errors (failed saves, scene errors) so a later failure
+  // never disables already-loaded anatomy controls.
+  const [loadError, setLoadError] = useState("");
   const [anatomy, setAnatomy] = useState<PlanningAnatomy | null>(null),
     [anatomyMeshes, setAnatomyMeshes] = useState<SceneMesh[]>([]),
     [showVessel, setShowVessel] = useState(true),
@@ -181,6 +185,7 @@ export default function DeviceStudio({
     setLocation(null);
     setCompareId("");
     setError("");
+    setLoadError("");
     if (!caseState || caseState.spatial_units !== "mm" || !sourceRevision)
       return;
     let active = true;
@@ -293,7 +298,10 @@ export default function DeviceStudio({
           setAnatomyMeshes(meshes);
         }
       } catch (e) {
-        if (active) setError((e as Error).message);
+        if (active) {
+          setLoadError((e as Error).message);
+          setError((e as Error).message);
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -438,7 +446,7 @@ export default function DeviceStudio({
   const canAnatomy = !!(
     file &&
     loadedIdentity === identity &&
-    !error &&
+    !loadError &&
     !loading &&
     anatomy &&
     anatomyMeshes.length === 2 &&
@@ -572,9 +580,9 @@ export default function DeviceStudio({
               </span>
             </div>
           </div>
-          {(error || selectedModel.error) && (
+          {(loadError || error || selectedModel.error) && (
             <p className="ds-warning" role="alert">
-              {selectedModel.error || error}
+              {selectedModel.error || loadError || error}
             </p>
           )}
           <div className="ds-display">

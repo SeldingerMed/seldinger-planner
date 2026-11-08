@@ -80,7 +80,7 @@ function sameParameters(a: unknown, b: unknown): boolean {
   if (typeof a === "object" && typeof b === "object" && a && b) {
     const ka = Object.keys(a as object).sort(),
       kb = Object.keys(b as object).sort();
-    if (ka.join(",") !== kb.join(",")) return false;
+    if (ka.length !== kb.length || ka.some((key, i) => key !== kb[i])) return false;
     return ka.every((k) =>
       sameParameters(
         (a as Record<string, unknown>)[k],
