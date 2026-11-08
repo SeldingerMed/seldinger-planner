@@ -272,7 +272,10 @@ def build_app(
     register_physics_routes(app, db_path, image_sources, read_case, results_dir)
     from planner.territory_workflow_server import register_territory_workflow_routes
 
-    register_territory_workflow_routes(app, db_path, image_sources, read_case)
+    read_territory = register_territory_workflow_routes(app, db_path, image_sources, read_case)
+    from planner.reformat_server import register_reformat_routes
+
+    read_scene = register_reformat_routes(app, db_path, image_sources, read_case)
 
     from planner.device_db import (
         CATEGORIES,
@@ -315,6 +318,10 @@ def build_app(
             return context
         except (ValueError, TypeError, KeyError, OSError) as exc:
             raise HTTPException(503, "Computed planning context is unavailable") from exc
+
+    from planner.local_brief import register_local_brief
+
+    register_local_brief(app, read_case, read_planning_context, read_territory, read_scene)
 
     def planning_for_brief(case):
         context = read_planning_context(case["case_id"])

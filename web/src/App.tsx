@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState, useRef } from "react";
+import { lazy, Suspense, useCallback, useState, useRef, useMemo } from "react";
 import {
   api,
   restoreOrCreateCase,
@@ -10,6 +10,7 @@ import SegmentationPanel from "./SegmentationPanel";
 import MorphometryResults from "./MorphometryResults";
 import MorphometryInputs from "./MorphometryInputs";
 import TerritoryStudio from "./TerritoryStudio";
+import ReformatStudio from "./ReformatStudio";
 import {
   findNativeCaseSource,
   type NativeCaseSource,
@@ -47,6 +48,11 @@ export default function App() {
   const [nativeSourceError, setNativeSourceError] = useState("");
   const [territoryDirty, setTerritoryDirty] = useState(false);
   const [territoryBusy, setTerritoryBusy] = useState(false);
+  const [reformatDirty, setReformatDirty] = useState(false);
+  const [reformatActivity, setReformatActivity] = useState<{
+    owner: symbol | null;
+    busy: boolean;
+  }>({ owner: null, busy: false });
   const [file, setFile] = useState<File | null>(null);
   const [nativeVolume, setNativeVolume] = useState<NativeVolume | null>(null);
   const [digest, setDigest] = useState("");
@@ -70,7 +76,8 @@ export default function App() {
   const [geometryInputsDirty, setGeometryDirty] = useState(false);
   const [deviceDirty, setDeviceDirty] = useState(false);
   const [deviceEpoch, setDeviceEpoch] = useState(0);
-  const geometryDirty = geometryInputsDirty || deviceDirty || territoryDirty;
+  const geometryDirty =
+    geometryInputsDirty || deviceDirty || territoryDirty || reformatDirty;
   const [geometryEpoch, setGeometryEpoch] = useState(0);
   const [source, setSource] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -83,7 +90,8 @@ export default function App() {
     geometryBusy ||
     deviceBusy ||
     deviceCalculationBusy ||
-    territoryBusy;
+    territoryBusy ||
+    reformatActivity.busy;
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const [reloadEpoch, setReloadEpoch] = useState(0);
@@ -138,9 +146,27 @@ export default function App() {
       setConfirmed(false);
     }
   }, []);
+  const reformatBusyChanged = useMemo(() => {
+    const owner = Symbol("reformat-request-owner");
+    return (busy: boolean) =>
+      setReformatActivity((prior) =>
+        busy
+          ? { owner, busy: true }
+          : prior.owner === owner
+            ? { owner, busy: false }
+            : prior,
+      );
+  }, [
+    caseState?.case_id,
+    caseState?.image_sha256,
+    caseState?.artifact_version,
+    nativeSource?.reference_revision,
+    reloadEpoch,
+  ]);
   function failVolume(message: string) {
     setNativeVolume(null);
     setTerritoryDirty(false);
+    setReformatDirty(false);
     setSegmentation(null);
     setReference(null);
     setRequestedReference(null);
@@ -180,6 +206,7 @@ export default function App() {
     setError("");
     setCase(null);
     setTerritoryDirty(false);
+    setReformatDirty(false);
     setNativeVolume(null);
     setSegmentation(null);
     setA(null);
@@ -359,6 +386,7 @@ export default function App() {
         }
       }
       setTerritoryDirty(false);
+      setReformatDirty(false);
       setReloadEpoch((value) => value + 1);
       setA(null);
       setB(null);
@@ -870,9 +898,36 @@ export default function App() {
                 <a href="#model-segmentation">Models</a>
               </>
             )}
+            {nativeSource && (
+              <a href="#native-reformats">Reformats and fusion</a>
+            )}
             <a href="#manual-evidence">Evidence</a>
             <a href="#muse-discussion">Muse ↗</a>
           </nav>
+          {caseState && nativeSource && (
+            <ReformatStudio
+              caseState={caseState}
+              binding={nativeSource}
+              volume={
+                nativeVolume?.file === file && digest === caseState.image_sha256
+                  ? nativeVolume.image
+                  : null
+              }
+              cursor={location}
+              windowRange={windowRange}
+              disabled={
+                busy ||
+                conflict ||
+                geometryInputsDirty ||
+                deviceDirty ||
+                territoryDirty ||
+                planDirty ||
+                notes !== caseState.notes
+              }
+              onDirtyChange={setReformatDirty}
+              onBusy={reformatBusyChanged}
+            />
+          )}
           {territoryWorkspace && caseState && nativeSource && (
             <TerritoryStudio
               caseState={caseState}

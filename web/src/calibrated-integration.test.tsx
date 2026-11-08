@@ -426,7 +426,8 @@ test("opens calibrated image-only source with mm evidence and model controls, no
       screen.getByRole("button", { name: "Open calibrated CTA" }),
     ).toBeEnabled(),
   );
-});
+// This multi-stage integration flow retains a bounded budget on shared CI runners.
+}, 15_000);
 
 test.each([metadata, tightMetadata])(
   "actual API producer metadata satisfies case-source transport validator: $source_id",

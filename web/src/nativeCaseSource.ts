@@ -25,7 +25,15 @@ export async function findNativeCaseSource(
   if (response.status === 404) return null;
   if (!response.ok)
     throw new Error("Native planning source could not be verified.");
-  const value: unknown = await response.json();
+  return parseNativeCaseSource(await response.json(), caseState);
+}
+export function parseNativeCaseSource(
+  value: unknown,
+  caseState: Pick<
+    CaseState,
+    "case_id" | "image_sha256" | "dimensions" | "spacing_mm" | "spatial_units"
+  >,
+): NativeCaseSource {
   const bad = () => {
     throw new Error("Native planning source metadata is inconsistent.");
   };

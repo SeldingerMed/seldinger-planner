@@ -1,0 +1,129 @@
+{
+  "not_confirmed": {
+    "artifact_version": "1",
+    "case_id": "Shh2Cy_5IovLWfOcFHCK1A",
+    "current": {
+      "status": "not_confirmed"
+    },
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+    "scene_revision": 0,
+    "secondary_metadata": null
+  },
+  "current": {
+    "artifact_version": "1",
+    "case_id": "Shh2Cy_5IovLWfOcFHCK1A",
+    "current": {
+      "dependencies": {
+        "artifact_version": "1",
+        "case_id": "Shh2Cy_5IovLWfOcFHCK1A",
+        "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+        "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+        "version": "phase4-native-scene-v1"
+      },
+      "input_sha256": "14bcc24c76853eff86a1fa1e45e72143440c5236b55fca367ea13cd4ceb7643b",
+      "inputs": {
+        "confirmed": true,
+        "path": [
+          [8.0, 8.0, 8.0],
+          [8.0, 8.0, 10.0]
+        ],
+        "secondary": null
+      },
+      "result": {
+        "path_length_mm": 2.0,
+        "path_point_count": 2,
+        "path_source": "operator_confirmed",
+        "registration_method": null,
+        "version": "phase4-native-scene-v1"
+      },
+      "scene_id": "mv6KxKdSZbH3rTSVUmsARA",
+      "status": "current"
+    },
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+    "scene_revision": 1,
+    "secondary_metadata": null
+  },
+  "registered": {
+    "artifact_version": "1",
+    "case_id": "Shh2Cy_5IovLWfOcFHCK1A",
+    "current": {
+      "dependencies": {
+        "artifact_version": "1",
+        "case_id": "Shh2Cy_5IovLWfOcFHCK1A",
+        "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+        "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+        "version": "phase4-native-scene-v1"
+      },
+      "input_sha256": "66c3251eed1dbecb5ecc0da2f9e0e7ec77b33b7f037715cb089a6d0ec694c710",
+      "inputs": {
+        "confirmed": true,
+        "path": [
+          [8.0, 8.0, 8.0],
+          [8.0, 8.0, 10.0]
+        ],
+        "secondary": {
+          "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+          "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+          "secondary_to_primary_ras": [
+            [1.0, 0.0, 0.0, 2.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0]
+          ],
+          "source_id": "phase3-synthetic"
+        }
+      },
+      "result": {
+        "path_length_mm": 2.0,
+        "path_point_count": 2,
+        "path_source": "operator_confirmed",
+        "registration_method": "operator_confirmed_rigid_ras",
+        "version": "phase4-native-scene-v1"
+      },
+      "scene_id": "2vCMZvrhKVX6ahtZY3npRw",
+      "status": "current"
+    },
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+    "scene_revision": 2,
+    "secondary_metadata": {
+      "case_label": "Installed NIfTI source (phase3-synthetic)",
+      "citation": "Server-installed NIfTI source",
+      "clinical_validation": false,
+      "dimensions": [32, 32, 32],
+      "image_affine_ras": [
+        [1, 0, 0, 0],
+        [0, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]
+      ],
+      "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+      "image_url": "/api/image-sources/phase3-synthetic/volume",
+      "license_url": null,
+      "method": "installed_nifti_source",
+      "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+      "selection_basis": "server-installed calibrated volume",
+      "source_id": "phase3-synthetic",
+      "source_url": "local://installed-source",
+      "spacing_mm": [1.0, 1.0, 1.0],
+      "spatial_units": "mm",
+      "stl_registration_validated": false
+    }
+  },
+  "stale": {
+    "artifact_version": "2",
+    "case_id": "Shh2Cy_5IovLWfOcFHCK1A",
+    "current": {
+      "inputs": null,
+      "result": null,
+      "scene_id": "2vCMZvrhKVX6ahtZY3npRw",
+      "status": "stale"
+    },
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+    "scene_revision": 2,
+    "secondary_metadata": null
+  }
+}
