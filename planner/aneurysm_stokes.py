@@ -285,6 +285,23 @@ def _build_tets(fluid_idx, linear, affine):
     return p_world, tets, verts, unique_edges.shape[1], lo
 
 
+def _validate_element_groups(mesh, fluid_idx, affine):
+    """Fail closed if the FEM library changes the voxel-to-element grouping."""
+    _require(
+        mesh.t.shape[1] == 6 * fluid_idx.shape[0],
+        "element-to-voxel count mismatch",
+    )
+    centroids = mesh.p[:, mesh.t].mean(axis=1).T
+    native = (centroids - affine[:3, 3]) @ np.linalg.inv(affine[:3, :3]).T
+    expected = np.repeat(fluid_idx, 6, axis=0)
+    # Kuhn-tet centroids lie strictly inside their original native voxel.
+    # Vertex permutations and coordinate-array renumbering remain admissible.
+    _require(
+        bool(np.all(np.abs(native - expected) < 0.5)),
+        "element-to-voxel grouping mismatch",
+    )
+
+
 def _facet_sets(tets, verts, lo, flow_axis):
     """Return boundary facet array and inlet/outlet facet masks (index space)."""
     faces = np.concatenate(
@@ -421,6 +438,7 @@ def solve_aneurysm_stokes(
     boundary_faces, inlet_mask, outlet_mask = _facet_sets(tets, verts, lo, flow_axis)
 
     mesh = MeshTet(p_world.astype(np.float64), tets.astype(np.int64))
+    _validate_element_groups(mesh, fluid_idx, affine)
 
     # Map boundary vertex triples to skfem facet indices.
     facet_key = {}

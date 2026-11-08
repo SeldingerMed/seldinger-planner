@@ -104,9 +104,18 @@ def propose_centerline(
 
     # Strip the connector joins, not the skeleton path's endpoints. When
     # both joins coincide, ordered=[join] includes that shared voxel once.
-    ordered = start_connector[:-1] + ordered + list(reversed(end_connector))[1:]
-    if len(set(ordered)) != len(ordered):
-        raise ValueError("Operator anchors do not define a simple skeleton path")
+    walk = start_connector[:-1] + ordered + list(reversed(end_connector))[1:]
+    # Both foreground connectors can share a corridor before their skeleton
+    # join. Erase closed subwalks, preserving endpoints and native adjacency,
+    # rather than rejecting valid anchors or keeping a detour as path length.
+    ordered, seen = [], set()
+    for node in walk:
+        if node in seen:
+            while ordered[-1] != node:
+                seen.remove(ordered.pop())
+        else:
+            ordered.append(node)
+            seen.add(node)
     stations = _select_stations(ordered, aff, max_points)
     if stations is None or len(stations) < MIN_POINTS:
         raise ValueError("Vessel skeleton is too short to propose a four-point minimum path")

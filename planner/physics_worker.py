@@ -233,7 +233,12 @@ def _capture_worker(payload, env):
                     os.killpg(process.pid, signal.SIGKILL)
                 except ProcessLookupError:
                     pass
-                process.wait(timeout=5)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    # Preserve the original failure. SIGKILL was sent to the
+                    # owned group, but kernel reaping can exceed this budget.
+                    pass
         finally:
             for stream in streams:
                 stream.close()

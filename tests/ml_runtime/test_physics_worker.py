@@ -279,6 +279,36 @@ def _bounded_supervisor_env(tmp_path, monkeypatch, flood_stream=None):
     return checkout, physics_worker
 
 
+def test_cleanup_timeout_preserves_output_bound_failure(tmp_path, monkeypatch):
+    import subprocess
+
+    checkout, physics_worker = _bounded_supervisor_env(tmp_path, monkeypatch, "stdout")
+    spawn = subprocess.Popen
+    children = []
+
+    def launch(*args, **kwargs):
+        child = spawn(*args, **kwargs)
+        children.append(child)
+        wait = child.wait
+
+        def slow_ack(timeout=None):
+            result = wait(timeout=timeout)
+            if timeout == 5:
+                # Actual child is reaped first. Simulate only the cleanup
+                # timeout acknowledgement; no uninterruptible-I/O claim.
+                raise subprocess.TimeoutExpired(child.args, timeout)
+            return result
+
+        child.wait = slow_ack
+        return child
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    with pytest.raises(RuntimeError, match="output bound"):
+        physics_worker.run_local_physics({}, blob_dir=tmp_path)
+    assert (checkout / "started_marker.txt").exists()
+    assert len(children) == 1 and children[0].poll() is not None
+
+
 def test_supervisor_terminates_runaway_stdout_flood_before_exit(tmp_path, monkeypatch):
     """Oversized stdout must be caught during execution and the owned child
     killed and reaped, never buffered unboundedly."""

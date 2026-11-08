@@ -396,6 +396,14 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
             "parameters": parameters,
             "operator_inputs": inputs,
         }
+        if kind == "centerline":
+            from planner.native_grid import native_voxel
+
+            grid = _trusted_grid(bundle)
+            for key in ("start_ras", "end_ras"):
+                native = native_voxel(grid["affine"], parameters[key])
+                if any(not 0 <= v <= n - 1 for v, n in zip(native, grid["shape"], strict=True)):
+                    raise HTTPException(422, "Operator anchor is outside the native center grid")
         from planner.segmentation_server import _INFERENCE_GATE
 
         if not _INFERENCE_GATE.acquire(blocking=False):
@@ -408,10 +416,13 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
                     job,
                     native_grid=_trusted_grid(bundle) if kind == "centerline" else None,
                 )
-            except (ValueError, TypeError, KeyError, RuntimeError, OSError, OverflowError):
+            except Exception as exc:
+                # Narrow producer/protocol boundary only. Library exceptions
+                # must not escape or reveal details; persistence has not begun.
+                # Eligibility/conflict/busy HTTP paths remain outside this try.
                 raise HTTPException(
                     503, "Numerical computation failed; no result was stored"
-                ) from None
+                ) from exc
             after, _bundle = bound(case_id)
             if after != before:
                 raise HTTPException(409, "Case or source changed during numerical computation")

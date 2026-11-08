@@ -203,6 +203,57 @@ def test_post_compute_integrity_failures_are_sanitized_without_rollback_claim(
     _INFERENCE_GATE.release()
 
 
+@pytest.mark.parametrize("failure_type", [IndexError, AttributeError, MemoryError])
+def test_unexpected_producer_exceptions_are_sanitized(tmp_path, monkeypatch, failure_type):
+    import sqlite3
+
+    from fastapi.testclient import TestClient
+
+    from planner.segmentation_server import _INFERENCE_GATE
+
+    def broken(*_, **__):
+        raise failure_type("private /data/source")
+
+    client, _cid, route, body = compute_fixture(tmp_path, monkeypatch, broken)
+    response = TestClient(client.app, raise_server_exceptions=False).post(route, json=body)
+    assert response.status_code == 503, response.text
+    assert "no result was stored" in response.text
+    assert "/data" not in response.text and "Traceback" not in response.text
+    with sqlite3.connect(tmp_path / "case.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM numerical_results").fetchone()[0] == 0
+    assert _INFERENCE_GATE.acquire(blocking=False)
+    _INFERENCE_GATE.release()
+
+
+def test_out_of_grid_anchor_is_rejected_before_gate_or_runner(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from planner import segmentation_server
+
+    calls = []
+    gates = []
+
+    def runner(job, **_):
+        calls.append(job)
+        return centerline_output(job)
+
+    client, cid, _route, body = compute_fixture(tmp_path, monkeypatch, runner)
+    mock_trusted_grid(monkeypatch)
+    monkeypatch.setattr(
+        segmentation_server,
+        "_INFERENCE_GATE",
+        SimpleNamespace(
+            acquire=lambda **_: gates.append("acquire") or True,
+            release=lambda: gates.append("release"),
+        ),
+    )
+    body.pop("geometry_result_id")
+    body["parameters"] = {"max_points": 32, **CENTERLINE_ANCHORS, "end_ras": [1000, 0, 6.125]}
+    response = client.post(f"/api/cases/{cid}/centerline-proposals", json=body)
+    assert response.status_code == 422, response.text
+    assert calls == [] and gates == []
+
+
 def rod_output(job):
     import hashlib
 

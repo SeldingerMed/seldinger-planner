@@ -19,6 +19,22 @@ import numpy as np
 from planner.aneurysm_stokes import AneurysmStokesError, solve_aneurysm_stokes
 
 
+def test_reordered_real_mesh_elements_are_rejected_before_sac_averaging(monkeypatch):
+    import skfem
+
+    actual = skfem.MeshTet
+
+    def reordered(*args, **kwargs):
+        mesh = actual(*args, **kwargs)
+        # Preserve the physical mesh, but swap columns across voxel groups.
+        mesh.t[:, [0, 6]] = mesh.t[:, [6, 0]]
+        return mesh
+
+    monkeypatch.setattr(skfem, "MeshTet", reordered)
+    with pytest.raises(AneurysmStokesError, match="element-to-voxel"):
+        _solve()
+
+
 def _tube_masks(nx=6, ny=4, nz=4):
     lumen = np.zeros((nx, ny, nz), dtype=np.uint8)
     lumen[:, 1:3, 1:3] = 1

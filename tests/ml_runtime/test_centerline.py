@@ -22,6 +22,37 @@ from planner import centerline
 from planner.centerline import propose_centerline
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+def test_overlapping_foreground_connectors_keep_simple_anchor_path(reverse):
+    import numpy as np
+
+    from planner.centerline import propose_centerline
+
+    x, y, _z = np.indices((13, 13, 16))
+    mask = ((x - 6) ** 2 + (y - 6) ** 2 <= 16).astype(np.uint8)
+    expected = [[6, i, 8] for i in range(2, 6)]
+    if reverse:
+        expected.reverse()
+    result = propose_centerline(mask, np.eye(4), expected[0], expected[-1])
+    assert result["path_ras"] == expected
+    assert len({tuple(p) for p in result["path_ras"]}) == len(expected)
+    assert result["operator_confirmation_required"] is True
+    assert result["clinical_validation"] is False
+
+
+def test_loop_erasure_does_not_count_removed_detour_as_path_length():
+    import numpy as np
+
+    from planner.centerline import propose_centerline
+
+    x, y, _z = np.indices((11, 11, 16))
+    mask = ((x - 5) ** 2 + (y - 5) ** 2 <= 9).astype(np.uint8)
+    # The connector union contains 4 nodes, but the actual path between
+    # these anchors has only 3 nodes. It must still fail the four-point minimum.
+    with pytest.raises(ValueError, match="too short"):
+        propose_centerline(mask, np.eye(4), [5, 4, 8], [5, 2, 8])
+
+
 def test_same_skeleton_join_is_included_once_between_disjoint_connectors():
     mask = _tube_along_x(shape=(11, 5, 5), y_radius=2, z_radius=2)
     affine = np.eye(4)
