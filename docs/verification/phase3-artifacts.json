@@ -1,0 +1,86 @@
+{
+  "phase": 3,
+  "base": "4556fb06409724ca66d346b017d4e9a9c21f8dd0",
+  "scope": "source-bound operator territory geometry and actual App workflows",
+  "checks": {
+    "backend": {
+      "passed": 754,
+      "skipped": 108,
+      "python": "3.12.13"
+    },
+    "numerical": {
+      "passed": 129,
+      "python": "3.11.15",
+      "evidence": "129 passed on unchanged numerical source in fourth candidate"
+    },
+    "imaging_geometry": {
+      "passed": 21,
+      "runtime": "separate Python3.11 populated from requirements/physics.txt",
+      "evidence": "21 passed on unchanged imaging source in fourth candidate"
+    },
+    "frontend": {
+      "passed": 315,
+      "node": "24.22.2"
+    },
+    "ruff": "source passed; generated third-party .runtime environments excluded on repair rerun",
+    "format": "passed",
+    "api_pyright": "0 errors including server integration",
+    "typescript_build": "passed",
+    "audit_vulnerabilities": 0
+  },
+  "source_sha256": {
+    "docs/plans/phase3-territory-workflows.md": "00ab4811745c8e8337a410b1e589ea675f16136f70cb3ce189ed5a4e8340c2be",
+    "docs/verification/phase3-territory-workflows.md": "fcf937ed00b0f22c006c65e422549e52388e9cd69ec66c8db680531439a491c3",
+    "planner/server.py": "37232700f21d87ef4ae23f0c8d035f485d56f65dd73cd74d3ec20bf82115ac51",
+    "planner/territory_geometry.py": "b36e3514012e9c85e27933633d092f9cb84b3ab834c15168c8d1606ad3adde74",
+    "planner/territory_profiles.py": "7d96b700ba240c74cfa25e5dfab499f1bc9edaf65bcac0e3da28f80769f0e065",
+    "planner/territory_workflow_server.py": "9c78e16ec80008cfcc1bcdf304db01fac0f3f449cd062047ffe1fff1b933b413",
+    "planner/territory_workflow_state.py": "470317411ce620e7efc0fa183b2a91c880045a68cdf80fa4cbb35402e2fa3ca2",
+    "planner/territory_workflows.py": "1b44e58d196d38248a822e1cf3b73ff203aba4606089f5c89809b08f534bdd87",
+    "tests/test_territory_geometry.py": "7dd7dd006ae326390c80603bd8bc4147fbdc1744418d7ae4958260fab77389c2",
+    "tests/test_territory_profiles.py": "6911ed90c54ecdcd310de4730f9176c0e7972591233d27cadf523706feeae6a5",
+    "tests/test_territory_workflow_server.py": "25a89fc53a9a9cb25390e1e3baaf9bb215a5bad853fe0501b4b6228268c97ca5",
+    "tests/test_territory_workflows.py": "05b49655ff15c27c7bb3d473ecb0a6355b44b77eb65043bd633dedf0c07de7c9",
+    "web/src/App.tsx": "2172dccb925dd4643b6439505e37f6a4c5cf5248e400a9c99d6515b46f0784ab",
+    "web/src/App.test.tsx": "db0cabb68ba629486e26e42c616481df64e6886041286e199c34e31296ee82f6",
+    "web/src/ObliqueSection.tsx": "dc0ce9390a4517f89c78058bf709f485648eea572ccd678add350b5641cee873",
+    "web/src/ObliqueSection.test.tsx": "87f3482e7406bebad86d383cf6b47982f3437cb335722040b4e8370ebefa1b90",
+    "web/src/calibrated-integration.test.tsx": "6d99eea739c3fb862d3151ba212d13f57e19c5b8ceb28910a583a72bbbe683d4",
+    "web/src/calibratedSource.ts": "938a1f415ca323c61b69d3422ae4b9a3aec7c73ecb6dbaba950dd0a1dc6c9f3f",
+    "web/src/TerritoryPathEditor.tsx": "ee87c3c992682a53b4ba714b85d6530a3fe55e33ece23ef27fc1cc0b3d8deaf3",
+    "web/src/TerritoryPathEditor.test.tsx": "58d478f4e1dcd7ec37ade08d05668a7bb526471c0c630d3554653e9cf002e8ef",
+    "web/src/TerritorySectionEditor.tsx": "57cb226df2a148c682a9d9162aaacb4a4a5f0080dac00b920dbe13fbfe95ddfe",
+    "web/src/TerritorySectionEditor.test.tsx": "30f6d5223b39366d3b4a8c07a75c3e9a0ef14901ed17122c7a092015e84a29ac",
+    "web/src/TerritoryStudio.tsx": "8bf924fd5602607f3295fb39997143b790f11d0ffe7a29282d316f58dfb07023",
+    "web/src/TerritoryStudio.test.tsx": "ef0734de4886314f0b66e9e33fef158c6f564bf0bc76642860f1971f10837fdf",
+    "web/src/nativeCaseSource.ts": "762493e845c98c57bad00aa8197dd6bb1a63f05bd8e004531c06245fae105a75",
+    "web/src/nativeCaseSource.test.ts": "9899cc390d226c2bca65a2f90d42371ffada2ca3fc485db188cf646f3e3d1ac2",
+    "web/src/territoryWorkflow.ts": "46e0d2643bbcbaab1d6cc51900839189fed12ce57e00253a4f9ea5f19e6351cb",
+    "web/src/territoryWorkflow.test.ts": "874f6af595dbd28e2cf3f17f20cc447f09efb1126f19ea4f88a6458c2ded67d1",
+    "web/src/territory-app-integration.test.tsx": "cac55dbb63d226705a43815677a6e8ccf9606950f5051bde3a875ebbed056dc0",
+    "web/src/territory.css": "22a497f74345649a124c3455edfb11884728a66ac4af0faacfc88a2e7c59a26c",
+    "web/src/__fixtures__/territory-tavr.json": "4ec5609222ba313597dd8189807d580b589b7bd17ccb82249e75b6090693c662",
+    "web/src/__fixtures__/territory-native-source.json": "e17708408a3ea32a2d5c17877731cd5365c9ab58ba9ecb2cff0be7716c3d8a92",
+    "web/src/__fixtures__/README.md": "532674ffa03171808aefb583cd491d370d9a19a086006f5a204e1c609073b205",
+    "web/src/api.ts": "3171d0aa6860c846a7844e9b30c62583a54ac4a57fbd8f2dff153a61f090bd8e",
+    "web/src/TerritoryStudio.indices.test.tsx": "f3355cd8f871032b9c6476bba2f34ece2b4fade6b541819977a70bbe60e99d00",
+    "web/src/__fixtures__/territory-path-workflows.json": "3e5c97fa22bff7f51b73ceb31db02fb79da4f880f60093ffa550351ddc4a53b0",
+    "web/src/TerritoryStudio.reload.test.tsx": "09c9c530a7871c7c3cbf1ec8e2eac7dfecdf1dc929f89078ce691c27d21d5b6b"
+  },
+  "local_evidence_sha256": {
+    "phase3-browser-desktop.png": "3f99e2c7151ff12dfe89a49fb1e221603945f6606aae239d167e03f294b7dcf5",
+    "phase3-browser-aortic-desktop.png": "61f09051b2a896d31dcbf81d3a0e01382dd9fa64adb643dddf4a397753d91501",
+    "phase3-browser-aortic-portrait.png": "eaa9c89b96a8c06876a04bb5a5c6146b6b345ab4f68c82cde8aa2cdf3d727fcb",
+    "phase3-browser-tavr.json": "fde8b54fdef78835af8f4a4fe73d1e66c8b50cd01b1b21fd064b88ad5e351979",
+    "phase3-browser-coronary.json": "6171166b8048194bf235183a95bd122526a724d628ecc16ac7333fdc158f7f3e",
+    "phase3-browser-aortic.json": "5232c7fd32448e1d894a29de27ed34a2144181fae771cf7e719693130fc4e6da",
+    "phase3-browser-reload.json": "bdadf676970a5762d33ee11baedaed83d3c99882c86b1fb3a1ad258795881914",
+    "phase3-browser-ambiguous-ack.json": "2f1f779194bccc24bfd9aada48d4e8a48dbe69db861b5cc84421c159da6362dc",
+    "phase3-browser-native-plane.png": "4b5aab1f1e2afcedf85fa1e6eedf1e8824c29a5b33e6d57b1dca56af664f49f3",
+    "phase3-browser-review-delta.json": "e869a01af8de814aae1e333a9f86ed65c51e631b15913265a4dfd6d079c08716",
+    "phase3-geometry-budget.json": "9b6fca17c4c6b289a2363a410a9d1e49d4f609c9bce1b09bb911081b78dde85b"
+  },
+  "browser_scope": "actual production App/default API, generated 32-cubed native gradient, real pointer traces, all-mode persistence and reload, one-shot ambiguous acknowledgement, desktop/portrait",
+  "excluded": "local plan.md, original unrelated work, image assets, temporary databases and runtime environments",
+  "review_repair_scope": "413/422 draft recovery, duplicate-path guard, shared128-point cap and bounded contour picks, explicit station notices and unknown-on-deletion notice, stable native-plane raster;409 remains potentially committed; aggregate8192 budget and write-readback recomputation intentionally retained with real API evidence; path-index preflight and exact server spacing floor; same-revision reload report disproved by real-parent immediate/deferred tests"
+}

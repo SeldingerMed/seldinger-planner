@@ -1,0 +1,52 @@
+{
+  "source_id": "phase3-synthetic",
+  "case_label": "Installed NIfTI source (phase3-synthetic)",
+  "source_url": "local://installed-source",
+  "license_url": null,
+  "citation": "Server-installed NIfTI source",
+  "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+  "image_url": "/api/image-sources/phase3-synthetic/volume",
+  "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+  "spatial_units": "mm",
+  "dimensions": [
+    32,
+    32,
+    32
+  ],
+  "spacing_mm": [
+    1.0,
+    1.0,
+    1.0
+  ],
+  "image_affine_ras": [
+    [
+      1,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      1,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      1,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      1
+    ]
+  ],
+  "method": "installed_nifti_source",
+  "selection_basis": "server-installed calibrated volume",
+  "clinical_validation": false,
+  "stl_registration_validated": false,
+  "case_id": "3AE7sDBmjoN1HeicqiFAzA"
+}

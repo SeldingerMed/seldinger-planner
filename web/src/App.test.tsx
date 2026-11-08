@@ -11,5 +11,8 @@ test("opens with a real-volume file chooser and no invented case or measurements
     ".nii,.nii.gz",
   );
   expect(screen.getByText("No volume loaded")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Cardiac and aortic" }),
+  ).toBeDisabled();
   expect(screen.queryByText(/4\.5 mm/)).not.toBeInTheDocument();
 });
