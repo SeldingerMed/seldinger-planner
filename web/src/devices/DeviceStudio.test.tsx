@@ -261,6 +261,9 @@ it("keeps anatomy controls eligible when a save fails after anatomy has loaded",
         throw new Error("quota exceeded");
       });
     try {
+      // Only bench examples use browser storage. Anatomy alternatives now use
+      // the authoritative server set, so exercise the storage failure in bench.
+      fireEvent.click(screen.getByRole("button", { name: "Device bench" }));
       fireEvent.click(screen.getByRole("button", { name: "Save placement" }));
       expect(screen.getByRole("alert")).toHaveTextContent("quota exceeded");
     } finally {
@@ -269,6 +272,7 @@ it("keeps anatomy controls eligible when a save fails after anatomy has loaded",
     expect(
       screen.getByRole("button", { name: "Place in CTA" }),
     ).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", {name:"Place in CTA"}));
     expect(screen.getByRole("button",{name:"Compute solved numerics"})).toBeEnabled();
     expect(screen.getByLabelText("Rod radius (mm)")).toBeEnabled();
     vi.stubGlobal("fetch",vi.fn(async()=>{throw new Error("anatomy load failed");}));

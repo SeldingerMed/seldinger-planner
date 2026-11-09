@@ -67,6 +67,12 @@ async function renderWith(binding_ = binding) {
 }
 
 describe("MorphometryResults", () => {
+  it("states the geometry provenance without repetitive draft boilerplate", async () => {
+    await renderWith();
+    await screen.findByText("Operator-defined planes · source mm");
+    expect(screen.getByText("Current estimate")).toBeInTheDocument();
+    expect(screen.queryByText("Draft UI · not clinically validated")).not.toBeInTheDocument();
+  });
   it("renders an explicitly computed sac volume in cubic millimeters", async () => {
     const enriched = {
       ...fixture,

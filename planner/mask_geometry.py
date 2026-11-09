@@ -8,13 +8,17 @@ clinical validation; see ``docs/plans/case-morphometry-contract.md``.
 
 from __future__ import annotations
 
+from typing import cast
+
 _MAX_VOXELS = 8_000_000
 _MAX_FOREGROUND = 100_000
 _MAX_TRIANGLES = 50_000
 _METHOD = "native_binary_marching_cubes_0_5"
 
 
-def surface_from_mask(mask, affine, *, seed_ijk=None, reject_boundary=True):
+def surface_from_mask(
+    mask, affine, *, seed_ijk=None, reject_boundary=True, triangle_budget=_MAX_TRIANGLES
+):
     """Build a world-space surface mesh from a binary 3D mask.
 
     Heavy numeric libraries (NumPy, SciPy, scikit-image) are imported lazily
@@ -25,9 +29,15 @@ def surface_from_mask(mask, affine, *, seed_ijk=None, reject_boundary=True):
     component containing the seed is used. Boundary contact of the selected
     component is reported and rejected when ``reject_boundary`` is true.
     Vertices are transformed once with the full affine (including reflected
-    anisotropic/oblique axes). Output triangles are capped at 50000 before
-    the Python triangle soup is materialized.
+    anisotropic/oblique axes). Output triangles default to a 50000 budget.
+    Read-only display may explicitly request up to 60000; analysis callers
+    retain their original default. Admission precedes triangle-soup materialization.
     """
+    if type(triangle_budget) is not int:
+        raise TypeError("triangle_budget must be a native integer")
+    if not 1 <= triangle_budget <= 60_000:
+        raise ValueError("triangle_budget exceeds the bounded display envelope")
+
     import numpy as np
     from scipy import ndimage
     from skimage import measure
@@ -82,7 +92,9 @@ def surface_from_mask(mask, affine, *, seed_ijk=None, reject_boundary=True):
     else:
         seed_index = None
 
-    labels, _ = ndimage.label(binary, structure=ndimage.generate_binary_structure(3, 1))
+    labels, _ = cast(
+        tuple, ndimage.label(binary, structure=ndimage.generate_binary_structure(3, 1))
+    )
     if seed_index is not None:
         component = labels == labels[seed_index]
     else:
@@ -109,9 +121,9 @@ def surface_from_mask(mask, affine, *, seed_ijk=None, reject_boundary=True):
         step_size=1,
         allow_degenerate=False,
     )
-    if faces.shape[0] > _MAX_TRIANGLES:
+    if faces.shape[0] > triangle_budget:
         raise ValueError(
-            f"surface has {faces.shape[0]} triangles, exceeding the {_MAX_TRIANGLES} cap"
+            f"surface has {faces.shape[0]} triangles, exceeding the {triangle_budget} cap"
         )
     homogeneous = np.concatenate([vertices, np.ones((vertices.shape[0], 1))], axis=1)
     world = (homogeneous @ aff.T)[:, :3]

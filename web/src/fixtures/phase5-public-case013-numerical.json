@@ -1,0 +1,271 @@
+{
+  "artifact_version": "5",
+  "case_id": "NybY4R1jZdMpmuGFIHirJg",
+  "image_sha256": "ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c",
+  "reference_revision": "7fbc62e79b3e222b2746ce2db73fad9b34f046eecaaa4a7b74bceab56942b3a6",
+  "planning": {
+    "artifact_version": "5",
+    "case_id": "NybY4R1jZdMpmuGFIHirJg",
+    "device_sizing_summary": null,
+    "evidence_boundary": "Software geometry and operator-reported arithmetic, not clinically validated; no treatment suitability established.",
+    "image_sha256": "ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c",
+    "morphometry_summary": {
+      "clinical_suitability_established": false,
+      "distal_parent": {
+        "area": 20.378429972125822,
+        "equivalent_diameter": 5.0937827692322015,
+        "max_diameter": 9.096231599457736,
+        "min_diameter": 3.8538304308994253
+      },
+      "morphometric_indices": {
+        "aspect_ratio": 1.171,
+        "bottleneck_factor": 1.188,
+        "citations": [
+          "Ujiie H et al. Neurosurgery 2001;48(3):495-503 (Aspect Ratio)",
+          "Dhar S et al. Neurosurgery 2008;63(2):185-196 (Size Ratio)",
+          "Raghavan ML et al. J Neurosurg 2005;102(2):355-362 (Nonsphericity Index)"
+        ],
+        "clinical_suitability_established": false,
+        "dome_to_neck_ratio": 1.188,
+        "nonsphericity_index": 0.209,
+        "size_ratio": 1.499,
+        "surface_area_mm2": 108.487,
+        "volume_mm3": 105.719,
+        "volume_source": "clipped_mesh_exact",
+        "volume_ul": 105.719,
+        "wide_neck": true
+      },
+      "neck": {
+        "area": 14.997197009213833,
+        "equivalent_diameter": 4.369785382866642,
+        "max_diameter": 5.220433472714347,
+        "min_diameter": 4.252743621569251
+      },
+      "proximal_parent": {
+        "area": 7.373775515561266,
+        "equivalent_diameter": 3.0640794017800053,
+        "max_diameter": 4.120636378648218,
+        "min_diameter": 2.6885145690267693
+      },
+      "result_id": "5Df0AJSVcQluB4EkV-RD-w",
+      "sac": {
+        "height": 6.115106969819147,
+        "surface_area": 108.48679080052678,
+        "volume": 105.71856666148491,
+        "width": 6.204166080433421
+      },
+      "spatial_units": "mm",
+      "validated_morphometry": false
+    },
+    "reference_revision": "7fbc62e79b3e222b2746ce2db73fad9b34f046eecaaa4a7b74bceab56942b3a6",
+    "segmentation_summary": [
+      {
+        "candidate_id": "xQyyxxoGsPugO2jp90nyWg",
+        "mask_sha256": "28e1bedfd4bb90fd0a5618bf5258cf52f1b2265c1b5a6e9169747394c73802ae",
+        "producer": "rsna_vessel_model",
+        "role": "vessel",
+        "segmentation_revision": 1
+      },
+      {
+        "candidate_id": "mjyvYViXUAEXhilVqZK7Rg",
+        "mask_sha256": "016a32ecf02dddc38166098d91a19d21438c32cbb82c00934b7693bc160f2de7",
+        "producer": "aneurysm_model",
+        "role": "aneurysm",
+        "segmentation_revision": 2
+      }
+    ],
+    "territory_summary": {
+      "case_id": "NybY4R1jZdMpmuGFIHirJg",
+      "clinical_suitability_established": false,
+      "findings": [
+        {
+          "confidence": null,
+          "device_categories": [
+            "flow_diverter",
+            "intrasaccular",
+            "coil",
+            "neuro_stent"
+          ],
+          "id": "NybY4R1jZdMpmuGFIHirJg:aneurysm:1",
+          "laterality": "unknown",
+          "location": null,
+          "measurements": {
+            "dome_height_mm": 6.115106969819147,
+            "dome_width_mm": 6.204166080433421,
+            "neck_width_mm": 5.220433472714347,
+            "sac_surface_area_mm2": 108.48679080052678,
+            "sac_volume_mm3": 105.71856666148491
+          },
+          "pathology": "intracranial_aneurysm",
+          "provenance": {
+            "clinical_suitability_established": false
+          },
+          "scores": {
+            "morphometrics": {
+              "aspect_ratio": 1.171,
+              "bottleneck_factor": 1.188,
+              "citations": [
+                "Ujiie H et al. Neurosurgery 2001;48(3):495-503 (Aspect Ratio)",
+                "Dhar S et al. Neurosurgery 2008;63(2):185-196 (Size Ratio)",
+                "Raghavan ML et al. J Neurosurg 2005;102(2):355-362 (Nonsphericity Index)"
+              ],
+              "clinical_suitability_established": false,
+              "dome_to_neck_ratio": 1.188,
+              "nonsphericity_index": 0.209,
+              "size_ratio": null,
+              "surface_area_mm2": 108.487,
+              "volume_mm3": 105.719,
+              "volume_source": "clipped_mesh_exact",
+              "volume_ul": 105.719,
+              "wide_neck": true
+            }
+          },
+          "severity": "unknown",
+          "summary": "3D neck/sac/parent vessel morphometry and endovascular device sizing target.",
+          "territory": "neurovascular",
+          "title": "Intracranial Aneurysm Target"
+        }
+      ]
+    }
+  },
+  "territories": {
+    "tavr": {
+      "mode": "tavr",
+      "workflow_revision": 0,
+      "status": "not_computed"
+    },
+    "coronary_pci": {
+      "mode": "coronary_pci",
+      "workflow_revision": 0,
+      "status": "not_computed"
+    },
+    "aortic_peripheral": {
+      "mode": "aortic_peripheral",
+      "workflow_revision": 0,
+      "status": "not_computed"
+    }
+  },
+  "scene": {
+    "status": "current",
+    "scene_revision": 1,
+    "scene_id": "ce0onfq7WtVDo5U9s_25BA",
+    "input_sha256": "fbaf29edb79e16180153b43caacfb58e8214c453d6c12dcb6ebda93f0e8475af",
+    "version": "phase4-native-scene-v1",
+    "path_source": "operator_confirmed",
+    "path_point_count": 10,
+    "path_length_mm": 7.258101326848575,
+    "registration_method": null,
+    "secondary": null
+  },
+  "device_scenarios": {
+    "image_sha256": "ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c",
+    "reference_revision": "7fbc62e79b3e222b2746ce2db73fad9b34f046eecaaa4a7b74bceab56942b3a6",
+    "case_id": "NybY4R1jZdMpmuGFIHirJg",
+    "catalog_version": "e013eb679aa7efdbe8787c280bb2d40ddf9ffa035e93bc54f138c32f4d62a6bd",
+    "geometry_result_id": "5Df0AJSVcQluB4EkV-RD-w",
+    "artifact_version": "5",
+    "scenario_revision": 2,
+    "status": "current",
+    "set_id": "OBuFbCM7FLqOWTrVJ7Vg6w",
+    "dependencies": {
+      "artifact_version": "5",
+      "calculation_version": "native-mask-operator-plane-v1",
+      "case_id": "NybY4R1jZdMpmuGFIHirJg",
+      "image_sha256": "ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c",
+      "masks": {
+        "aneurysm": {
+          "candidate_id": "mjyvYViXUAEXhilVqZK7Rg",
+          "mask_sha256": "016a32ecf02dddc38166098d91a19d21438c32cbb82c00934b7693bc160f2de7",
+          "segmentation_revision": 2
+        },
+        "vessel": {
+          "candidate_id": "xQyyxxoGsPugO2jp90nyWg",
+          "mask_sha256": "28e1bedfd4bb90fd0a5618bf5258cf52f1b2265c1b5a6e9169747394c73802ae",
+          "segmentation_revision": 1
+        }
+      },
+      "operator_sha256": "e7177aee6fe07d49676e868847d605d333ce7524b7899d992fd827528ec5e623",
+      "source_revision": "7fbc62e79b3e222b2746ce2db73fad9b34f046eecaaa4a7b74bceab56942b3a6"
+    },
+    "scenarios_sha256": "20cddee0a54b555cb4fb958e46d49db1d2ac6fd7b6c1241d87b7df55307d244c",
+    "scenarios": [
+      {
+        "id": "public-demo-0",
+        "name": "Exploratory WEB SL",
+        "placement": {
+          "deviceId": "web-sl",
+          "diameter": 4.0,
+          "length": 20.0,
+          "height": 2.0,
+          "offset": 0.0,
+          "roll": 0.0,
+          "coilLength": 100.0
+        },
+        "path_point_count": 10
+      },
+      {
+        "id": "public-demo-1",
+        "name": "Exploratory WEB SLS",
+        "placement": {
+          "deviceId": "web-sls",
+          "diameter": 4.0,
+          "length": 20.0,
+          "height": 2.6,
+          "offset": 0.0,
+          "roll": 0.0,
+          "coilLength": 100.0
+        },
+        "path_point_count": 10
+      },
+      {
+        "id": "97a37d1e-02e5-4a9e-8fdd-6351d5e9ce65",
+        "name": "Browser height sensitivity",
+        "placement": {
+          "deviceId": "web-sl",
+          "diameter": 4.0,
+          "length": 20.0,
+          "height": 2.25,
+          "offset": 0.0,
+          "roll": 0.0,
+          "coilLength": 100.0
+        },
+        "path_point_count": 10
+      }
+    ]
+  },
+  "numerical_runs": [
+    {
+      "scope": "anatomy_operator_parameters",
+      "kind": "rod-deployment",
+      "status": "current",
+      "result_id": "uKv33XZ4elgGi9li3wYSpA",
+      "geometry_result_id": "5Df0AJSVcQluB4EkV-RD-w",
+      "parameters_sha256": "df6706a1adca7483a7f47c3962d986cff1429b1fba6a145bf2b23d931672c267",
+      "parameters": {
+        "radius_mm": 0.1,
+        "ea_n": 1.0,
+        "ei_n_mm2": 0.01,
+        "contact_stiffness_n_per_mm": 1.0
+      },
+      "rest_shape_summary": {
+        "point_count": 10,
+        "sha256": "134d28a3cc1ca6cb3d4c1387530a4e65e6e0a663fdba550ef153b1c3754c6d30"
+      },
+      "method": "discrete_elastic_rod_native_lumen",
+      "device_calibrated": false,
+      "clinical_validation": false,
+      "optimizer_success": true,
+      "iterations": 103,
+      "energy_initial_n_mm": 0.7441142585805314,
+      "energy_final_n_mm": 1.212517154429611e-13,
+      "max_penetration_mm": 0.0,
+      "minimum_nodal_wall_clearance_mm": 0.37521564692998355
+    },
+    {
+      "scope": "anatomy_operator_parameters",
+      "kind": "stokes-flow",
+      "status": "not_computed"
+    }
+  ],
+  "markdown": "# Local planning brief\n\n## Source binding\n\n- artifact_version: `5`\n- case_id: `NybY4R1jZdMpmuGFIHirJg`\n- image_sha256: `ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c`\n- reference_revision: `7fbc62e79b3e222b2746ce2db73fad9b34f046eecaaa4a7b74bceab56942b3a6`\n\n## Current planning evidence\n\n### Accepted segmentations\n\n```json\n[\n  {\n    \"candidate_id\": \"xQyyxxoGsPugO2jp90nyWg\",\n    \"mask_sha256\": \"28e1bedfd4bb90fd0a5618bf5258cf52f1b2265c1b5a6e9169747394c73802ae\",\n    \"producer\": \"rsna_vessel_model\",\n    \"role\": \"vessel\",\n    \"segmentation_revision\": 1\n  },\n  {\n    \"candidate_id\": \"mjyvYViXUAEXhilVqZK7Rg\",\n    \"mask_sha256\": \"016a32ecf02dddc38166098d91a19d21438c32cbb82c00934b7693bc160f2de7\",\n    \"producer\": \"aneurysm_model\",\n    \"role\": \"aneurysm\",\n    \"segmentation_revision\": 2\n  }\n]\n```\n\n### Computed morphometry\n\n```json\n{\n  \"clinical_suitability_established\": false,\n  \"distal_parent\": {\n    \"area\": 20.378429972125822,\n    \"equivalent_diameter\": 5.0937827692322015,\n    \"max_diameter\": 9.096231599457736,\n    \"min_diameter\": 3.8538304308994253\n  },\n  \"morphometric_indices\": {\n    \"aspect_ratio\": 1.171,\n    \"bottleneck_factor\": 1.188,\n    \"citations\": [\n      \"Ujiie H et al. Neurosurgery 2001;48(3):495-503 (Aspect Ratio)\",\n      \"Dhar S et al. Neurosurgery 2008;63(2):185-196 (Size Ratio)\",\n      \"Raghavan ML et al. J Neurosurg 2005;102(2):355-362 (Nonsphericity Index)\"\n    ],\n    \"clinical_suitability_established\": false,\n    \"dome_to_neck_ratio\": 1.188,\n    \"nonsphericity_index\": 0.209,\n    \"size_ratio\": 1.499,\n    \"surface_area_mm2\": 108.487,\n    \"volume_mm3\": 105.719,\n    \"volume_source\": \"clipped_mesh_exact\",\n    \"volume_ul\": 105.719,\n    \"wide_neck\": true\n  },\n  \"neck\": {\n    \"area\": 14.997197009213833,\n    \"equivalent_diameter\": 4.369785382866642,\n    \"max_diameter\": 5.220433472714347,\n    \"min_diameter\": 4.252743621569251\n  },\n  \"proximal_parent\": {\n    \"area\": 7.373775515561266,\n    \"equivalent_diameter\": 3.0640794017800053,\n    \"max_diameter\": 4.120636378648218,\n    \"min_diameter\": 2.6885145690267693\n  },\n  \"result_id\": \"5Df0AJSVcQluB4EkV-RD-w\",\n  \"sac\": {\n    \"height\": 6.115106969819147,\n    \"surface_area\": 108.48679080052678,\n    \"volume\": 105.71856666148491,\n    \"width\": 6.204166080433421\n  },\n  \"spatial_units\": \"mm\",\n  \"validated_morphometry\": false\n}\n```\n\n- Saved device sizing: unavailable\nTerritory context\nCase: NybY4R1jZdMpmuGFIHirJg\nImage: ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c\nArtifact version: 5\nReference revision: 7fbc62e79b3e222b2746ce2db73fad9b34f046eecaaa4a7b74bceab56942b3a6\nTAVR workflow (revision 0):\n  Status: not computed; no current result\n  No measurements are shown for a non-current result.\nCoronary PCI workflow (revision 0):\n  Status: not computed; no current result\n  No measurements are shown for a non-current result.\nAortic/peripheral workflow (revision 0):\n  Status: not computed; no current result\n  No measurements are shown for a non-current result.\n\n## Reformat scene\n\n- status: current\n- scene_revision: 1\n- scene_id: ce0onfq7WtVDo5U9s_25BA\n- input_sha256: fbaf29edb79e16180153b43caacfb58e8214c453d6c12dcb6ebda93f0e8475af\n- version: phase4-native-scene-v1\n- path_source: operator_confirmed\n- path_point_count: 10\n- path_length_mm: 7.258101326848575\n\nScene geometry is operator-confirmed. Display settings are recorded separately by the local viewer.\n\n## Saved device alternatives\n\n- Status: current\n- scenario_revision: `2`\n- set_id: `OBuFbCM7FLqOWTrVJ7Vg6w`\n- geometry_result_id: `5Df0AJSVcQluB4EkV-RD-w`\n- catalog_version: `e013eb679aa7efdbe8787c280bb2d40ddf9ffa035e93bc54f138c32f4d62a6bd`\n- scenarios_sha256: `20cddee0a54b555cb4fb958e46d49db1d2ac6fd7b6c1241d87b7df55307d244c`\n\nOperator-selected procedural parameters, not verified commercial specifications or fit results.\n\n### `public-demo-0`\n\n```json\n{\n  \"id\": \"public-demo-0\",\n  \"name\": \"Exploratory WEB SL\",\n  \"placement\": {\n    \"deviceId\": \"web-sl\",\n    \"diameter\": 4.0,\n    \"length\": 20.0,\n    \"height\": 2.0,\n    \"offset\": 0.0,\n    \"roll\": 0.0,\n    \"coilLength\": 100.0\n  },\n  \"path_point_count\": 10\n}\n```\n\n### `public-demo-1`\n\n```json\n{\n  \"id\": \"public-demo-1\",\n  \"name\": \"Exploratory WEB SLS\",\n  \"placement\": {\n    \"deviceId\": \"web-sls\",\n    \"diameter\": 4.0,\n    \"length\": 20.0,\n    \"height\": 2.6,\n    \"offset\": 0.0,\n    \"roll\": 0.0,\n    \"coilLength\": 100.0\n  },\n  \"path_point_count\": 10\n}\n```\n\n### `97a37d1e-02e5-4a9e-8fdd-6351d5e9ce65`\n\n```json\n{\n  \"id\": \"97a37d1e-02e5-4a9e-8fdd-6351d5e9ce65\",\n  \"name\": \"Browser height sensitivity\",\n  \"placement\": {\n    \"deviceId\": \"web-sl\",\n    \"diameter\": 4.0,\n    \"length\": 20.0,\n    \"height\": 2.25,\n    \"offset\": 0.0,\n    \"roll\": 0.0,\n    \"coilLength\": 100.0\n  },\n  \"path_point_count\": 10\n}\n```\n\n\n## Numerical runs on this anatomy\n\nOperator-parameter runs, independent of the saved device alternatives.\nParameter hashes bind all validated operator parameters. Custom rest shapes are represented by point count and hash, not coordinates.\n\n### rod-deployment\n\n```json\n{\n  \"scope\": \"anatomy_operator_parameters\",\n  \"kind\": \"rod-deployment\",\n  \"status\": \"current\",\n  \"result_id\": \"uKv33XZ4elgGi9li3wYSpA\",\n  \"geometry_result_id\": \"5Df0AJSVcQluB4EkV-RD-w\",\n  \"parameters_sha256\": \"df6706a1adca7483a7f47c3962d986cff1429b1fba6a145bf2b23d931672c267\",\n  \"parameters\": {\n    \"radius_mm\": 0.1,\n    \"ea_n\": 1.0,\n    \"ei_n_mm2\": 0.01,\n    \"contact_stiffness_n_per_mm\": 1.0\n  },\n  \"rest_shape_summary\": {\n    \"point_count\": 10,\n    \"sha256\": \"134d28a3cc1ca6cb3d4c1387530a4e65e6e0a663fdba550ef153b1c3754c6d30\"\n  },\n  \"method\": \"discrete_elastic_rod_native_lumen\",\n  \"device_calibrated\": false,\n  \"clinical_validation\": false,\n  \"optimizer_success\": true,\n  \"iterations\": 103,\n  \"energy_initial_n_mm\": 0.7441142585805314,\n  \"energy_final_n_mm\": 1.212517154429611e-13,\n  \"max_penetration_mm\": 0.0,\n  \"minimum_nodal_wall_clearance_mm\": 0.37521564692998355\n}\n```\n\n### stokes-flow\n\n```json\n{\n  \"scope\": \"anatomy_operator_parameters\",\n  \"kind\": \"stokes-flow\",\n  \"status\": \"not_computed\"\n}\n```\n"
+}

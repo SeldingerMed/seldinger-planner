@@ -21,7 +21,7 @@ def correction_fixture(tmp_path, monkeypatch):
     ref.mkdir()
     affine = np.diag([-0.5, -0.75, 1.25, 1.0])
     source = nib.Nifti1Image(np.arange(168, dtype=np.float32).reshape(6, 7, 4), affine)
-    source.header.set_xyzt_units("mm")
+    source.header.set_xyzt_units("unknown")  # This fixture uses the legacy unknown-unit registry.
     source_path = ref / "reference-cta.nii.gz"
     nib.save(source, source_path)
     image_hash = hashlib.sha256(source_path.read_bytes()).hexdigest()
@@ -105,3 +105,65 @@ def test_sam_prior_splices_only_selected_native_slice_preserving_all_other_voxel
     assert metadata["clinical_validation"] == "none"
     assert metadata["three_dimensional_propagation"] is False
     assert metadata["volumetric_morphometry_eligible"] is False
+
+
+def test_correction_uses_server_configured_blobs_not_global_default(tmp_path, monkeypatch):
+    import planner.sam_refinement as sam
+
+    worker, job, out, _ = correction_fixture(tmp_path, monkeypatch)
+    configured = worker.MASK_BLOB_DIR
+    monkeypatch.setattr(worker, "MASK_BLOB_DIR", tmp_path / "missing-default")
+    monkeypatch.setattr(
+        sam,
+        "refine_slice",
+        lambda image, **kwargs: {
+            "mask": kwargs["initial_mask"],
+            "initial_mask_used": True,
+        },
+    )
+    metadata = worker._run_job(job, out, blob_dir=configured)
+    assert metadata["correction_base"] == job["base_mask"]
+
+
+def test_correction_decodes_the_hashed_bytes_without_reopening_path(tmp_path, monkeypatch):
+    import nibabel as nib
+    import numpy as np
+
+    worker, job, _, base = correction_fixture(tmp_path, monkeypatch)
+    source = nib.load(worker.REFERENCE_IMAGE)
+    load = nib.load
+    blob = worker.MASK_BLOB_DIR / (job["base_mask"]["mask_sha256"] + ".nii.gz")
+
+    def replace_before_reopen(path, *args, **kwargs):
+        if str(path) == str(blob):
+            changed = base.copy()
+            changed[0, 0, 0] = 1
+            image = nib.Nifti1Image(changed, source.affine, header=source.header.copy())
+            image.set_data_dtype(np.uint8)
+            nib.save(image, blob)
+            assert hashlib.sha256(blob.read_bytes()).hexdigest() != job["base_mask"]["mask_sha256"]
+        return load(path, *args, **kwargs)
+
+    monkeypatch.setattr(nib, "load", replace_before_reopen)
+    observed = worker._load_correction_base(job, source)
+    np.testing.assert_array_equal(observed, base)
+
+
+def test_base_blob_change_during_model_execution_cannot_publish(tmp_path, monkeypatch):
+    import planner.sam_refinement as sam
+
+    worker, job, out, _ = correction_fixture(tmp_path, monkeypatch)
+    blob = worker.MASK_BLOB_DIR / (job["base_mask"]["mask_sha256"] + ".nii.gz")
+
+    def replace_during_inference(image, **kwargs):
+        old = blob.read_bytes()
+        changed = bytearray(old)
+        changed[-1] ^= 1
+        assert hashlib.sha256(changed).hexdigest() != job["base_mask"]["mask_sha256"]
+        blob.write_bytes(changed)
+        return {"mask": kwargs["initial_mask"], "initial_mask_used": True}
+
+    monkeypatch.setattr(sam, "refine_slice", replace_during_inference)
+    with pytest.raises(ValueError, match="hash"):
+        worker._run_job(job, out)
+    assert not (out / "mask.nii.gz").exists()

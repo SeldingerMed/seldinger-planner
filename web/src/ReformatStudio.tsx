@@ -8,6 +8,7 @@ import {
   parseWorkflow,
   type Identity,
 } from "./territoryWorkflow";
+import { parseAnatomyInputs } from "./anatomyProposal";
 import { buildPathFrames } from "./curvedPlanar";
 import { createNativeSampler } from "./nativeSampling";
 import { validateRigid } from "./rigidFusion";
@@ -223,26 +224,39 @@ export default function ReformatStudio({
       release();
     }
   }
-  async function copySavedPath(mode: "coronary_pci" | "aortic_peripheral") {
+  async function copySavedPath(mode: "neurovascular" | "coronary_pci" | "aortic_peripheral") {
     if (!current || disabled || localBusy || current.locked || !volume) return;
     const owned = key,
       release = begin();
     try {
-      const workflow = parseWorkflow(
-        await api(`/cases/${identity.case_id}/territory-workflows/${mode}`),
-        identity,
-        mode,
-      );
+      let path: Vec3[];
+      if (mode === "neurovascular") {
+        const envelope = await api<unknown>(`/cases/${identity.case_id}/morphometry`);
+        if (!record(envelope) || stable(Object.keys(envelope).sort()) !== stable([
+          "artifact_version", "case_id", "current", "image_sha256", "operator_inputs", "reference_revision",
+        ])) throw new Error("Invalid geometry envelope");
+        if (Object.entries(identity).some(([field, value]) => envelope[field] !== value))
+          throw new Error("Geometry belongs to a different source revision");
+        const geometry = envelope.current;
+        if (!record(geometry) || geometry.status !== "current" || !record(geometry.result) ||
+          !record(geometry.dependencies) || typeof geometry.result_id !== "string" ||
+          !/^[A-Za-z0-9_-]{16,128}$/.test(geometry.result_id)) throw new Error("Current geometry required");
+        const result = geometry.result, dependencies = geometry.dependencies;
+        if (result.spatial_units !== "mm" || result.image_sha256 !== identity.image_sha256 ||
+          result.reference_revision !== identity.reference_revision || dependencies.case_id !== identity.case_id ||
+          dependencies.image_sha256 !== identity.image_sha256 || dependencies.artifact_version !== identity.artifact_version ||
+          dependencies.source_revision !== identity.reference_revision || dependencies.calculation_version !== "native-mask-operator-plane-v1")
+          throw new Error("Contradictory geometry source");
+        path = parseAnatomyInputs(envelope.operator_inputs).parent_path.map((point) => [...point] as Vec3);
+      } else {
+        const workflow = parseWorkflow(
+          await api(`/cases/${identity.case_id}/territory-workflows/${mode}`), identity, mode,
+        );
+        if (workflow.current.status !== "current" || !record(workflow.current.inputs) || !Array.isArray(workflow.current.inputs.path))
+          throw new Error("No current saved path in this workflow");
+        path = workflow.current.inputs.path.map((p) => [...(p as Vec3)] as Vec3);
+      }
       if (live.current !== owned) return;
-      if (
-        workflow.current.status !== "current" ||
-        !record(workflow.current.inputs) ||
-        !Array.isArray(workflow.current.inputs.path)
-      )
-        throw new Error("No current saved path in this workflow");
-      const path = workflow.current.inputs.path.map(
-        (p) => [...(p as Vec3)] as Vec3,
-      );
       buildPathFrames(path, 2);
       const sampler = createNativeSampler(volume);
       if (path.some((p) => sampler.sample(p) === null))
@@ -583,6 +597,9 @@ export default function ReformatStudio({
             onClick={() => void copySavedPath("coronary_pci")}
           >
             Copy saved coronary path
+          </button>
+          <button type="button" onClick={() => void copySavedPath("neurovascular")}>
+            Copy saved neurovascular path
           </button>
           <button
             type="button"

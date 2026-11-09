@@ -6,6 +6,7 @@ import {
   type CaseState,
 } from "./api";
 import AneurysmWorksheet from "./AneurysmWorksheet";
+import WorkflowGuide from "./WorkflowGuide";
 import SegmentationPanel from "./SegmentationPanel";
 import MorphometryResults from "./MorphometryResults";
 import MorphometryInputs from "./MorphometryInputs";
@@ -41,6 +42,7 @@ const coordinate = (p: Point3 | null) =>
   p ? p.map((v) => v.toFixed(1)).join(" / ") : "Select a location in the scan";
 export default function App() {
   const [studioOpen, setStudioOpen] = useState(false);
+  const importInput = useRef<HTMLInputElement | null>(null);
   const [territoryWorkspace, setTerritoryWorkspace] = useState(false);
   const [nativeSource, setNativeSource] = useState<NativeCaseSource | null>(
     null,
@@ -78,6 +80,7 @@ export default function App() {
   const [deviceEpoch, setDeviceEpoch] = useState(0);
   const geometryDirty =
     geometryInputsDirty || deviceDirty || territoryDirty || reformatDirty;
+  const draftDirty = geometryDirty || planDirty || (!!caseState && notes !== caseState.notes);
   const [geometryEpoch, setGeometryEpoch] = useState(0);
   const [source, setSource] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -94,6 +97,7 @@ export default function App() {
     reformatActivity.busy;
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
+  const workflowLocked = busy || draftDirty || conflict;
   const [reloadEpoch, setReloadEpoch] = useState(0);
   const [requestedReference, setRequestedReference] =
     useState<ReferenceMetadata | null>(null);
@@ -102,6 +106,13 @@ export default function App() {
     useState<CalibratedSourceMetadata | null>(null);
   const [calibratedSource, setCalibratedSource] =
     useState<CaseImageSource | null>(null);
+  // All server-admitted calibrated sources share the native workflow. The
+  // original case006 shortcut is a source chooser, not an anatomy-tool gate.
+  const planningSource = caseState?.spatial_units === "mm"
+    ? [calibratedSource, nativeSource].find((source) => source !== null &&
+        source.case_id === caseState.case_id && source.image_sha256 === caseState.image_sha256 &&
+        source.image_sha256 === digest) ?? null
+    : null;
   const [showReference, setShowReference] = useState(true);
   const [referenceStatus, setReferenceStatus] = useState<
     "off" | "loading" | "ready" | "error"
@@ -563,13 +574,13 @@ export default function App() {
             file={file}
             caseState={caseState}
             sourceRevision={
-              (calibratedSource || reference)?.reference_revision ?? null
+              (planningSource || reference)?.reference_revision ?? null
             }
             onClose={() => setStudioOpen(false)}
           />
         </Suspense>
       )}
-      <header className="topbar">
+      <header className="topbar" inert={studioOpen}>
         <div className="brand-mark">
           S<span>/</span>
         </div>
@@ -582,26 +593,27 @@ export default function App() {
           <button
             className="ds-studio-open"
             onClick={() => setStudioOpen(true)}
-            disabled={busy || geometryDirty || conflict}
+            disabled={workflowLocked}
           >
             Device studio
           </button>
-          <button onClick={openCalibrated} disabled={busy || geometryDirty}>
+          <button onClick={openCalibrated} disabled={workflowLocked}>
             Open calibrated CTA
           </button>
-          <button onClick={openReference} disabled={busy || geometryDirty}>
+          <button onClick={openReference} disabled={workflowLocked}>
             Open reference CTA
           </button>
-          <button onClick={publicSample} disabled={busy || geometryDirty}>
+          <button onClick={publicSample} disabled={workflowLocked}>
             Open public CTA
           </button>
-          <label className="file-button">
+          <label className="file-button" aria-disabled={workflowLocked}>
             Open volume
             <input
+              ref={importInput}
               aria-label="Open CTA volume"
               type="file"
               accept=".nii,.nii.gz"
-              disabled={busy || geometryDirty}
+              disabled={workflowLocked}
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 e.target.value = "";
@@ -611,7 +623,7 @@ export default function App() {
           </label>
         </div>
       </header>
-      <div className="workspace-grid">
+      <div className="workspace-grid" inert={studioOpen}>
         <aside className="case-rail">
           <div className="eyebrow">01 / CASE</div>
           <h2>{caseState?.title || "A new perspective"}</h2>
@@ -800,11 +812,11 @@ export default function App() {
                   reference={showReference ? reference : null}
                   segmentation={segmentation}
                   segmentationBinding={
-                    caseState && (calibratedSource || reference)
+                    caseState && (planningSource || reference)
                       ? {
                           case_id: caseState.case_id,
                           image_sha256: caseState.image_sha256,
-                          reference_revision: (calibratedSource || reference)!
+                          reference_revision: (planningSource || reference)!
                             .reference_revision,
                         }
                       : null
@@ -857,6 +869,19 @@ export default function App() {
         <aside className="planning-panel">
           <div className="eyebrow">03 / PLANNING</div>
           <h2>Procedure planning.</h2>
+          {!territoryWorkspace && <WorkflowGuide
+            identity={caseState && planningSource ? {
+              case_id: caseState.case_id, image_sha256: caseState.image_sha256,
+              artifact_version: caseState.artifact_version, reference_revision: planningSource.reference_revision,
+            } : null}
+            imported={!!file}
+            dirty={draftDirty}
+            busy={busy}
+            conflict={conflict}
+            refreshKey={`${reloadEpoch}:${geometryEpoch}:${deviceEpoch}:${studioOpen}`}
+            onImport={() => importInput.current?.click()}
+            onScenarios={() => setStudioOpen(true)}
+          />}
           <div
             className="territory-modes"
             role="group"
@@ -952,12 +977,12 @@ export default function App() {
           )}
           {!territoryWorkspace && (
             <>
-              {caseState && calibratedSource && (
+              {caseState && planningSource && (
                 <section id="mask-geometry" className="planning-section">
                   <MorphometryResults
                     key={geometryEpoch}
                     caseState={caseState}
-                    binding={calibratedSource}
+                    binding={planningSource}
                     nativeVolume={
                       nativeVolume?.file === file &&
                       digest === caseState.image_sha256
@@ -979,7 +1004,7 @@ export default function App() {
                     <MorphometryInputs
                       key={`${caseState.case_id}:${reloadEpoch}`}
                       caseState={caseState}
-                      binding={calibratedSource}
+                      binding={planningSource}
                       location={location}
                       disabled={
                         busy ||
@@ -1001,12 +1026,12 @@ export default function App() {
                   </details>
                 </section>
               )}
-              {caseState && calibratedSource && (
+              {caseState && planningSource && (
                 <section id="device-reference" className="planning-section">
                   <DeviceReference
                     key={`${geometryEpoch}:${deviceEpoch}`}
                     caseState={caseState}
-                    binding={calibratedSource}
+                    binding={planningSource}
                     disabled={
                       busy ||
                       conflict ||
@@ -1020,7 +1045,7 @@ export default function App() {
                     <DeviceSizingInputs
                       key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}`}
                       caseState={caseState}
-                      binding={calibratedSource}
+                      binding={planningSource}
                       disabled={
                         busy ||
                         conflict ||
@@ -1045,7 +1070,7 @@ export default function App() {
                   <DeviceSizingPanel
                     key={`${caseState.case_id}:${reloadEpoch}:${geometryEpoch}:${deviceEpoch}`}
                     caseState={caseState}
-                    binding={calibratedSource}
+                    binding={planningSource}
                     disabled={
                       workspaceBusy ||
                       geometryBusy ||
@@ -1094,7 +1119,7 @@ export default function App() {
                 <SegmentationPanel
                   key={caseState.case_id}
                   caseState={caseState}
-                  reference={calibratedSource || reference}
+                  reference={planningSource || reference}
                   location={location}
                   windowRange={windowRange}
                   disabled={
@@ -1229,14 +1254,6 @@ export default function App() {
               >
                 Save notes
               </button>
-              {caseState && (
-                <a
-                  href={`/api/cases/${caseState.case_id}/brief`}
-                  download="planning-brief.md"
-                >
-                  Export brief ↗
-                </a>
-              )}
             </div>
           </section>
           <section

@@ -295,9 +295,6 @@ export default function MorphometryResults({
       <p className="morphometry-subtitle">
         Operator-defined planes · source mm
       </p>
-      <p className="morphometry-draft-note">
-        Draft UI · not clinically validated
-      </p>
       {result ? (
         <div className="morphometry-body">
           <dl className="morphometry-sac">

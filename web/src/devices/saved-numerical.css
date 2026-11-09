@@ -1,0 +1,38 @@
+.saved-numerical-runs {
+  border-top: 1px solid #34434b;
+  padding: 16px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.saved-numerical-runs article {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #34434b;
+  border-radius: 5px;
+}
+.saved-numerical-runs h4 {
+  margin: 0 0 8px;
+}
+.saved-numerical-runs dl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  font-size: 12px;
+}
+.saved-numerical-runs dd {
+  margin: 0;
+  color: #d0e4e7;
+}
+.saved-numerical-runs dt {
+  color: #adc0cb;
+}
+.saved-numerical-runs code {
+  overflow-wrap: anywhere;
+}
+.saved-numerical-runs pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  background: #0b141a;
+  padding: 10px;
+}

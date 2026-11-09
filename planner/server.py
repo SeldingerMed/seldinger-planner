@@ -70,6 +70,7 @@ def build_app(
     calibrated_source_store=None,
     planning_source_store=None,
     geometry_runner=None,
+    anatomy_runner=None,
 ):
     app = create_app(db_path, planning_context_provider=lambda case: planning_for_brief(case))
     allowed_origins = {
@@ -259,7 +260,18 @@ def build_app(
         results_dir,
         runner=geometry_runner,
     )
+    from planner.anatomy_server import register_anatomy_routes
+
+    register_anatomy_routes(
+        app, db_path, image_sources, read_case, results_dir, runner=anatomy_runner
+    )
     register_device_routes(app, read_geometry)
+    from planner.device_scenario_server import register_device_scenario_routes
+    from planner.device_scenarios import DeviceScenarioLedger
+
+    read_scenarios = register_device_scenario_routes(
+        app, DeviceScenarioLedger(db_path), read_geometry
+    )
     device_inputs = DeviceInputsLedger(db_path)
     device_results = DeviceResultsLedger(db_path)
     register_device_input_routes(app, device_inputs, read_geometry)
@@ -269,7 +281,7 @@ def build_app(
     register_device_calculation_routes(app, device_results, read_sizing)
     from planner.physics_server import register_physics_routes
 
-    register_physics_routes(app, db_path, image_sources, read_case, results_dir)
+    read_numerical = register_physics_routes(app, db_path, image_sources, read_case, results_dir)
     from planner.territory_workflow_server import register_territory_workflow_routes
 
     read_territory = register_territory_workflow_routes(app, db_path, image_sources, read_case)
@@ -321,7 +333,15 @@ def build_app(
 
     from planner.local_brief import register_local_brief
 
-    register_local_brief(app, read_case, read_planning_context, read_territory, read_scene)
+    register_local_brief(
+        app,
+        read_case,
+        read_planning_context,
+        read_territory,
+        read_scene,
+        read_scenarios,
+        read_numerical,
+    )
 
     def planning_for_brief(case):
         context = read_planning_context(case["case_id"])

@@ -88,12 +88,21 @@ class SegmentationLedger:
     ):
         if not _sha(mask_sha256) or not _sha(reference_revision):
             raise ValueError("Mask/reference identities must be SHA-256")
-        if producer not in ("owned_vessel", "sam2_prompted_slice", "aneurysm_model"):
+        if producer not in (
+            "owned_vessel",
+            "rsna_vessel_model",
+            "sam2_prompted_slice",
+            "aneurysm_model",
+        ):
             raise ValueError("Unrecognized segmentation producer")
-        role = role or ("vessel" if producer == "owned_vessel" else "aneurysm")
-        required_role = {"owned_vessel": "vessel", "sam2_prompted_slice": "aneurysm"}.get(
-            producer, "aneurysm"
+        role = role or (
+            "vessel" if producer in ("owned_vessel", "rsna_vessel_model") else "aneurysm"
         )
+        required_role = {
+            "owned_vessel": "vessel",
+            "rsna_vessel_model": "vessel",
+            "sam2_prompted_slice": "aneurysm",
+        }.get(producer, "aneurysm")
         if role not in ("vessel", "aneurysm") or role != required_role:
             raise ValueError("Producer/role mismatch")
         if not isinstance(provenance, dict):

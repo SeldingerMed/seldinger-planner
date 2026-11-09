@@ -1,0 +1,111 @@
+{
+  "case_id": "MJbqKO1iFLQJaUH-l0CFkQ",
+  "image_sha256": "59bb2b04f473a54990cba82020cb550f2b94ffa11f10a0839313b5c2837c2cfb",
+  "artifact_version": "3",
+  "reference_revision": "f6358cdca2a8f72c0c96262b054b5b26dfe80981f478e999f48358a648f0216b",
+  "proposal_id": "7d5cc40f3c8835ee4c55d871fe0edf3f09a7f2947ba8e48467759b924535d339",
+  "proposal": {
+    "dependencies": {
+      "artifact_version": "3",
+      "calculation_version": "anatomy-input-proposal-v1",
+      "case_id": "MJbqKO1iFLQJaUH-l0CFkQ",
+      "image_sha256": "59bb2b04f473a54990cba82020cb550f2b94ffa11f10a0839313b5c2837c2cfb",
+      "masks": {
+        "aneurysm": {
+          "candidate_id": "SnjTcp0Buq80EPsu7d6IwA",
+          "mask_sha256": "482997ba3185529b34bac882ec9695c05ebe27b606f6987b50205bb63a571ac6",
+          "segmentation_revision": 2
+        },
+        "vessel": {
+          "candidate_id": "s4vG9KeCpT1UslbvgINjDw",
+          "mask_sha256": "c3dc05be459d65e22a374d4459618efd3645cce46258f63d4c5ccec7647ad73f",
+          "segmentation_revision": 1
+        }
+      },
+      "source_revision": "f6358cdca2a8f72c0c96262b054b5b26dfe80981f478e999f48358a648f0216b"
+    },
+    "diagnostics": {
+      "aneurysm_component_voxels": 123,
+      "interface_voxel_count": 28,
+      "neck_plane_rms_residual_mm": 0.4670248868079294,
+      "parent_point_count": 9,
+      "parent_length_mm": 10.485281374238571,
+      "target_component_selected": false,
+      "grid_shape": [
+        16,
+        16,
+        24
+      ]
+    },
+    "inputs": {
+      "neck_origin": [
+        8.0,
+        5.821428571428571,
+        12.0
+      ],
+      "neck_normal": [
+        -0.0,
+        -1.0,
+        -0.0
+      ],
+      "aneurysm_seed": [
+        8.0,
+        4.0,
+        12.0
+      ],
+      "parent_path": [
+        [
+          7.0,
+          7.0,
+          9.0
+        ],
+        [
+          8.0,
+          8.0,
+          9.0
+        ],
+        [
+          8.0,
+          8.0,
+          10.0
+        ],
+        [
+          8.0,
+          7.0,
+          11.0
+        ],
+        [
+          8.0,
+          6.0,
+          12.0
+        ],
+        [
+          8.0,
+          7.0,
+          13.0
+        ],
+        [
+          8.0,
+          8.0,
+          14.0
+        ],
+        [
+          8.0,
+          8.0,
+          15.0
+        ],
+        [
+          9.0,
+          7.0,
+          15.0
+        ]
+      ],
+      "proximal_index": 3,
+      "distal_index": 5
+    },
+    "job_sha256": "c9e0d5159c5ffc124b20988f40521561dde6868b30cdbeaf6cb1a10017c56f54",
+    "method": "accepted_mask_anatomy_geometry_proposal",
+    "operator_confirmation_required": true,
+    "proposal_version": "anatomy-input-proposal-v1"
+  }
+}

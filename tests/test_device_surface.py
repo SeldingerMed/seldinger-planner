@@ -1,6 +1,15 @@
 import struct
 
+import pytest
 from test_segmentation_server import _stage, post_request
+
+
+@pytest.mark.parametrize("budget", [True, 0, -1, 60001, 1.5])
+def test_display_triangle_budget_is_bounded_before_optional_imports(budget):
+    from planner.mask_geometry import surface_from_mask
+
+    with pytest.raises((ValueError, TypeError), match="triangle_budget"):
+        surface_from_mask(None, None, triangle_budget=budget)
 
 
 def test_surface_requires_mm_case_before_any_worker(tmp_path):
@@ -92,4 +101,4 @@ def test_stl_rejects_nonfinite_or_oversize_geometry():
     with pytest.raises(ValueError):
         triangles_to_stl([[[float("nan"), 0, 0], [1, 0, 0], [0, 1, 0]]])
     with pytest.raises(ValueError):
-        triangles_to_stl([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]] * 50001)
+        triangles_to_stl([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]] * 60001)

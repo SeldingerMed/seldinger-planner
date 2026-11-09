@@ -77,7 +77,7 @@ export default function SegmentationPanel(props: Props) {
     caseState.artifact_version,
     reference?.reference_revision,
   ]);
-  async function run(kind: "vessel" | "sam2" | "aneurysm", correction = false) {
+  async function run(kind: "vessel" | "rsna-vessel" | "sam2" | "aneurysm", correction = false) {
     if (
       !reference ||
       disabled ||
@@ -99,7 +99,7 @@ export default function SegmentationPanel(props: Props) {
             artifact_version: caseState.artifact_version,
             reference_revision: reference.reference_revision,
             kind,
-            role: kind === "vessel" ? "vessel" : "aneurysm",
+            role: kind === "vessel" || kind === "rsna-vessel" ? "vessel" : "aneurysm",
             ...(kind === "sam2"
               ? {
                   point_ras: location,
@@ -170,11 +170,14 @@ export default function SegmentationPanel(props: Props) {
       <h3>Model evidence</h3>
       {!reference ? (
         <p className="muted small">
-          Local inference currently supports the installed original public CTA.
+          Local inference requires a server-installed CTA source.
         </p>
       ) : (
         <>
           <div className="point-row">
+            <button disabled={inferenceLocked} onClick={() => run("rsna-vessel")}>
+              Run RSNA vessel model
+            </button>
             <button disabled={inferenceLocked} onClick={() => run("vessel")}>
               Run vessel model
             </button>
@@ -223,11 +226,9 @@ export default function SegmentationPanel(props: Props) {
             />
           </label>
           <p className="method-note">
-            Vessel: trained binary model, not aneurysm detection. SAM edits a
-            prompted native slice; refinement preserves other accepted slices,
-            without 3D propagation. Aneurysm: trained 3D segmentation within the
-            selected context, not independent full-head localization or
-            validated morphometry.
+            Vessel and aneurysm candidates use their recorded model and selected
+            CTA context. Review overlays before accepting. SAM corrections change
+            one prompted slice and preserve the rest of the accepted volume.
           </p>
           {running && (
             <p role="status">
@@ -238,7 +239,9 @@ export default function SegmentationPanel(props: Props) {
             <div className="segmentation-candidate">
               <strong>Unaccepted preview</strong>
               <p className="small">
-                {candidate.producer === "owned_vessel"
+                {candidate.producer === "rsna_vessel_model"
+                  ? "Trained RSNA vessel candidate (3D context)"
+                  : candidate.producer === "owned_vessel"
                   ? "Trained vessel candidate"
                   : candidate.producer === "aneurysm_model"
                     ? "Trained aneurysm candidate (3D context)"

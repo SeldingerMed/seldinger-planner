@@ -44,6 +44,39 @@ def test_native_surface_uses_exact_hashed_bytes_after_path_replacement(tmp_path,
     assert native_surface(path, sha) == expected
 
 
+def test_display_surface_accepts_bounded_complete_mesh_above_analysis_budget(tmp_path):
+    from planner.mask_geometry import surface_from_mask
+
+    xyz = np.indices((64, 64, 64))
+    distance_squared = ((xyz - 32) ** 2).sum(axis=0)
+    mask = ((distance_squared <= 25**2) & (distance_squared > 24**2)).astype(np.uint8)
+    # The analysis budget remains 50k; only the display adapter gets 60k.
+    with pytest.raises(ValueError, match="50000 cap"):
+        surface_from_mask(mask, np.eye(4))
+    image = nib.Nifti1Image(mask, np.eye(4))
+    image.header.set_xyzt_units("mm")
+    raw = gzip.compress(image.to_bytes(), mtime=0)
+    path = tmp_path / "synthetic-shell.nii.gz"
+    path.write_bytes(raw)
+    data = native_surface(path, hashlib.sha256(raw).hexdigest())
+    count = int.from_bytes(data[80:84], "little")
+    assert count == 53920
+    assert len(data) == 84 + 50 * count
+
+
+def test_display_surface_still_rejects_mesh_over_its_separate_budget(tmp_path):
+    xyz = np.indices((64, 64, 64))
+    distance_squared = ((xyz - 32) ** 2).sum(axis=0)
+    mask = ((distance_squared <= 26**2) & (distance_squared > 25**2)).astype(np.uint8)
+    image = nib.Nifti1Image(mask, np.eye(4))
+    image.header.set_xyzt_units("mm")
+    raw = gzip.compress(image.to_bytes(), mtime=0)
+    path = tmp_path / "synthetic-over-budget-shell.nii.gz"
+    path.write_bytes(raw)
+    with pytest.raises(ValueError, match="60000 cap"):
+        native_surface(path, hashlib.sha256(raw).hexdigest())
+
+
 def test_native_surface_requires_declared_mm_and_preserves_world_geometry(tmp_path):
     path = tmp_path / "mask.nii.gz"
     data = encoded(1)

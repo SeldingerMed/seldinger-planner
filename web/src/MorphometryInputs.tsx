@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { api, RevisionConflictError, type CaseState } from "./api";
 import type { Point3 } from "./geometry";
+import AnatomyProposalPanel from "./AnatomyProposalPanel";
+import { parseAnatomyProposal } from "./anatomyProposal";
 import "./morphometry.css";
 
 export type MorphometryBinding = {
@@ -373,6 +375,7 @@ export default function MorphometryInputs({
   }>({ phase: "idle", scope: null, saved: null });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
+  const [anatomyBusy, setAnatomyBusy] = useState(false);
   const [note, setNote] = useState("");
   const [proposal, setProposal] = useState<Proposal | null>(null);
   const epochRef = useRef(0);
@@ -457,7 +460,8 @@ export default function MorphometryInputs({
     !scope ||
     state.scope !== scope ||
     state.phase !== "ready" ||
-    busy;
+    busy ||
+    anatomyBusy;
 
   function capture(kind: "seed" | "origin" | "normal") {
     if (locked || !isFiniteTriple(location)) return;
@@ -720,6 +724,35 @@ export default function MorphometryInputs({
       </p>
       {scope && state.scope === scope && state.phase === "ready" ? (
         <>
+          <AnatomyProposalPanel
+            binding={{ ...binding!, artifact_version: caseState.artifact_version }}
+            eligible={state.phase === "ready" && state.scope === scope}
+            disabled={disabled || busy || dirty}
+            targetRas={isFiniteTriple(location) ? [...location] : null}
+            onBusy={(value) => {
+              setAnatomyBusy(value);
+              onBusy(value);
+            }}
+            onConflict={() => {
+              setState((current) => ({ ...current, phase: "error" }));
+              callbacksRef.current.onError(new RevisionConflictError());
+            }}
+            onApply={(candidate) => {
+              if (locked || dirty || !binding) return;
+              const checked = parseAnatomyProposal(candidate, {
+                ...binding, artifact_version: caseState.artifact_version,
+              });
+              const next = draftFromInputs(checked.proposal.inputs);
+              const problem = validateDraft(next);
+              if (problem) { setNote(problem); return; }
+              setDraft(next);
+              setProposal(null);
+              callbacksRef.current.onDirtyChange(
+                state.saved === null || !sameDraft(next, draftFromInputs(state.saved)),
+              );
+              setNote("Anatomy proposal loaded as an editable draft. Save geometry inputs to confirm it.");
+            }}
+          />
           <PointValue
             label="sac seed"
             point={draft?.aneurysm_seed ?? null}

@@ -1,0 +1,249 @@
+{
+  "fixture_scope": "actual API serialization on declared synthetic source, not model accuracy",
+  "initial": {
+    "case_id": "hnx0JX48squObHAtZeT9Jw",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_version": "4",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "geometry_result_id": "x4kU0X5BXm0O77XqmiOlIw",
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "current": {
+      "status": "not_computed"
+    },
+    "scenario_revision": 0
+  },
+  "request": {
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_version": "4",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "geometry_result_id": "x4kU0X5BXm0O77XqmiOlIw",
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "confirmed": true,
+    "scenario_revision": 0,
+    "scenarios": [
+      {
+        "id": "abcd1234ef",
+        "name": "Synthetic scenario",
+        "placement": {
+          "deviceId": "synthetic-device-01",
+          "diameter": 7.5,
+          "length": 20.0,
+          "height": 18.0,
+          "center": [
+            1.0,
+            2.0,
+            3.0
+          ],
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "path": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              10.0
+            ]
+          ],
+          "offset": 1.0,
+          "roll": 45.0,
+          "coilLength": 30.0
+        }
+      }
+    ]
+  },
+  "first": {
+    "case_id": "hnx0JX48squObHAtZeT9Jw",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_version": "4",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "geometry_result_id": "x4kU0X5BXm0O77XqmiOlIw",
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "current": {
+      "dependencies": {
+        "artifact_version": "4",
+        "calculation_version": "native-mask-operator-plane-v1",
+        "case_id": "hnx0JX48squObHAtZeT9Jw",
+        "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "masks": {
+          "aneurysm": {
+            "candidate_id": "aqS99TPe5focY3PCXBzk4A",
+            "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "segmentation_revision": 2
+          },
+          "vessel": {
+            "candidate_id": "w583iDJ5_Srgvz0cZTbLxg",
+            "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "segmentation_revision": 1
+          }
+        },
+        "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+        "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "scenarios": [
+        {
+          "id": "abcd1234ef",
+          "name": "Synthetic scenario",
+          "placement": {
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "center": [
+              1.0,
+              2.0,
+              3.0
+            ],
+            "coilLength": 30.0,
+            "deviceId": "synthetic-device-01",
+            "diameter": 7.5,
+            "height": 18.0,
+            "length": 20.0,
+            "offset": 1.0,
+            "path": [
+              [
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                10.0
+              ]
+            ],
+            "roll": 45.0
+          }
+        }
+      ],
+      "scenarios_sha256": "a282539ba6af48cb40d5507b98858938e96a090bc796d32759f776f6b97c5e7f",
+      "set_id": "IHylcBvxR4bXc1YtdLc47A",
+      "status": "current"
+    },
+    "scenario_revision": 1
+  },
+  "second_request": {
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_version": "4",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "geometry_result_id": "x4kU0X5BXm0O77XqmiOlIw",
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "confirmed": true,
+    "scenario_revision": 1,
+    "scenarios": [
+      {
+        "id": "abcd1234ef",
+        "name": "Edited synthetic scenario",
+        "placement": {
+          "deviceId": "synthetic-device-01",
+          "diameter": 7.5,
+          "length": 20.0,
+          "height": 18.0,
+          "center": [
+            1.0,
+            2.0,
+            3.0
+          ],
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "path": [
+            [
+              0.0,
+              0.0,
+              0.0
+            ],
+            [
+              0.0,
+              0.0,
+              10.0
+            ]
+          ],
+          "offset": 1.0,
+          "roll": 45.0,
+          "coilLength": 30.0
+        }
+      }
+    ]
+  },
+  "second": {
+    "case_id": "hnx0JX48squObHAtZeT9Jw",
+    "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "artifact_version": "4",
+    "reference_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "geometry_result_id": "x4kU0X5BXm0O77XqmiOlIw",
+    "catalog_version": "c697cac424e72db7f60edc90e7c2a5c3547802fa89022cc1890527b48a8d21bf",
+    "current": {
+      "dependencies": {
+        "artifact_version": "4",
+        "calculation_version": "native-mask-operator-plane-v1",
+        "case_id": "hnx0JX48squObHAtZeT9Jw",
+        "image_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "masks": {
+          "aneurysm": {
+            "candidate_id": "aqS99TPe5focY3PCXBzk4A",
+            "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "segmentation_revision": 2
+          },
+          "vessel": {
+            "candidate_id": "w583iDJ5_Srgvz0cZTbLxg",
+            "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "segmentation_revision": 1
+          }
+        },
+        "operator_sha256": "dd6fd2a0d8e82d83108f236f2acd2a34b8f963e2b630b5cafb64e3075ebf18a5",
+        "source_revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "scenarios": [
+        {
+          "id": "abcd1234ef",
+          "name": "Edited synthetic scenario",
+          "placement": {
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "center": [
+              1.0,
+              2.0,
+              3.0
+            ],
+            "coilLength": 30.0,
+            "deviceId": "synthetic-device-01",
+            "diameter": 7.5,
+            "height": 18.0,
+            "length": 20.0,
+            "offset": 1.0,
+            "path": [
+              [
+                0.0,
+                0.0,
+                0.0
+              ],
+              [
+                0.0,
+                0.0,
+                10.0
+              ]
+            ],
+            "roll": 45.0
+          }
+        }
+      ],
+      "scenarios_sha256": "fc3956bb620b9d564938af660139dc7620ea0323cf804bfeae0fed5711ef461d",
+      "set_id": "cW3iS2qHY2LLKNydjGyE9g",
+      "status": "current"
+    },
+    "scenario_revision": 2
+  }
+}

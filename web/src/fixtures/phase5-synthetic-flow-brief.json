@@ -1,0 +1,229 @@
+{
+  "artifact_version": "4",
+  "case_id": "gvMVdpZLX3DF9rAwpa919A",
+  "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+  "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+  "planning": {
+    "artifact_version": "4",
+    "case_id": "gvMVdpZLX3DF9rAwpa919A",
+    "device_sizing_summary": null,
+    "evidence_boundary": "Software geometry and operator-reported arithmetic, not clinically validated; no treatment suitability established.",
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "morphometry_summary": {
+      "clinical_suitability_established": false,
+      "distal_parent": {
+        "area": 11.313708498984763,
+        "equivalent_diameter": 3.7953999866303554,
+        "max_diameter": 4.0,
+        "min_diameter": 3.695518130045147
+      },
+      "morphometric_indices": {
+        "aspect_ratio": 0.5,
+        "bottleneck_factor": 1.0,
+        "citations": [
+          "Ujiie H et al. Neurosurgery 2001;48(3):495-503 (Aspect Ratio)",
+          "Dhar S et al. Neurosurgery 2008;63(2):185-196 (Size Ratio)",
+          "Raghavan ML et al. J Neurosurg 2005;102(2):355-362 (Nonsphericity Index)"
+        ],
+        "clinical_suitability_established": false,
+        "dome_to_neck_ratio": 1.0,
+        "nonsphericity_index": 0.1424,
+        "size_ratio": 0.527,
+        "surface_area_mm2": 35.805,
+        "volume_mm3": 22.627,
+        "volume_source": "clipped_mesh_exact",
+        "volume_ul": 22.627,
+        "wide_neck": true
+      },
+      "neck": {
+        "area": 11.313708498984763,
+        "equivalent_diameter": 3.7953999866303554,
+        "max_diameter": 4.0,
+        "min_diameter": 3.695518130045147
+      },
+      "proximal_parent": {
+        "area": 11.313708498984763,
+        "equivalent_diameter": 3.7953999866303554,
+        "max_diameter": 4.0,
+        "min_diameter": 3.695518130045147
+      },
+      "result_id": "80aSoCt9KiCmbCwXl5u_GA",
+      "sac": {
+        "height": 2.0,
+        "surface_area": 35.8054481703505,
+        "volume": 22.62741699796951,
+        "width": 4.0
+      },
+      "spatial_units": "mm",
+      "validated_morphometry": false
+    },
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+    "segmentation_summary": [
+      {
+        "candidate_id": "_MzClvr6K7I9G233amQ-8w",
+        "mask_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "producer": "owned_vessel",
+        "role": "vessel",
+        "segmentation_revision": 1
+      },
+      {
+        "candidate_id": "RRUJJW4c59RtoCQ6gdWFOA",
+        "mask_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "producer": "aneurysm_model",
+        "role": "aneurysm",
+        "segmentation_revision": 2
+      }
+    ],
+    "territory_summary": {
+      "case_id": "gvMVdpZLX3DF9rAwpa919A",
+      "clinical_suitability_established": false,
+      "findings": [
+        {
+          "confidence": null,
+          "device_categories": [
+            "flow_diverter",
+            "intrasaccular",
+            "coil",
+            "neuro_stent"
+          ],
+          "id": "gvMVdpZLX3DF9rAwpa919A:aneurysm:1",
+          "laterality": "unknown",
+          "location": null,
+          "measurements": {
+            "dome_height_mm": 2.0,
+            "dome_width_mm": 4.0,
+            "neck_width_mm": 4.0,
+            "sac_surface_area_mm2": 35.8054481703505,
+            "sac_volume_mm3": 22.62741699796951
+          },
+          "pathology": "intracranial_aneurysm",
+          "provenance": {
+            "clinical_suitability_established": false
+          },
+          "scores": {
+            "morphometrics": {
+              "aspect_ratio": 0.5,
+              "bottleneck_factor": 1.0,
+              "citations": [
+                "Ujiie H et al. Neurosurgery 2001;48(3):495-503 (Aspect Ratio)",
+                "Dhar S et al. Neurosurgery 2008;63(2):185-196 (Size Ratio)",
+                "Raghavan ML et al. J Neurosurg 2005;102(2):355-362 (Nonsphericity Index)"
+              ],
+              "clinical_suitability_established": false,
+              "dome_to_neck_ratio": 1.0,
+              "nonsphericity_index": 0.1424,
+              "size_ratio": null,
+              "surface_area_mm2": 35.805,
+              "volume_mm3": 22.627,
+              "volume_source": "clipped_mesh_exact",
+              "volume_ul": 22.627,
+              "wide_neck": true
+            }
+          },
+          "severity": "unknown",
+          "summary": "3D neck/sac/parent vessel morphometry and endovascular device sizing target.",
+          "territory": "neurovascular",
+          "title": "Intracranial Aneurysm Target"
+        }
+      ]
+    }
+  },
+  "territories": {
+    "tavr": {
+      "mode": "tavr",
+      "workflow_revision": 0,
+      "status": "not_computed"
+    },
+    "coronary_pci": {
+      "mode": "coronary_pci",
+      "workflow_revision": 0,
+      "status": "not_computed"
+    },
+    "aortic_peripheral": {
+      "mode": "aortic_peripheral",
+      "workflow_revision": 0,
+      "status": "not_computed"
+    }
+  },
+  "scene": {
+    "status": "not_confirmed",
+    "scene_revision": 0
+  },
+  "device_scenarios": {
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+    "geometry_result_id": "80aSoCt9KiCmbCwXl5u_GA",
+    "catalog_version": "e013eb679aa7efdbe8787c280bb2d40ddf9ffa035e93bc54f138c32f4d62a6bd",
+    "artifact_version": "4",
+    "case_id": "gvMVdpZLX3DF9rAwpa919A",
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "scenario_revision": 0,
+    "status": "not_computed"
+  },
+  "numerical_runs": [
+    {
+      "scope": "anatomy_operator_parameters",
+      "kind": "rod-deployment",
+      "status": "not_computed"
+    },
+    {
+      "scope": "anatomy_operator_parameters",
+      "kind": "stokes-flow",
+      "status": "current",
+      "result_id": "26Dg1qS53a-Qo0qOWt69ng",
+      "geometry_result_id": "80aSoCt9KiCmbCwXl5u_GA",
+      "parameters_sha256": "919f9ed4cd8b23ce9aa26c8bdffc7d3f0b41cbe142a52dfcc96107256c699d98",
+      "parameters": {
+        "flow_axis": 2,
+        "inlet_velocity_mm_s": 1.0,
+        "viscosity_pa_s": 0.0035,
+        "resistance_pa_s_per_mm2": 0.01,
+        "neck_thickness_mm": 1.0
+      },
+      "method": "taylor_hood_native_voxel_stokes_brinkman",
+      "device_calibrated": false,
+      "clinical_validation": false,
+      "baseline_mean_sac_speed_mm_s": 1.0,
+      "treated_mean_sac_speed_mm_s": 0.8,
+      "relative_sac_speed_change_pct": -20.0,
+      "solver_diagnostics": {
+        "baseline": {
+          "momentum_residual_relative": 1e-12,
+          "discrete_continuity_residual": 1e-12,
+          "divergence_l2": 0.01
+        },
+        "treated": {
+          "momentum_residual_relative": 1e-12,
+          "discrete_continuity_residual": 1e-12,
+          "divergence_l2": 0.01
+        }
+      },
+      "flow_diagnostics": {
+        "baseline": {
+          "inlet_flux_mm3_s": 1.0,
+          "outlet_flux_mm3_s": 1.0,
+          "flux_imbalance_pct": 0.0,
+          "pressure_drop_pa": 0.02
+        },
+        "treated": {
+          "inlet_flux_mm3_s": 1.0,
+          "outlet_flux_mm3_s": 1.0,
+          "flux_imbalance_pct": 0.0,
+          "pressure_drop_pa": 0.02
+        }
+      },
+      "mesh_diagnostics": {
+        "fluid_voxels": 24,
+        "tetrahedra": 144,
+        "velocity_dofs": 300,
+        "pressure_dofs": 40
+      },
+      "units": {
+        "divergence_l2": "mm^(3/2)/s",
+        "flux": "mm^3/s",
+        "pressure": "Pa",
+        "velocity": "mm/s"
+      }
+    }
+  ],
+  "markdown": "# Local planning brief\n\n## Source binding\n\n- artifact_version: `4`\n- case_id: `gvMVdpZLX3DF9rAwpa919A`\n- image_sha256: `96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e`\n- reference_revision: `53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1`\n\n## Current planning evidence\n\n### Accepted segmentations\n\n```json\n[\n  {\n    \"candidate_id\": \"_MzClvr6K7I9G233amQ-8w\",\n    \"mask_sha256\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\n    \"producer\": \"owned_vessel\",\n    \"role\": \"vessel\",\n    \"segmentation_revision\": 1\n  },\n  {\n    \"candidate_id\": \"RRUJJW4c59RtoCQ6gdWFOA\",\n    \"mask_sha256\": \"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\n    \"producer\": \"aneurysm_model\",\n    \"role\": \"aneurysm\",\n    \"segmentation_revision\": 2\n  }\n]\n```\n\n### Computed morphometry\n\n```json\n{\n  \"clinical_suitability_established\": false,\n  \"distal_parent\": {\n    \"area\": 11.313708498984763,\n    \"equivalent_diameter\": 3.7953999866303554,\n    \"max_diameter\": 4.0,\n    \"min_diameter\": 3.695518130045147\n  },\n  \"morphometric_indices\": {\n    \"aspect_ratio\": 0.5,\n    \"bottleneck_factor\": 1.0,\n    \"citations\": [\n      \"Ujiie H et al. Neurosurgery 2001;48(3):495-503 (Aspect Ratio)\",\n      \"Dhar S et al. Neurosurgery 2008;63(2):185-196 (Size Ratio)\",\n      \"Raghavan ML et al. J Neurosurg 2005;102(2):355-362 (Nonsphericity Index)\"\n    ],\n    \"clinical_suitability_established\": false,\n    \"dome_to_neck_ratio\": 1.0,\n    \"nonsphericity_index\": 0.1424,\n    \"size_ratio\": 0.527,\n    \"surface_area_mm2\": 35.805,\n    \"volume_mm3\": 22.627,\n    \"volume_source\": \"clipped_mesh_exact\",\n    \"volume_ul\": 22.627,\n    \"wide_neck\": true\n  },\n  \"neck\": {\n    \"area\": 11.313708498984763,\n    \"equivalent_diameter\": 3.7953999866303554,\n    \"max_diameter\": 4.0,\n    \"min_diameter\": 3.695518130045147\n  },\n  \"proximal_parent\": {\n    \"area\": 11.313708498984763,\n    \"equivalent_diameter\": 3.7953999866303554,\n    \"max_diameter\": 4.0,\n    \"min_diameter\": 3.695518130045147\n  },\n  \"result_id\": \"80aSoCt9KiCmbCwXl5u_GA\",\n  \"sac\": {\n    \"height\": 2.0,\n    \"surface_area\": 35.8054481703505,\n    \"volume\": 22.62741699796951,\n    \"width\": 4.0\n  },\n  \"spatial_units\": \"mm\",\n  \"validated_morphometry\": false\n}\n```\n\n- Saved device sizing: unavailable\nTerritory context\nCase: gvMVdpZLX3DF9rAwpa919A\nImage: 96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e\nArtifact version: 4\nReference revision: 53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1\nTAVR workflow (revision 0):\n  Status: not computed; no current result\n  No measurements are shown for a non-current result.\nCoronary PCI workflow (revision 0):\n  Status: not computed; no current result\n  No measurements are shown for a non-current result.\nAortic/peripheral workflow (revision 0):\n  Status: not computed; no current result\n  No measurements are shown for a non-current result.\n\n## Reformat scene\n\n- status: not_confirmed\n- scene_revision: 0\n\nNo current confirmed scene is included.\n\n## Saved device alternatives\n\n- Status: not_computed\n- scenario_revision: `0`\n- geometry_result_id: `80aSoCt9KiCmbCwXl5u_GA`\n- catalog_version: `e013eb679aa7efdbe8787c280bb2d40ddf9ffa035e93bc54f138c32f4d62a6bd`\n\n## Numerical runs on this anatomy\n\nOperator-parameter runs, independent of the saved device alternatives.\nParameter hashes bind all validated operator parameters. Custom rest shapes are represented by point count and hash, not coordinates.\n\n### rod-deployment\n\n```json\n{\n  \"scope\": \"anatomy_operator_parameters\",\n  \"kind\": \"rod-deployment\",\n  \"status\": \"not_computed\"\n}\n```\n\n### stokes-flow\n\n```json\n{\n  \"scope\": \"anatomy_operator_parameters\",\n  \"kind\": \"stokes-flow\",\n  \"status\": \"current\",\n  \"result_id\": \"26Dg1qS53a-Qo0qOWt69ng\",\n  \"geometry_result_id\": \"80aSoCt9KiCmbCwXl5u_GA\",\n  \"parameters_sha256\": \"919f9ed4cd8b23ce9aa26c8bdffc7d3f0b41cbe142a52dfcc96107256c699d98\",\n  \"parameters\": {\n    \"flow_axis\": 2,\n    \"inlet_velocity_mm_s\": 1.0,\n    \"viscosity_pa_s\": 0.0035,\n    \"resistance_pa_s_per_mm2\": 0.01,\n    \"neck_thickness_mm\": 1.0\n  },\n  \"method\": \"taylor_hood_native_voxel_stokes_brinkman\",\n  \"device_calibrated\": false,\n  \"clinical_validation\": false,\n  \"baseline_mean_sac_speed_mm_s\": 1.0,\n  \"treated_mean_sac_speed_mm_s\": 0.8,\n  \"relative_sac_speed_change_pct\": -20.0,\n  \"solver_diagnostics\": {\n    \"baseline\": {\n      \"momentum_residual_relative\": 1e-12,\n      \"discrete_continuity_residual\": 1e-12,\n      \"divergence_l2\": 0.01\n    },\n    \"treated\": {\n      \"momentum_residual_relative\": 1e-12,\n      \"discrete_continuity_residual\": 1e-12,\n      \"divergence_l2\": 0.01\n    }\n  },\n  \"flow_diagnostics\": {\n    \"baseline\": {\n      \"inlet_flux_mm3_s\": 1.0,\n      \"outlet_flux_mm3_s\": 1.0,\n      \"flux_imbalance_pct\": 0.0,\n      \"pressure_drop_pa\": 0.02\n    },\n    \"treated\": {\n      \"inlet_flux_mm3_s\": 1.0,\n      \"outlet_flux_mm3_s\": 1.0,\n      \"flux_imbalance_pct\": 0.0,\n      \"pressure_drop_pa\": 0.02\n    }\n  },\n  \"mesh_diagnostics\": {\n    \"fluid_voxels\": 24,\n    \"tetrahedra\": 144,\n    \"velocity_dofs\": 300,\n    \"pressure_dofs\": 40\n  },\n  \"units\": {\n    \"divergence_l2\": \"mm^(3/2)/s\",\n    \"flux\": \"mm^3/s\",\n    \"pressure\": \"Pa\",\n    \"velocity\": \"mm/s\"\n  }\n}\n```\n"
+}

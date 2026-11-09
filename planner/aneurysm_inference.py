@@ -82,13 +82,17 @@ def prepare_aneurysm_input(image_xyz, affine):
     return resized, grid
 
 
-def restore_aneurysm_mask(head_1_logits, grid: AneurysmGrid):
+def restore_aneurysm_mask(head_1_logits, grid: AneurysmGrid, *, role="aneurysm"):
     """Restore logits before categorical decision, then invert LPS/ZYX mapping.
 
     This fresh segmentation adapter interpolates logits, not softmax
     probabilities; those operations are not generally equivalent. It is not
     proof of the author's classification-only deployment's segmentation accuracy.
+    Vessel output unions original first-head classes 1..13, excluding class 14
+    (merged aneurysm) and background. No new checkpoint or inferred labels.
     """
+    if role not in ("vessel", "aneurysm"):
+        raise ValueError("Unsupported segmentation role")
     import nibabel as nib
     import numpy as np
     import torch
@@ -105,7 +109,9 @@ def restore_aneurysm_mask(head_1_logits, grid: AneurysmGrid):
     resized = torch.nn.functional.interpolate(
         head_1_logits, size=grid.lps_shape[::-1], mode="trilinear", align_corners=True
     )
-    mask_zyx = (resized.argmax(dim=1)[0] == 14).to(torch.uint8).cpu().numpy()
+    labels = resized.argmax(dim=1)[0]
+    binary = (labels == 14) if role == "aneurysm" else ((labels >= 1) & (labels <= 13))
+    mask_zyx = binary.to(torch.uint8).cpu().numpy()
     lps_xyz = mask_zyx.transpose(2, 1, 0)
     native = nib.orientations.apply_orientation(lps_xyz, np.asarray(grid.lps_to_native))
     if native.shape != grid.native_shape:
@@ -195,13 +201,17 @@ def load_aneurysm_network(checkpoint_path: Path):
     return network.eval()
 
 
-def predict_aneurysm(image_xyz, affine, *, checkpoint_path: Path):
+def predict_aneurysm(image_xyz, affine, *, checkpoint_path: Path, role="aneurysm"):
     """Produce an unaccepted 3D candidate within a trusted selected native ROI.
 
     Fixed local MPS float32 path, verified whole original checkpoint, retained
     memory cap and original first-head graph. No classification or independent
     full-head localization claim. Installer, never product requests, picks paths.
+    An explicit vessel role selects the original vessel classes from this same
+    licensed task head, not the separately owned pooled-vessel checkpoint.
     """
+    if role not in ("vessel", "aneurysm"):
+        raise ValueError("Unsupported segmentation role")
     import torch
 
     from planner.model_assets import RSNA_ANEURYSM_REVISION, RSNA_ANEURYSM_SOURCE_REVISION
@@ -214,13 +224,16 @@ def predict_aneurysm(image_xyz, affine, *, checkpoint_path: Path):
     network = aneurysm_head1_graph(load_aneurysm_network(checkpoint_path)).to("mps")
     with torch.inference_mode():
         logits = network(prepared.to("mps"))
-        mask = restore_aneurysm_mask(logits, grid)
+        mask = restore_aneurysm_mask(logits, grid, role=role)
     return {
         "mask": mask,
         "model_version": RSNA_ANEURYSM_REVISION,
         "upstream_source_revision": RSNA_ANEURYSM_SOURCE_REVISION,
         "checkpoint_sha256": RSNA_ANEURYSM_CHECKPOINT.sha256,
         "selected_head": "merged_aneurysm_vessel_head_1",
+        "output_role": role,
+        "foreground_classes": [14] if role == "aneurysm" else list(range(1, 14)),
+        "artifact_license": "Apache-2.0",
         "graph": "original_eval_head1_fx_dead_code_elimination",
         "preprocessing": "LPS_ZYX_sample_zscore_trilinear_224_align_corners",
         "precision": "float32",

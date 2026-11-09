@@ -1,0 +1,1136 @@
+{
+  "authored_catalog": {
+    "catalog_version": "device-appearance-research-2026-11-04-v2",
+    "devices": [
+      {
+        "appearance": "Dense crossed braid and open tubular ends. Surface treatment is not a visible thick coating.",
+        "category": "flow-diverter",
+        "construction": "64-wire braid with pure CoCr structural wires; BioStealth surface modification.",
+        "displayWireCount": 64,
+        "id": "surpass-elite",
+        "manufacturer": "Stryker",
+        "modelLimits": "Braid angle, wire gauges, contact forces and foreshortening curves are not disclosed here. Pitch and end geometry are visual approximations. Only the captured subset of nominal sizes is listed; absent sizes are not proof of nonavailability.",
+        "name": "Surpass Elite",
+        "shape": "fd",
+        "sizeCoverage": "Captured subset, not a complete catalog",
+        "sizes": [
+          {
+            "diameterMm": 3.25,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.25,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.25,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.25,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.25,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.75,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.75,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.75,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.75,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 3.75,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 4,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": null
+          },
+          {
+            "diameterMm": 4,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 4,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 4,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 4,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 4,
+            "heightMm": null,
+            "lengthMm": 30,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.25,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.25,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.25,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.25,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.25,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.25,
+            "heightMm": null,
+            "lengthMm": 30,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 30,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 40,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.75,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.75,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.75,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.75,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.75,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.75,
+            "heightMm": null,
+            "lengthMm": 30,
+            "sku": null
+          },
+          {
+            "diameterMm": 4.75,
+            "heightMm": null,
+            "lengthMm": 40,
+            "sku": null
+          },
+          {
+            "diameterMm": 5,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": null
+          },
+          {
+            "diameterMm": 5,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 5,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 5,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 5,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 5,
+            "heightMm": null,
+            "lengthMm": 30,
+            "sku": null
+          },
+          {
+            "diameterMm": 5,
+            "heightMm": null,
+            "lengthMm": 40,
+            "sku": null
+          },
+          {
+            "diameterMm": 5.25,
+            "heightMm": null,
+            "lengthMm": 15,
+            "sku": null
+          },
+          {
+            "diameterMm": 5.25,
+            "heightMm": null,
+            "lengthMm": 17,
+            "sku": null
+          },
+          {
+            "diameterMm": 5.25,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": null
+          },
+          {
+            "diameterMm": 5.25,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          },
+          {
+            "diameterMm": 5.25,
+            "heightMm": null,
+            "lengthMm": 30,
+            "sku": null
+          },
+          {
+            "diameterMm": 5.25,
+            "heightMm": null,
+            "lengthMm": 40,
+            "sku": null
+          },
+          {
+            "diameterMm": 5.25,
+            "heightMm": null,
+            "lengthMm": 50,
+            "sku": null
+          }
+        ],
+        "sources": [
+          {
+            "section": "64-wire feature list; size-offerings chart visually read from official image",
+            "url": "https://www.stryker.com/us/en/neurovascular/products/surpass-elite.html"
+          },
+          {
+            "section": "Elite design modifications and 5.25 mm model",
+            "url": "https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpma/pma.cfm?ID=P170024S012"
+          },
+          {
+            "section": "French2025 assessment: conflicting40-wire description; not a US catalog source",
+            "url": "https://www.has-sante.fr/upload/docs/evamed/CNEDIMTS-7676_SURPASS_ELITE_14%20janvier%202025_7676_avis.pdf"
+          }
+        ],
+        "usStatus": "US manufacturer listing",
+        "warning": "US manufacturer page describes 64 wires; the January2025 French HAS assessment describes 40. Jurisdiction/version discrepancy is unresolved. This display follows the US page, not a calibrated mechanical specification.",
+        "wireCount": 64,
+        "wireCountBasis": "US manufacturer/source statement, not independent mechanical verification"
+      },
+      {
+        "appearance": "Dense crossed tubular mesh.",
+        "category": "flow-diverter",
+        "construction": "64-wire flow-diverter braid; XT-27 delivery.",
+        "displayWireCount": 64,
+        "id": "surpass-evolve",
+        "manufacturer": "Stryker",
+        "modelLimits": "Only the explicitly published 4.5 x 25 example is cataloged. Published porosity is condition-specific, not a universal device constant.",
+        "name": "Surpass Evolve",
+        "shape": "fd",
+        "sizeCoverage": "Captured subset, not a complete catalog",
+        "sizes": [
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": null
+          }
+        ],
+        "sources": [
+          {
+            "section": "4.5 x 25 example: 17\u201320 pores/mm\u00b2 and 74\u201378% porosity in 4.25 mm tube",
+            "url": "https://www.stryker.com/us/en/neurovascular/products/surpass-evolve.html"
+          }
+        ],
+        "usStatus": "US manufacturer listing",
+        "warning": null,
+        "wireCount": 64,
+        "wireCountBasis": "US manufacturer/source statement, not independent mechanical verification"
+      },
+      {
+        "appearance": "48-strand counterbraid; radiopaque alloy strands are part of braid, not a solid jacket.",
+        "category": "flow-diverter",
+        "construction": "Multi-alloy braided cylinder; Shield is a thin covalent surface modification.",
+        "displayWireCount": 48,
+        "id": "pipeline-flex-shield",
+        "manufacturer": "Medtronic",
+        "modelLimits": "Wire gauges and per-SKU measured pitch are unknown. No claim that Shield removes antiplatelet requirements. Only the captured subset of nominal sizes is listed; absent sizes are not proof of nonavailability.",
+        "name": "Pipeline Flex with Shield",
+        "shape": "fd",
+        "sizeCoverage": "Captured subset, not a complete catalog",
+        "sizes": [
+          {
+            "diameterMm": 3.25,
+            "heightMm": null,
+            "lengthMm": 12,
+            "sku": "PED2-325-12"
+          }
+        ],
+        "sources": [
+          {
+            "section": "Pipeline family brochure",
+            "url": "https://www.medtronic.com/content/dam/medtronic-wide/public/united-states/products/neurological/neurovascular/pipeline-family-brochure.pdf"
+          },
+          {
+            "section": "Named catalog model",
+            "url": "https://www.medtronic.com/en-us/products/product.PED2-325-12.html"
+          }
+        ],
+        "usStatus": "US manufacturer listing",
+        "warning": "Confirm current labeling and lot status; this research catalog is not a stock/recall-clearance check.",
+        "wireCount": 48,
+        "wireCountBasis": "US manufacturer/source statement, not independent mechanical verification"
+      },
+      {
+        "appearance": "Fine tubular braid; 48 display strands are an explicit visualization assumption until exact US SKU construction is verified.",
+        "category": "flow-diverter",
+        "construction": "Braided flow diverter with integrated radiopaque wire construction and Shield.",
+        "displayWireCount": 48,
+        "id": "pipeline-vantage-021",
+        "manufacturer": "Medtronic",
+        "modelLimits": "Do not equate kinematic tube fit with mechanical wall apposition. Construction from other market/version documents is not silently assigned to US SKUs. Only the captured subset of nominal sizes is listed; absent sizes are not proof of nonavailability.",
+        "name": "Pipeline Vantage 021 with Shield",
+        "shape": "fd",
+        "sizeCoverage": "Captured subset, not a complete catalog",
+        "sizes": [
+          {
+            "diameterMm": 3.5,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": "PED3-021-350-25"
+          },
+          {
+            "diameterMm": 3,
+            "heightMm": null,
+            "lengthMm": 20,
+            "sku": "PED3-021-300-20"
+          },
+          {
+            "diameterMm": 2.5,
+            "heightMm": null,
+            "lengthMm": 10,
+            "sku": "PED3-021-250-10"
+          }
+        ],
+        "sources": [
+          {
+            "section": "FDA listed 021 catalog IDs and corrected instructions",
+            "url": "https://www.fda.gov/medical-devices/medical-device-recalls-and-early-alerts/embolization-device-recall-and-correction-medtronic-removes-unused-027-compatible-pipeline-vantage"
+          }
+        ],
+        "usStatus": "US labeling correction",
+        "warning": "FDA: read updated Vantage 021 instructions; wall-apposition and braid-deformation warning. Not the recalled 027 removal bucket.",
+        "wireCount": null,
+        "wireCountBasis": "Illustrative display strand count; exact per-SKU count unverified"
+      },
+      {
+        "appearance": "64 display strands are an approximation, not a verified per-SKU wire specification.",
+        "category": "flow-diverter",
+        "construction": "Braided device retained only as a recalled research reference.",
+        "displayWireCount": 64,
+        "id": "pipeline-vantage-027",
+        "manufacturer": "Medtronic",
+        "modelLimits": "Excluded from routine planning eligibility. It can be studied only through the explicit reference toggle.",
+        "name": "Pipeline Vantage 027 \u00b7 recalled reference",
+        "shape": "fd",
+        "sizeCoverage": "Captured subset, not a complete catalog",
+        "sizes": [
+          {
+            "diameterMm": 4.5,
+            "heightMm": null,
+            "lengthMm": 25,
+            "sku": "PED3-027-450-25"
+          }
+        ],
+        "sources": [
+          {
+            "section": "Removal of affected unused 027 devices",
+            "url": "https://www.fda.gov/medical-devices/medical-device-recalls-and-early-alerts/embolization-device-recall-and-correction-medtronic-removes-unused-027-compatible-pipeline-vantage"
+          }
+        ],
+        "usStatus": "RECALLED \u00b7 reference only",
+        "warning": "FDA: do not use affected Pipeline Vantage 027; remove/quarantine and return affected unused devices.",
+        "wireCount": null,
+        "wireCountBasis": "Illustrative display strand count; exact per-SKU count unverified"
+      },
+      {
+        "appearance": "SL: barrel-shaped cage. SLS: rounded cage. Central proximal/distal marker silhouettes.",
+        "category": "intrasaccular",
+        "construction": "Single-layer woven intrasaccular mesh; SLS means single-layer sphere, not double-layer.",
+        "displayWireCount": 64,
+        "id": "web-sl",
+        "manufacturer": "Terumo Neuro / MicroVention",
+        "modelLimits": "Nominal shapes are parametric, not compression mechanics; display weave count and winding pitch are illustrative when exact SKU values are unknown. CTA does not substitute for IFU angiographic measurements.",
+        "name": "WEB SL",
+        "shape": "web-sl",
+        "sizeCoverage": "Captured US ordering portfolio, not all generations",
+        "sizes": [
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 4.0,
+            "heightMm": 2.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-4-2"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 4.0,
+            "heightMm": 3.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-4-3"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 4.5,
+            "heightMm": 2.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-4.5-2"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 4.5,
+            "heightMm": 3.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-4.5-3"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 5.0,
+            "heightMm": 2.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-5-2"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 5.0,
+            "heightMm": 3.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-5-3"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 6.0,
+            "heightMm": 2.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-6-2"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 6.0,
+            "heightMm": 3.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-6-3"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 6.0,
+            "heightMm": 4.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-6-4"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 7.0,
+            "heightMm": 2.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-7-2"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 7.0,
+            "heightMm": 3.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-7-3"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 7.0,
+            "heightMm": 4.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-7-4"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 7.0,
+            "heightMm": 5.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-7-5"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 8.0,
+            "heightMm": 3.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-8-3"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 8.0,
+            "heightMm": 4.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-8-4"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 8.0,
+            "heightMm": 5.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-8-5"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 8.0,
+            "heightMm": 6.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-8-6"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 9.0,
+            "heightMm": 4.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-9-4"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 9.0,
+            "heightMm": 5.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-9-5"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 9.0,
+            "heightMm": 6.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-9-6"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 9.0,
+            "heightMm": 7.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-9-7"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 10.0,
+            "heightMm": 5.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-10-5"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 10.0,
+            "heightMm": 6.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-10-6"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 10.0,
+            "heightMm": 7.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-10-7"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 10.0,
+            "heightMm": 8.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-10-8"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 11.0,
+            "heightMm": 6.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-11-6"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 11.0,
+            "heightMm": 7.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-11-7"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 11.0,
+            "heightMm": 8.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-11-8"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 11.0,
+            "heightMm": 9.0,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-11-9"
+          }
+        ],
+        "sources": [
+          {
+            "section": "37 US portfolio rows, MM1357 NA05/23; current captured table",
+            "url": "https://www.terumoneuro.com/products/web-family"
+          },
+          {
+            "section": "US approval",
+            "url": "https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpma/pma.cfm?id=P170032"
+          },
+          {
+            "section": "IFU100044 Rev.E, sizing/delivery",
+            "url": "https://assets.ctfassets.net/ka7vsj9fzri4/1P6kEJiwIQ4eykc5ag2lE6/7faa4c7b4c5ab8e27db6804a72ec83ad/IFU100044_Rev._E_WEB__US_.pdf"
+          }
+        ],
+        "usStatus": "US PMA / manufacturer listing",
+        "warning": null,
+        "wireCount": null,
+        "wireCountBasis": "Illustrative display strand count; exact per-SKU count unverified"
+      },
+      {
+        "appearance": "SL: barrel-shaped cage. SLS: rounded cage. Central proximal/distal marker silhouettes.",
+        "category": "intrasaccular",
+        "construction": "Single-layer woven intrasaccular mesh; SLS means single-layer sphere, not double-layer.",
+        "displayWireCount": 64,
+        "id": "web-sls",
+        "manufacturer": "Terumo Neuro / MicroVention",
+        "modelLimits": "Nominal shapes are parametric, not compression mechanics; display weave count and winding pitch are illustrative when exact SKU values are unknown. CTA does not substitute for IFU angiographic measurements.",
+        "name": "WEB SLS",
+        "shape": "web-sls",
+        "sizeCoverage": "Captured US ordering portfolio, not all generations",
+        "sizes": [
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 4.0,
+            "heightMm": 2.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-4-S"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 5.0,
+            "heightMm": 3.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-5-S"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 6.0,
+            "heightMm": 4.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-6-S"
+          },
+          {
+            "catheter": "VIA 17",
+            "diameterMm": 7.0,
+            "heightMm": 5.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.017,
+            "sku": "W5-7-S"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 8.0,
+            "heightMm": 6.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-8-S"
+          },
+          {
+            "catheter": "VIA 27",
+            "diameterMm": 9.0,
+            "heightMm": 7.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.027,
+            "sku": "W2-9-S"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 10.0,
+            "heightMm": 8.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-10-S"
+          },
+          {
+            "catheter": "VIA 33",
+            "diameterMm": 11.0,
+            "heightMm": 9.6,
+            "lengthMm": null,
+            "minimumIdInch": 0.033,
+            "sku": "W2-11-S"
+          }
+        ],
+        "sources": [
+          {
+            "section": "37 US portfolio rows, MM1357 NA05/23; current captured table",
+            "url": "https://www.terumoneuro.com/products/web-family"
+          },
+          {
+            "section": "US approval",
+            "url": "https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfpma/pma.cfm?id=P170032"
+          },
+          {
+            "section": "IFU100044 Rev.E, sizing/delivery",
+            "url": "https://assets.ctfassets.net/ka7vsj9fzri4/1P6kEJiwIQ4eykc5ag2lE6/7faa4c7b4c5ab8e27db6804a72ec83ad/IFU100044_Rev._E_WEB__US_.pdf"
+          }
+        ],
+        "usStatus": "US PMA / manufacturer listing",
+        "warning": null,
+        "wireCount": null,
+        "wireCountBasis": "Illustrative display strand count; exact per-SKU count unverified"
+      },
+      {
+        "appearance": "Secondary 3D framing/packing skeleton, with primary-coil texture represented at display scale.",
+        "category": "coil",
+        "construction": "Detachable platinum-tungsten embolization coil family.",
+        "displayWireCount": 64,
+        "id": "target-360",
+        "manufacturer": "Stryker",
+        "modelLimits": "Coil pack is a geometric length-constrained preview, not an FEM deployment; actual wire/primary diameters must be supplied from the chosen SKU before packing arithmetic.",
+        "name": "Target 360",
+        "shape": "coil",
+        "sizeCoverage": "No verified per-SKU portfolio captured",
+        "sizes": [],
+        "sources": [
+          {
+            "section": "Target 360 Standard/Soft/Ultra and Helical Ultra",
+            "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf12/K123377.pdf"
+          }
+        ],
+        "usStatus": "US-cleared family",
+        "warning": null,
+        "wireCount": null,
+        "wireCountBasis": "Illustrative display strand count; exact per-SKU count unverified"
+      },
+      {
+        "appearance": "3D coil skeleton is an authored geometric approximation, not proprietary heat-set coil reconstruction.",
+        "category": "coil",
+        "construction": "Detachable coil family with framing/filling variants.",
+        "displayWireCount": 64,
+        "id": "axium-prime",
+        "manufacturer": "Medtronic",
+        "modelLimits": "Unknown per-SKU primary diameter prevents packing-volume calculation until explicitly entered with provenance.",
+        "name": "Axium Prime",
+        "shape": "coil",
+        "sizeCoverage": "No verified per-SKU portfolio captured",
+        "sizes": [],
+        "sources": [
+          {
+            "section": "Axium / Axium Prime clearance",
+            "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf23/K233420.pdf"
+          }
+        ],
+        "usStatus": "US-cleared family",
+        "warning": null,
+        "wireCount": null,
+        "wireCountBasis": "Illustrative display strand count; exact per-SKU count unverified"
+      },
+      {
+        "appearance": "Flared cup with proximal stem.",
+        "category": "intrasaccular",
+        "construction": "Neck-covering intrasaccular cup/disc rather than a sac-filling spherical device.",
+        "displayWireCount": 64,
+        "id": "contour-reference",
+        "manufacturer": "Stryker / Cerus",
+        "modelLimits": "Not counted as US-available. Nominal dimensional controls are exploratory and not verified US SKUs.",
+        "name": "Contour \u00b7 research reference",
+        "shape": "contour",
+        "sizeCoverage": "No verified per-SKU portfolio captured",
+        "sizes": [],
+        "sources": [
+          {
+            "section": "Verify market-specific authorization before use",
+            "url": "https://www.stryker.com/us/en/neurovascular/products/contour.html"
+          }
+        ],
+        "usStatus": "US authorization unverified \u00b7 reference only",
+        "warning": "Research-reference model only. Breakthrough designation or an IDE is not US marketing authorization.",
+        "wireCount": null,
+        "wireCountBasis": "Illustrative display strand count; exact per-SKU count unverified"
+      }
+    ],
+    "source_sha256": "76ea92e09c07f6cd28c0f98bab6826920c93aceb95565569afbcdcc1163234e3"
+  },
+  "catalog_version": "e013eb679aa7efdbe8787c280bb2d40ddf9ffa035e93bc54f138c32f4d62a6bd",
+  "clinical_suitability_established": false,
+  "device_checks_version": "historical-label-range-checks-v1",
+  "pipeline": {
+    "catalog_scope": "historical_source_only",
+    "clinical_suitability_established": false,
+    "note": "Historical FDA source rows only; not a current complete commercial catalog. device_id values are internal identifiers, not manufacturer SKUs.",
+    "rows": [
+      {
+        "device_id": "PIPELINE-HIST-2_50",
+        "labeled_diameter_mm": 2.5,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20
+        ],
+        "self_expanded_diameter_mm": 2.75
+      },
+      {
+        "device_id": "PIPELINE-HIST-2_75",
+        "labeled_diameter_mm": 2.75,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20
+        ],
+        "self_expanded_diameter_mm": 3.0
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_00",
+        "labeled_diameter_mm": 3.0,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 3.25
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_25",
+        "labeled_diameter_mm": 3.25,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 3.5
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_50",
+        "labeled_diameter_mm": 3.5,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 3.75
+      },
+      {
+        "device_id": "PIPELINE-HIST-3_75",
+        "labeled_diameter_mm": 3.75,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.0
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_00",
+        "labeled_diameter_mm": 4.0,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.25
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_25",
+        "labeled_diameter_mm": 4.25,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.5
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_50",
+        "labeled_diameter_mm": 4.5,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 4.75
+      },
+      {
+        "device_id": "PIPELINE-HIST-4_75",
+        "labeled_diameter_mm": 4.75,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 5.0
+      },
+      {
+        "device_id": "PIPELINE-HIST-5_00",
+        "labeled_diameter_mm": 5.0,
+        "labeled_lengths_mm": [
+          10,
+          12,
+          14,
+          16,
+          18,
+          20,
+          25,
+          30,
+          35
+        ],
+        "self_expanded_diameter_mm": 5.25
+      }
+    ],
+    "source": {
+      "revision": "71012-001 Rev. 5 (12/2018)",
+      "scope": "historical_directions_for_use",
+      "table": "Table 1",
+      "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf10/P100018S015C.pdf"
+    },
+    "source_instructions": {
+      "family_parent_vessel_range_mm": [
+        2.0,
+        5.0
+      ],
+      "fully_expanded_diameter": "largest_target_vessel",
+      "labeled_diameter": "approximates_target_vessel",
+      "labeled_length_rule": "at_least_neck_length_plus_6mm",
+      "proximal_distal_differ": "match_larger_vessel"
+    }
+  },
+  "procedural_model_version": "procedural-device-v2",
+  "rules": {
+    "pipeline_coverage_margin_mm": 6.0,
+    "pipeline_parent_range_mm": [
+      2.0,
+      5.0
+    ],
+    "web_diameter_margin_mm": 1.0,
+    "web_dome_family_range_mm": [
+      3.0,
+      10.0
+    ],
+    "web_height_margin_mm": 1.0
+  },
+  "validated_sizing": false,
+  "version_basis": "canonical_catalog_and_rule_data_sha256",
+  "visualization": {
+    "catalog_version": "device-appearance-research-2026-11-04-v2",
+    "procedural_model_version": "procedural-device-v2",
+    "source_sha256": "76ea92e09c07f6cd28c0f98bab6826920c93aceb95565569afbcdcc1163234e3"
+  },
+  "web": {
+    "catalog_status": "not_available",
+    "required_inputs": [
+      "average_sac_diameter",
+      "smallest_sac_height",
+      "dome_diameter"
+    ],
+    "rows": [],
+    "source": {
+      "revision": "LBA0040, Rev Q 12/2018",
+      "section": "sizing_instructions",
+      "url": "https://www.accessdata.fda.gov/cdrh_docs/pdf17/P170032C.pdf"
+    }
+  }
+}
