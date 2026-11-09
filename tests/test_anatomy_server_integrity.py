@@ -33,7 +33,7 @@ def test_fractional_target_beyond_last_center_is_422_before_runner(tmp_path, mon
 
 
 def test_contradictory_provider_dimensions_are_sanitized_before_runner_or_write(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, caplog
 ):
     calls = []
     client, case, revision, directory, _, _ = configured(
@@ -52,6 +52,11 @@ def test_contradictory_provider_dimensions_are_sanitized_before_runner_or_write(
         "detail": "Anatomy proposal is unavailable; no inputs were confirmed"
     }
     assert calls == [] and str(directory) not in response.text
+    messages = [
+        record.getMessage() for record in caplog.records if record.name == "planner.anatomy_server"
+    ]
+    assert messages == ["Anatomy source dimensions contradict case metadata"]
+    assert str(directory) not in " ".join(messages)
     with _connect(tmp_path / "workspace.sqlite3") as conn:
         assert conn.execute("SELECT COUNT(*) FROM geometry_inputs").fetchone()[0] == 0
 
@@ -133,7 +138,26 @@ def test_bare_prompted_slice_has_no_3d_lineage_for_geometry_proposals(tmp_path, 
             "UPDATE segmentation_candidates SET producer='sam2_prompted_slice' WHERE candidate_id=?",
             (entries["aneurysm"]["candidate_id"],),
         )
-    assert request(client, case, revision).status_code == 409
+    response = request(client, case, revision)
+    assert response.status_code == 409
+    assert response.json() == {"detail": "A three-dimensional aneurysm model lineage is required"}
+    assert calls == []
+
+
+def test_missing_accepted_mask_reports_the_prerequisite_without_running(tmp_path, monkeypatch):
+    calls = []
+    client, case, revision, directory, entries, _ = configured(
+        tmp_path, monkeypatch, lambda job: calls.append(job)
+    )
+    with _connect(directory.parent / "workspace.sqlite3") as conn:
+        conn.execute(
+            "DELETE FROM segmentation_candidates WHERE candidate_id=?",
+            (entries["vessel"]["candidate_id"],),
+        )
+    response = request(client, case, revision)
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Accept current vessel and aneurysm masks first"}
+    assert response.headers["cache-control"] == "no-store"
     assert calls == []
 
 

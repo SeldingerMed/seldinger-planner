@@ -1,6 +1,7 @@
 """Read-only source-bound anatomy input proposals, never implicit confirmations."""
 
 import hashlib
+import logging
 import math
 import sqlite3
 from contextlib import closing
@@ -31,6 +32,7 @@ from planner.workspace import _connect
 
 PROPOSAL_VERSION = "anatomy-input-proposal-v1"
 _NO_STORE = {"Cache-Control": "no-store"}
+_LOG = logging.getLogger(__name__)
 
 
 class AnatomyProposalRequest(GeometryComputeRequest):
@@ -82,6 +84,7 @@ def register_anatomy_routes(app, db_path, sources, read_case, results_dir, runne
             raise HTTPException(409, "Confirmed millimeter CTA source is required")
         grid = trusted_grid(bundle)
         if grid["shape"] != case["dimensions"]:
+            _LOG.warning("Anatomy source dimensions contradict case metadata")
             raise ValueError("Contradictory source dimensions")
         with closing(_connect(db_path)) as conn:
             conn.execute("BEGIN")
@@ -103,9 +106,15 @@ def register_anatomy_routes(app, db_path, sources, read_case, results_dir, runne
                     or entry["image_sha256"] != case["image_sha256"]
                     or entry["reference_revision"] != bundle[1]
                 ):
-                    raise GeometryConflict("Accept current vessel and aneurysm masks first")
+                    raise HTTPException(
+                        409, "Accept current vessel and aneurysm masks first", headers=_NO_STORE
+                    )
                 if role == "aneurysm" and not geometry._volumetric_aneurysm(conn, entry):
-                    raise GeometryConflict("A three-dimensional aneurysm model lineage is required")
+                    raise HTTPException(
+                        409,
+                        "A three-dimensional aneurysm model lineage is required",
+                        headers=_NO_STORE,
+                    )
                 masks[role] = {
                     key: entry[key]
                     for key in ("candidate_id", "mask_sha256", "segmentation_revision")
@@ -178,6 +187,9 @@ def register_anatomy_routes(app, db_path, sources, read_case, results_dir, runne
             ):
                 raise ValueError("Contradictory proposal evidence")
             inputs = OperatorGeometryInputs.model_validate(result["inputs"]).model_dump(mode="json")
+            # Worker-generated RAS points can acquire tiny inverse-affine
+            # round-trip error. This output-only tolerance does not clamp
+            # points or relax the strict bounds on caller-supplied targets.
             for point in (inputs["neck_origin"], inputs["aneurysm_seed"], *inputs["parent_path"]):
                 voxel = native_voxel(grid["affine"], point)
                 if any(

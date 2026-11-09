@@ -143,8 +143,17 @@ def propose_aneurysm_inputs(
     if not np.isfinite(eigenvalues).all() or eigenvalues[1] < 1e-9:
         raise ValueError("Aneurysm interface is degenerate; no neck plane is defined")
     neck_normal = eigenvectors[:, 0]
-    sac_ras = (aff[:3, :3] @ np.argwhere(sac).T).T + aff[:3, 3]
-    outward = sac_ras.mean(axis=0) - neck_origin
+    # Weighted axis marginals need only dimension-sized vectors, not an
+    # N-by-3 native/world coordinate pair for the entire sac component.
+    centroid_native = np.asarray(
+        [
+            sac.sum(axis=tuple(k for k in range(3) if k != axis), dtype=np.float64)
+            @ np.arange(sac.shape[axis], dtype=np.float64)
+            / component_voxels
+            for axis in range(3)
+        ]
+    )
+    outward = aff[:3, :3] @ centroid_native + aff[:3, 3] - neck_origin
     orientation = float(neck_normal @ outward)
     # Numerical sign resolution relative to the physical grid, not an
     # anatomical accuracy threshold. An in-plane centroid cannot define a

@@ -19,7 +19,7 @@ vi.mock("./DeviceScene", () => ({ default: ({file,meshes}:{file:File|null;meshes
   return <div data-testid="device-scene" data-mount={mount.current} data-has-file={String(file !== null)} data-mesh-ids={JSON.stringify(meshes.map((mesh)=>mesh.id))} />;
 } }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear(); });
-async function mount({save = false, saveStatus = 200, onClose = () => {}, scenarioSet = workflow.scenarios, geometry = workflow.geometry, geometryError = false, surfaceReady = Promise.resolve(), surfaceStatus = 200}:{save?:boolean;saveStatus?:number;onClose?:()=>void;scenarioSet?:unknown;geometry?:unknown;geometryError?:boolean;surfaceReady?:Promise<void>;surfaceStatus?:number} = {}) {
+async function mount({save = false, saveStatus = 200, onClose = () => {}, scenarioSet = workflow.scenarios, geometry = workflow.geometry, geometryError = false, scenarioReady = Promise.resolve(), surfaceReady = Promise.resolve(), surfaceStatus = 200}:{save?:boolean;saveStatus?:number;onClose?:()=>void;scenarioSet?:unknown;geometry?:unknown;geometryError?:boolean;scenarioReady?:Promise<void>;surfaceReady?:Promise<void>;surfaceStatus?:number} = {}) {
   const bytes = new Uint8Array(200);
   const digest = await sha256Hex(bytes.buffer);
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -35,7 +35,7 @@ async function mount({save = false, saveStatus = 200, onClose = () => {}, scenar
     }
     if (url.endsWith("/device-scenario-catalog")) return new Response(JSON.stringify(catalogue));
     if (url.endsWith("/device-scenarios") && init?.method === "PUT" && save) return new Response(JSON.stringify(saves.third_ack),{status:saveStatus});
-    if (url.endsWith("/device-scenarios") && (!init?.method || init.method === "GET")) return new Response(JSON.stringify(scenarioSet));
+    if (url.endsWith("/device-scenarios") && (!init?.method || init.method === "GET")) { await scenarioReady; return new Response(JSON.stringify(scenarioSet)); }
     throw new Error("Unexpected test fetch " + url);
   });
   vi.stubGlobal("fetch", fetch);
@@ -77,6 +77,23 @@ test("a stale initial set is clean until the operator creates a draft, which rem
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
   expect(screen.getByRole("button", { name: "Close studio" })).toBeDisabled();
   expect(screen.getByText(/1 scenario\(s\) in this draft/)).toBeInTheDocument();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
+});
+
+test("a pending initial scenario read does not trap a clean studio and late read cannot write", async () => {
+  let release!: () => void;
+  const scenarioReady = new Promise<void>(resolve => { release = resolve; });
+  let unmountStudio = () => {};
+  const onClose = vi.fn(() => unmountStudio());
+  const fetch = await mount({ scenarioReady, onClose });
+  unmountStudio = () => fetch.view.unmount();
+  await waitFor(() => expect(fetch.mock.calls.filter(([url]) => String(url).endsWith("/device-scenarios"))).toHaveLength(1));
+  expect(screen.getByRole("button", { name: "Close studio" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Close studio" }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(screen.queryByTestId("device-scene")).not.toBeInTheDocument();
+  await act(async () => { release(); await scenarioReady; });
+  expect(screen.queryByText("Exploratory WEB SL")).not.toBeInTheDocument();
   expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
 });
 

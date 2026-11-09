@@ -206,6 +206,16 @@ def test_stale_alternatives_are_suppressed_not_projected(tmp_path, monkeypatch):
         },
     )
     assert bumped.status_code == 200, bumped.text
+    # The scenario reader requires current geometry, even when a saved set
+    # exists. Unavailable is a prerequisite status, not a claim of no records.
+    blocked = client.get(scenarios_url)
+    assert blocked.status_code == 409, blocked.text
+    unavailable = client.get(f"/api/cases/{case['case_id']}/local-brief")
+    assert unavailable.status_code == 200, unavailable.text
+    projection = unavailable.json()["device_scenarios"]
+    assert projection == {"status": "unavailable"}
+    alternatives_text = unavailable.json()["markdown"].split("## Saved device alternatives", 1)[1]
+    assert "Synthetic scenario" not in alternatives_text and "diameter" not in alternatives_text
     recomputed = client.post(
         f"/api/cases/{case['case_id']}/morphometry",
         json={

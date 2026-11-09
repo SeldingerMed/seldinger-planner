@@ -531,7 +531,7 @@ export default function DeviceStudio({
               ? "DEVICE BENCH · not patient anatomy"
               : `CTA · revision ${caseState?.artifact_version}`}
           </span>
-          <button disabled={hasNativeDraft || nativeBusy} onClick={onClose}>Close studio</button>
+          <button disabled={hasNativeDraft} onClick={onClose}>Close studio</button>
           {hasNativeDraft && <button disabled={nativeBusy} onClick={onClose}>Discard local draft and close</button>}
         </div>
       </header>

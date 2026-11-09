@@ -220,6 +220,9 @@ def register_local_brief(
         territories = {mode: freeze(read_territory(case_id, mode)) for mode in MODES}
         scene = freeze(read_scene(case_id))
         geometry = planning.get("morphometry_summary")
+        # This reader requires current geometry. Without that prerequisite,
+        # unavailable means not assessed, not that no saved set exists. Do not
+        # call it and turn otherwise valid source-only/territory exports into 409.
         scenarios = (
             freeze(read_scenarios(case_id))
             if read_scenarios is not None and geometry is not None

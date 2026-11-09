@@ -133,6 +133,30 @@ def test_parent_path_stations_remain_outside_the_selected_sac():
     assert not aneurysm[tuple(indices.T)].any()
 
 
+def test_sac_centroid_avoids_full_component_argwhere_at_the_grid_limit(monkeypatch):
+    shape = (200, 200, 200)
+    sac = np.zeros(shape, dtype=bool)
+    sac[2:198, 1:199, 1:199] = True
+    vessel = np.zeros(shape, dtype=bool)
+    vessel[:2, 1:199, 1:199] = True
+    original = np.argwhere
+
+    def bounded_argwhere(mask):
+        if mask.shape == shape:
+            assert np.count_nonzero(mask) <= 100_000, (
+                "Unbounded full-sac coordinate materialization"
+            )
+        return original(mask)
+
+    monkeypatch.setattr(np, "argwhere", bounded_argwhere)
+    result = propose_aneurysm_inputs(vessel, sac, np.eye(4), spatial_units="mm")
+    assert result["diagnostics"]["grid_shape"] == list(shape)
+    assert result["diagnostics"]["aneurysm_component_voxels"] == int(sac.sum())
+    assert result["diagnostics"]["parent_point_count"] == 32
+    assert result["inputs"]["neck_origin"] == [2.0, 99.5, 99.5]
+    assert result["inputs"]["neck_normal"] == [1.0, 0.0, 0.0]
+
+
 @pytest.mark.parametrize("shift", [-2, -1, 0, 1, 2])
 def test_symmetric_sac_interface_does_not_invent_an_outward_orientation(shift):
     x, y, z = np.indices((32, 32, 32))
