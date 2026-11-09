@@ -175,7 +175,7 @@ def propose_aneurysm_inputs(
     from planner.centerline import propose_centerline
 
     path = propose_centerline(
-        vessel_mask, affine_ras, start_ras, end_ras, spatial_units=spatial_units
+        vessel_only, affine_ras, start_ras, end_ras, spatial_units=spatial_units
     )
 
     return {

@@ -105,6 +105,34 @@ def test_green_determinism_and_scale_consistency():
     )
 
 
+@pytest.mark.parametrize("axis", [0, 1, 2])
+@pytest.mark.parametrize("offset", [0.5, 0.4])
+def test_fractional_target_beyond_last_voxel_center_is_rejected_before_rounding(axis, offset):
+    vessel, aneurysm = _green_masks()
+    target = SAC_CENTER.copy()
+    target[axis] = aneurysm.shape[axis] - offset
+    with pytest.raises(ValueError, match="outside the installed image"):
+        propose_aneurysm_inputs(vessel, aneurysm, AFFINE, target_ras=target, spatial_units="mm")
+
+
+def test_last_voxel_center_remains_admitted():
+    vessel, aneurysm = _green_masks()
+    vessel, aneurysm = np.roll(vessel, 4, axis=0), np.roll(aneurysm, 4, axis=0)
+    result = propose_aneurysm_inputs(
+        vessel, aneurysm, AFFINE, target_ras=[vessel.shape[0] - 1, 4, 12], spatial_units="mm"
+    )
+    assert result["diagnostics"]["target_component_selected"] is True
+
+
+def test_parent_path_stations_remain_outside_the_selected_sac():
+    vessel, aneurysm = _green_masks()
+    result = propose_aneurysm_inputs(vessel, aneurysm, AFFINE, spatial_units="mm")
+    indices = np.rint(result["inputs"]["parent_path"]).astype(int)
+    parent = vessel.astype(bool) & ~aneurysm.astype(bool)
+    assert parent[tuple(indices.T)].all()
+    assert not aneurysm[tuple(indices.T)].any()
+
+
 def test_target_selects_requested_component_among_many():
     vessel, aneurysm = _green_masks()
     x, y, z = np.indices(vessel.shape)

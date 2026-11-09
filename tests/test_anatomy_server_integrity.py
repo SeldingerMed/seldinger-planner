@@ -21,6 +21,17 @@ def request(client, case, revision, **overrides):
     )
 
 
+@pytest.mark.parametrize("target", [[3.5, 2, 2], [3.6, 2, 2], [1, 4.5, 2], [1, 2, 5.5]])
+def test_fractional_target_beyond_last_center_is_422_before_runner(tmp_path, monkeypatch, target):
+    calls = []
+    client, case, revision, _, _, _ = configured(
+        tmp_path, monkeypatch, lambda job: calls.append(job)
+    )
+    response = request(client, case, revision, target_ras=target)
+    assert response.status_code == 422, response.text
+    assert calls == []
+
+
 def test_default_supervisor_uses_server_configured_blob_root(tmp_path, monkeypatch):
     seen = []
 
