@@ -96,6 +96,18 @@ async function waitReady() {
 }
 
 describe("MorphometryInputs", () => {
+  it.each([null, { ...binding, image_sha256: "c".repeat(64) }])("hides the ready proposal panel immediately when binding becomes %j", async (nextBinding) => {
+    const { view } = renderInputs();
+    await waitReady();
+    expect(screen.getByRole("button", { name: "Propose geometry from accepted anatomy" })).toBeInTheDocument();
+    const fetch = vi.mocked(globalThis.fetch);
+    view.rerender(<MorphometryInputs {...baseProps} binding={nextBinding} />);
+    expect(screen.queryByRole("button", { name: "Propose geometry from accepted anatomy" })).not.toBeInTheDocument();
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByRole("button", { name: "Propose geometry from accepted anatomy" })).not.toBeInTheDocument();
+    expect(fetch.mock.calls.some(([url]) => String(url).includes("/undefined/"))).toBe(false);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+  });
   it.each(["mismatched echo", "lost response"])(
     "locks an unconfirmed save after %s instead of retrying a possibly committed write",
     async (failure) => {

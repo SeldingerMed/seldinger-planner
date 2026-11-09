@@ -225,7 +225,8 @@ export default function DeviceScenarioSync({
       patch({
         loading: false,
         revision: null,
-        baseline: null,
+        // Retain the comparison baseline: the parent still owns its unsaved
+        // rows. A failed read invalidates readiness, not those local edits.
         lock: "read",
         status: null,
         error: READ_ERROR,

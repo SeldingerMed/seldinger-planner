@@ -19,9 +19,10 @@ vi.mock("./DeviceScene", () => ({ default: ({file,meshes}:{file:File|null;meshes
   return <div data-testid="device-scene" data-mount={mount.current} data-has-file={String(file !== null)} data-mesh-ids={JSON.stringify(meshes.map((mesh)=>mesh.id))} />;
 } }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear(); });
-async function mount({save = false, saveStatus = 200, onClose = () => {}, scenarioSet = workflow.scenarios, geometry = workflow.geometry, geometryError = false, scenarioReady = Promise.resolve(), surfaceReady = Promise.resolve(), surfaceStatus = 200}:{save?:boolean;saveStatus?:number;onClose?:()=>void;scenarioSet?:unknown;geometry?:unknown;geometryError?:boolean;scenarioReady?:Promise<void>;surfaceReady?:Promise<void>;surfaceStatus?:number} = {}) {
+async function mount({save = false, saveStatus = 200, onClose = () => {}, scenarioSet = workflow.scenarios, geometry = workflow.geometry, geometryError = false, scenarioReady = Promise.resolve(), scenarioReloadFailure, surfaceReady = Promise.resolve(), surfaceStatus = 200}:{save?:boolean;saveStatus?:number;onClose?:()=>void;scenarioSet?:unknown;geometry?:unknown;geometryError?:boolean;scenarioReady?:Promise<void>;scenarioReloadFailure?:"network"|"503"|"malformed";surfaceReady?:Promise<void>;surfaceStatus?:number} = {}) {
   const bytes = new Uint8Array(200);
   const digest = await sha256Hex(bytes.buffer);
+  let scenarioReads = 0;
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/local-brief")) return Response.json(numericalBrief);
@@ -35,7 +36,15 @@ async function mount({save = false, saveStatus = 200, onClose = () => {}, scenar
     }
     if (url.endsWith("/device-scenario-catalog")) return new Response(JSON.stringify(catalogue));
     if (url.endsWith("/device-scenarios") && init?.method === "PUT" && save) return new Response(JSON.stringify(saves.third_ack),{status:saveStatus});
-    if (url.endsWith("/device-scenarios") && (!init?.method || init.method === "GET")) { await scenarioReady; return new Response(JSON.stringify(scenarioSet)); }
+    if (url.endsWith("/device-scenarios") && (!init?.method || init.method === "GET")) {
+      await scenarioReady;
+      if (++scenarioReads === 2) {
+        if (scenarioReloadFailure === "network") throw new Error("Synthetic read failure");
+        if (scenarioReloadFailure === "503") return Response.json({ detail: "Unavailable" }, { status: 503 });
+        if (scenarioReloadFailure === "malformed") return Response.json({ invalid: true });
+      }
+      return new Response(JSON.stringify(scenarioSet));
+    }
     throw new Error("Unexpected test fetch " + url);
   });
   vi.stubGlobal("fetch", fetch);
@@ -77,6 +86,30 @@ test("a stale initial set is clean until the operator creates a draft, which rem
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
   expect(screen.getByRole("button", { name: "Close studio" })).toBeDisabled();
   expect(screen.getByText(/1 scenario\(s\) in this draft/)).toBeInTheDocument();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
+});
+
+test.each(["network", "503", "malformed"] as const)("a failed %s reload retains dirty operator rows and requires explicit discard", async (scenarioReloadFailure) => {
+  const fetch = await mount({ scenarioReloadFailure });
+  await screen.findByText("Exploratory WEB SL");
+  fireEvent.click(screen.getByRole("button", { name: /^WEB SLTerumo/ }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Add alternative to draft" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Add alternative to draft" }));
+  await screen.findByText(/3 scenario\(s\) in this draft/);
+  expect(screen.getByRole("button", { name: "Close studio" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved scenarios" }));
+  await screen.findByText(/The saved scenario set could not be read/);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Reload saved scenarios" })).toBeEnabled());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(screen.getByRole("button", { name: "Close studio" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Discard local draft and close" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Save scenario set" })).toBeDisabled();
+  expect(screen.getByText(/3 scenario\(s\) in this draft/)).toBeInTheDocument();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved scenarios" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Add alternative to draft" })).toBeEnabled());
+  await screen.findByText(/2 scenario\(s\) in this draft/);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Close studio" })).toBeEnabled());
   expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
 });
 
