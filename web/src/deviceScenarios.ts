@@ -303,7 +303,7 @@ function validateScenarios(value: unknown): DeviceScenarioEntry[] {
     if (seen.has(id)) fail("scenario ids must be unique per batch");
     seen.add(id);
     const name = text(entry.name, "scenario.name");
-    if (name.length > 80) fail("scenario name must be 1..80 characters");
+    if (Array.from(name).length > 80) fail("scenario name must be 1..80 characters");
     if (_CONTROL_PATTERN.test(name)) {
       fail("scenario name must not contain control characters");
     }
@@ -315,7 +315,7 @@ function validateScenarios(value: unknown): DeviceScenarioEntry[] {
     fail(`at most ${_MAX_COORDINATE_TRIPLES} coordinate triples per batch`);
   }
   const payload = JSON.stringify(entries);
-  if (payload.length > _MAX_SCENARIO_BYTES) {
+  if (new TextEncoder().encode(payload).byteLength > _MAX_SCENARIO_BYTES) {
     fail(`scenarios exceed ${_MAX_SCENARIO_BYTES / 1024}KiB`);
   }
   return entries;

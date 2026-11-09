@@ -1,7 +1,7 @@
 // Strict decoder tests against the actual synthetic API producer
 // receipt envelopes (phase5 device-dto). Fixtures are literal; every
 // negative test deep-copies before mutating.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   parseDeviceScenarios,
   type DeviceScenarioBinding,
@@ -105,6 +105,28 @@ const staleEnvelope = {
 const clone = (value: unknown) => structuredClone(value);
 
 describe("parseDeviceScenarios", () => {
+  it("measures the scenario envelope using real UTF-8 bytes rather than UTF-16 units", () => {
+    const raw = structuredClone(currentEnvelope);
+    raw.current.scenarios[0].name = "測".repeat(80);
+    const payload = JSON.stringify(raw.current.scenarios);
+    const encoder = vi.spyOn(TextEncoder.prototype, "encode");
+    try {
+      parseDeviceScenarios(raw, binding);
+      expect(encoder).toHaveBeenCalledWith(payload);
+      const call = encoder.mock.calls.findIndex(([text]) => text === payload);
+      expect(encoder.mock.results[call].value.byteLength).toBe(new Blob([payload]).size);
+      expect(new Blob([payload]).size).toBeGreaterThan(payload.length);
+    } finally {
+      encoder.mockRestore();
+    }
+  });
+
+  it("admits a producer-valid eighty-codepoint non-BMP name", () => {
+    const raw = structuredClone(currentEnvelope);
+    raw.current.scenarios[0].name = "🫀".repeat(80);
+    expect(parseDeviceScenarios(raw, binding).current.status).toBe("current");
+  });
+
   it("rejects sparse placement coordinates during the finite JSON snapshot", () => {
     const raw = structuredClone(currentEnvelope);
     raw.current.scenarios[0].placement.center = new Array(3);

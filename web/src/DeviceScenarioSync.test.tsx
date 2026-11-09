@@ -135,6 +135,28 @@ beforeEach(() => {
 });
 
 describe("DeviceScenarioSync", () => {
+  it.each([413, 422])("hides the previous success status on definitive rejection %s and preserves retry", async (status) => {
+    apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(CURRENT_ENVELOPE)));
+    const { props, view } = setup();
+    await waitFor(() => expect(props.onRowsChange).toHaveBeenCalledOnce());
+    const saved = vi.mocked(props.onRowsChange).mock.calls[0][0];
+    const edited = [{ ...saved[0], name: "Operator changed this draft" }];
+    view.rerender(<DeviceScenarioSync {...props} rows={edited} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Saved revision 1");
+    apiMock.mockRejectedValueOnce(new WorkspaceRequestError(status));
+    fireEvent.click(screen.getByRole("button", { name: "Save scenario set" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(`Workspace request failed (${status})`));
+    expect(screen.getByRole("status")).toBeEmptyDOMElement();
+    expect(screen.queryByText(/Saved revision 1:/)).not.toBeInTheDocument();
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(true);
+    expect(screen.getByRole("button", { name: "Save scenario set" })).toBeEnabled();
+    apiMock.mockResolvedValueOnce(ackEnvelope(edited));
+    fireEvent.click(screen.getByRole("button", { name: "Save scenario set" }));
+    await screen.findByText(/Saved revision 2/);
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+    expect(props.onConflict).not.toHaveBeenCalled();
+  });
+
   it.each([[false, false], [true, false], [false, true], [true, true]])("keeps prior saved rows after stale reload (edited=%s, read recovery=%s)", async (edited, recoverReadFailure) => {
     apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(CURRENT_ENVELOPE)));
     if (recoverReadFailure) apiMock.mockRejectedValueOnce(new Error("Declared read failure"));
