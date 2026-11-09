@@ -135,6 +135,46 @@ beforeEach(() => {
 });
 
 describe("DeviceScenarioSync", () => {
+  it.each([[false, false], [true, false], [false, true], [true, true]])("keeps prior saved rows after stale reload (edited=%s, read recovery=%s)", async (edited, recoverReadFailure) => {
+    apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(CURRENT_ENVELOPE)));
+    if (recoverReadFailure) apiMock.mockRejectedValueOnce(new Error("Declared read failure"));
+    apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(STALE_ENVELOPE)));
+    const { props, view } = setup();
+    await waitFor(() => expect(props.onRowsChange).toHaveBeenCalledOnce());
+    const saved = vi.mocked(props.onRowsChange).mock.calls[0][0];
+    view.rerender(<DeviceScenarioSync {...props} rows={saved} />);
+    await waitFor(() => expect(props.onDirtyChange).toHaveBeenLastCalledWith(false));
+    const rows = edited ? [{ ...saved[0], name: "Explicit unsaved change" }] : saved;
+    view.rerender(<DeviceScenarioSync {...props} rows={rows} />);
+    await waitFor(() => expect(props.onDirtyChange).toHaveBeenLastCalledWith(edited));
+    if (recoverReadFailure) {
+      fireEvent.click(screen.getByRole("button", { name: "Reload saved scenarios" }));
+      await screen.findByText(/saved scenario set could not be read/);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Reload saved scenarios" }));
+    await screen.findByText(/Saved set is stale/);
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(edited);
+    expect(props.onRowsChange).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Save scenario set" })).toBeEnabled();
+    expect(apiMock.mock.calls.every((args) => args[2] !== "PUT")).toBe(true);
+  });
+
+  it("compares against the verified acknowledgement on a subsequent stale reload", async () => {
+    const draft = JSON.parse(JSON.stringify(CURRENT_ENVELOPE.current.scenarios)) as DeviceScenarioEntry[];
+    apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(NOT_COMPUTED_ENVELOPE)));
+    apiMock.mockResolvedValueOnce(ackEnvelope(draft, 1));
+    apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(STALE_ENVELOPE)));
+    const { props } = setup({ rows: draft });
+    await screen.findByText(/No saved scenario set yet/);
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save scenario set" }));
+    await screen.findByText(/Saved revision 1/);
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "Reload saved scenarios" }));
+    await screen.findByText(/Saved set is stale/);
+    expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("loads the saved set on mount, echoes an independent clone, and round-trips an explicit save", async () => {
     apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(CURRENT_ENVELOPE)));
     apiMock.mockResolvedValueOnce(

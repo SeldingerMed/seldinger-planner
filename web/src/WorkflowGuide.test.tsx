@@ -145,3 +145,76 @@ it("exports freshly read evidence and never a cached brief", async () => {
     new TextEncoder().encode(fresh.markdown + "\n").byteLength,
   );
 });
+
+it.each([
+  ["nine-character id", "id", "short-id9"],
+  ["name longer than eighty codepoints", "name", "x".repeat(81)],
+])(
+  "rejects %s outside the producing scenario ledger contract",
+  (_label, key, value) => {
+    expect(parseWorkflowBrief(brief, identity).count).toBe(3);
+    const invalid = structuredClone(brief);
+    Object.assign(invalid.device_scenarios.scenarios[0], { [key]: value });
+    expect(() => parseWorkflowBrief(invalid, identity)).toThrow();
+  },
+);
+
+it("admits the producing ledger's ten-character id and eighty-codepoint name", () => {
+  const boundary = structuredClone(brief);
+  boundary.device_scenarios.scenarios[0].id = "abcdefghij";
+  boundary.device_scenarios.scenarios[0].name = "🫀".repeat(80);
+  expect(parseWorkflowBrief(boundary, identity).count).toBe(3);
+});
+
+it("exports fresh saved territory evidence without requiring neurovascular anatomy", async () => {
+  const sourceOnly = {
+    ...brief,
+    planning: {
+      ...brief.planning,
+      segmentation_summary: [],
+      morphometry_summary: null,
+    },
+    device_scenarios: { status: "unavailable" },
+  };
+  const fresh = {
+    ...sourceOnly,
+    markdown: sourceOnly.markdown + "\nFresh territory export fixture",
+  };
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(Response.json(sourceOnly))
+    .mockResolvedValueOnce(Response.json(fresh));
+  vi.stubGlobal("fetch", read);
+  const create = vi.fn(() => "blob:territory-export");
+  vi.stubGlobal(
+    "URL",
+    class extends URL {
+      static createObjectURL = create;
+      static revokeObjectURL = vi.fn();
+    },
+  );
+  const click = vi
+    .spyOn(HTMLAnchorElement.prototype, "click")
+    .mockImplementation(() => {});
+  const view = render(<WorkflowGuide {...props} exportOnly />);
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Download planning brief" }),
+    ).toBeEnabled(),
+  );
+  expect(
+    screen.queryByRole("button", { name: "4 Device scenarios" }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Download planning brief" }),
+  );
+  await waitFor(() => expect(click).toHaveBeenCalledOnce());
+  expect(read).toHaveBeenCalledTimes(2);
+  expect((create.mock.calls[0] as unknown as [Blob])[0].size).toBe(
+    new TextEncoder().encode(fresh.markdown + "\n").byteLength,
+  );
+  view.rerender(<WorkflowGuide {...props} exportOnly dirty />);
+  expect(
+    screen.getByRole("button", { name: "Download planning brief" }),
+  ).toBeDisabled();
+});

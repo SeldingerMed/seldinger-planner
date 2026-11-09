@@ -267,3 +267,27 @@ def test_unknown_centerline_kind_is_rejected(tmp_path, monkeypatch):
     envelope, geometry = stored_rod_envelope(tmp_path, monkeypatch)
     with pytest.raises(ValueError):
         project_numerical(identity_of(envelope), "centerline", envelope, geometry)
+
+
+@pytest.mark.parametrize("iterations", [-1, 151, 10**30, True])
+def test_projection_rejects_iterations_outside_the_producer_contract(
+    tmp_path, monkeypatch, iterations
+):
+    envelope, geometry = stored_rod_envelope(tmp_path, monkeypatch)
+    assert (
+        project_numerical(identity_of(envelope), "rod-deployment", envelope, geometry)["iterations"]
+        == 1
+    )
+    envelope["current"]["result"]["iterations"] = iterations
+    with pytest.raises(ValueError):
+        project_numerical(identity_of(envelope), "rod-deployment", envelope, geometry)
+
+
+@pytest.mark.parametrize("iterations", [0, 150])
+def test_projection_admits_iteration_boundaries(tmp_path, monkeypatch, iterations):
+    envelope, geometry = stored_rod_envelope(tmp_path, monkeypatch)
+    envelope["current"]["result"]["iterations"] = iterations
+    assert (
+        project_numerical(identity_of(envelope), "rod-deployment", envelope, geometry)["iterations"]
+        == iterations
+    )

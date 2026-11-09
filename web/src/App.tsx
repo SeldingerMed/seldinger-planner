@@ -869,7 +869,8 @@ export default function App() {
         <aside className="planning-panel">
           <div className="eyebrow">03 / PLANNING</div>
           <h2>Procedure planning.</h2>
-          {!territoryWorkspace && <WorkflowGuide
+          <WorkflowGuide
+            exportOnly={territoryWorkspace}
             identity={caseState && planningSource ? {
               case_id: caseState.case_id, image_sha256: caseState.image_sha256,
               artifact_version: caseState.artifact_version, reference_revision: planningSource.reference_revision,
@@ -881,7 +882,7 @@ export default function App() {
             refreshKey={`${reloadEpoch}:${geometryEpoch}:${deviceEpoch}:${studioOpen}`}
             onImport={() => importInput.current?.click()}
             onScenarios={() => setStudioOpen(true)}
-          />}
+          />
           <div
             className="territory-modes"
             role="group"

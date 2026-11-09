@@ -17,6 +17,7 @@ type Props = {
   refreshKey: string;
   onImport: () => void;
   onScenarios: () => void;
+  exportOnly?: boolean;
 };
 type Snapshot = {
   anatomy: boolean;
@@ -177,10 +178,10 @@ export function parseWorkflowBrief(
           record(row) &&
           keys(row, ["id", "name", "placement", "path_point_count"]) &&
           typeof row.id === "string" &&
-          /^[A-Za-z0-9_-]{8,80}$/.test(row.id) &&
+          /^[A-Za-z0-9_-]{10,80}$/.test(row.id) &&
           typeof row.name === "string" &&
-          row.name.length > 0 &&
-          row.name.length <= 120 &&
+          Array.from(row.name).length > 0 &&
+          Array.from(row.name).length <= 80 &&
           record(row.placement) &&
           Number.isSafeInteger(row.path_point_count) &&
           (row.path_point_count as number) >= 2 &&
@@ -228,12 +229,13 @@ export default function WorkflowGuide({
   refreshKey,
   onImport,
   onScenarios,
+  exportOnly = false,
 }: Props) {
   const scope = identity
     ? identityKeys.map((k) => identity[k as keyof WorkflowIdentity]).join(":")
     : "";
   const [epoch, setEpoch] = useState(0);
-  const request = `${scope}:${refreshKey}:${epoch}`;
+  const request = `${scope}:${refreshKey}:${epoch}:${exportOnly}`;
   const latest = useRef({ request, blocked: dirty || busy || conflict });
   latest.current = { request, blocked: dirty || busy || conflict };
   const [state, setState] = useState<{
@@ -273,7 +275,13 @@ export default function WorkflowGuide({
     };
   }, [request]);
   async function download() {
-    if (!identity || !current?.geometry || latest.current.blocked || exporting)
+    if (
+      !identity ||
+      !current ||
+      (!exportOnly && !current.geometry) ||
+      latest.current.blocked ||
+      exporting
+    )
       return;
     const captured = request;
     setExporting(true);
@@ -286,7 +294,7 @@ export default function WorkflowGuide({
       if (
         latest.current.request !== captured ||
         latest.current.blocked ||
-        !fresh.geometry
+        (!exportOnly && !fresh.geometry)
       )
         throw new Error();
       const url = URL.createObjectURL(
@@ -308,6 +316,39 @@ export default function WorkflowGuide({
       if (latest.current.request === captured) setExporting(false);
     }
   }
+  if (exportOnly)
+    return (
+      <section className="workflow-guide" aria-label="Saved planning export">
+        <div className="eyebrow">PLANNING BRIEF</div>
+        <button
+          disabled={!current || busy || dirty || conflict || exporting}
+          onClick={() => void download()}
+        >
+          Download planning brief
+        </button>
+        <p className="muted small" role="status">
+          {conflict
+            ? "Saved state changed. Reload saved state before continuing."
+            : dirty
+              ? "Unsaved edits. Save or discard them before exporting."
+              : busy
+                ? "Operation in progress."
+                : loading
+                  ? "Reading saved workflow evidence…"
+                  : error ||
+                    "Saved evidence only. Stale or unavailable measurements remain marked in the brief."}
+        </p>
+        {exportError && <p role="alert">{exportError}</p>}
+        <button
+          disabled={
+            !identity || loading || busy || dirty || conflict || exporting
+          }
+          onClick={() => setEpoch((e) => e + 1)}
+        >
+          Refresh workflow
+        </button>
+      </section>
+    );
   return (
     <nav className="workflow-guide" aria-label="Planning workflow">
       <div className="eyebrow">PLANNING WORKFLOW</div>

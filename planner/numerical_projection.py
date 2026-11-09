@@ -106,7 +106,11 @@ def _result_output(kind, result):
             raise ValueError("Invalid rod result fields")
         if type(result["optimizer_success"]) is not bool:
             raise ValueError("Invalid rod convergence flag")
-        if not isinstance(result["iterations"], int) or isinstance(result["iterations"], bool):
+        if (
+            not isinstance(result["iterations"], int)
+            or isinstance(result["iterations"], bool)
+            or not 0 <= result["iterations"] <= 150
+        ):
             raise ValueError("Invalid rod convergence diagnostics")
         return {
             "method": _ROD_METHOD,

@@ -34,6 +34,8 @@ type SyncState = {
   revision: number | null;
   /** JSON baseline of the last authoritative scenario rows ([] for a fresh draft). */
   baseline: string | null;
+  /** Last confirmed saved rows, retained only as an edit-comparison baseline. */
+  savedBaseline: string | null;
   lock: LockReason;
   status: string | null;
   error: string | null;
@@ -64,6 +66,7 @@ function initialState(key: string): SyncState {
     loading: false,
     revision: null,
     baseline: null,
+    savedBaseline: null,
     lock: null,
     status: null,
     error: null,
@@ -201,16 +204,19 @@ export default function DeviceScenarioSync({
       if (envelope.current.status === "current") {
         const saved = cloneRows(envelope.current.scenarios);
         base.baseline = rowsJson(saved);
+        base.savedBaseline = base.baseline;
         base.status = `Saved revision ${envelope.scenario_revision}: ${saved.length} scenario(s).`;
         // Independent clone: the parent draft must never alias panel state.
         echoRef.current(saved);
       } else if (envelope.current.status === "not_computed") {
         // No saved set yet: keep any editable fresh draft, empty baseline.
         base.baseline = "[]";
+        base.savedBaseline = null;
         base.status = "No saved scenario set yet. Your draft can be saved as revision 1.";
       } else {
-        // Stale: keep the opaque revision, do not resurrect old placements.
-        base.baseline = "[]";
+        // Keep the last confirmed rows only for dirty comparison, never as
+        // current saved evidence. Reading staleness alone is not an edit.
+        base.baseline = sync.savedBaseline ?? "[]";
         base.status = `Saved set is stale (${envelope.current.stale_reasons[0]}). Review and save to replace it as revision ${envelope.scenario_revision + 1}.`;
       }
       patch(base);
@@ -276,6 +282,7 @@ export default function DeviceScenarioSync({
       }
       const base: Partial<SyncState> = {
         revision: ackRevision,
+        savedBaseline: ackRows,
         lock: null,
         error: null,
         status: `Saved revision ${ackRevision}: ${sentRows.length} scenario(s).`,

@@ -1,6 +1,7 @@
 """Anatomy proposal admission, producer-shape and source-race regressions."""
 
 import json
+import sqlite3
 
 import pytest
 from test_anatomy_server import configured, proposal_result
@@ -140,3 +141,32 @@ def test_body_cap_is_prework_and_does_not_hold_inference_gate(tmp_path, monkeypa
     )
     assert response.status_code == 413
     assert request(client, case, revision).status_code == 200
+
+
+def test_mask_hashing_does_not_hold_the_metadata_snapshot_open(tmp_path, monkeypatch):
+    client, case, revision, _, _, _ = configured(tmp_path, monkeypatch, proposal_result)
+    connections = []
+    checks = []
+    connect = anatomy_server._connect
+    verify = anatomy_server.verified_bytes
+
+    def tracked_connect(path):
+        conn = connect(path)
+        connections.append(conn)
+        return conn
+
+    def verify_outside_snapshot(path, sha):
+        for conn in connections:
+            try:
+                active = conn.in_transaction
+            except sqlite3.ProgrammingError:
+                active = False  # The snapshot connection is already closed.
+            assert not active, "Mask I/O held an open metadata snapshot"
+        checks.append(sha)
+        return verify(path, sha)
+
+    monkeypatch.setattr(anatomy_server, "_connect", tracked_connect)
+    monkeypatch.setattr(anatomy_server, "verified_bytes", verify_outside_snapshot)
+    response = request(client, case, revision)
+    assert response.status_code == 200, response.text
+    assert len(checks) == 4  # Both roles, before and after the actual proposal call.

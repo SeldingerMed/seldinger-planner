@@ -110,9 +110,13 @@ def register_anatomy_routes(app, db_path, sources, read_case, results_dir, runne
                     key: entry[key]
                     for key in ("candidate_id", "mask_sha256", "segmentation_revision")
                 }
-                verified_bytes(
-                    results_dir / "blobs" / f"{entry['mask_sha256']}.nii.gz", entry["mask_sha256"]
-                )
+        # Freeze database metadata first, then perform bounded blob I/O without
+        # retaining the snapshot's read lock. The worker and post-run capture
+        # independently recheck the exact bytes and dependencies.
+        for mask in masks.values():
+            verified_bytes(
+                results_dir / "blobs" / f"{mask['mask_sha256']}.nii.gz", mask["mask_sha256"]
+            )
         identity = {key: case[key] for key in ("case_id", "image_sha256", "artifact_version")}
         identity["reference_revision"] = bundle[1]
         dependencies = {

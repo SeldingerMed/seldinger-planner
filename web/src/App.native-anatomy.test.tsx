@@ -39,6 +39,7 @@ vi.mock("./DeviceReference", () => ({ default: () => null }));
 vi.mock("./DeviceSizingInputs", () => ({ default: () => null }));
 vi.mock("./DeviceSizingPanel", () => ({ default: () => null }));
 vi.mock("./ReformatStudio", () => ({ default: () => null }));
+vi.mock("./TerritoryStudio", () => ({ default: () => <div>Declared territory editor stub</div> }));
 vi.mock("./devices/DeviceStudio", () => ({
   default: ({ onClose }: { onClose: () => void }) => (
     <div role="dialog" aria-label="Declared studio stub">
@@ -153,6 +154,13 @@ it("integrates saved-state workflow guidance and makes the background inert whil
   expect(screen.getByRole("button", {name:"Download planning brief"})).toBeDisabled();
   fireEvent.change(notes,{target:{value:deviceWorkflow.case.notes}});
   expect(screen.getByRole("button", {name:"Device studio"})).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Cardiac and aortic" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Download planning brief" })).toBeEnabled());
+  fireEvent.change(notes, { target: { value: "Unsaved territory note" } });
+  expect(screen.getByRole("button", { name: "Download planning brief" })).toBeDisabled();
+  fireEvent.change(notes, { target: { value: deviceWorkflow.case.notes } });
+  fireEvent.click(screen.getByRole("button", { name: "Neurovascular" }));
+  await screen.findByText("3 saved alternatives");
   fireEvent.click(screen.getByRole("button", { name: "4 Device scenarios" }));
   await screen.findByRole("dialog", { name: "Declared studio stub" });
   expect(
