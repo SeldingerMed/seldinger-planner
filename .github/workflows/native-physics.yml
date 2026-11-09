@@ -21,8 +21,12 @@ jobs:
         with:
           version: '0.13.5'
           python-version: '3.11'
+      - run: uv sync --frozen --group dev
       - run: uv venv --python 3.11 .runtime/physics-runtime
       - run: uv pip sync --python .runtime/physics-runtime/bin/python --require-hashes requirements/physics.txt
+      # Geometry uses its fixed ml-runtime path; this lane needs no trained models.
+      - run: uv venv --python 3.11 .runtime/ml-runtime
+      - run: uv pip sync --python .runtime/ml-runtime/bin/python --require-hashes requirements/physics.txt
       - run: >-
           .runtime/physics-runtime/bin/python -m pytest -q
           tests/ml_runtime/test_physics_worker.py
@@ -33,3 +37,10 @@ jobs:
           tests/ml_runtime/test_rod_contact.py
           tests/ml_runtime/test_lumen_contact.py
           tests/ml_runtime/test_lumen_distance.py
+          tests/ml_runtime/test_anatomy_proposals.py
+          tests/ml_runtime/test_anatomy_proposal_geometry.py
+          tests/ml_runtime/test_anatomy_worker.py
+          tests/ml_runtime/test_anatomy_default_path.py
+          tests/ml_runtime/test_model_evaluation.py
+          tests/ml_runtime/test_source_context.py
+          tests/ml_runtime/test_phase5_worker.py

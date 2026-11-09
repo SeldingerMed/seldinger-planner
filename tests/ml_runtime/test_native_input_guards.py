@@ -176,6 +176,18 @@ def test_decompression_byte_cap(tmp_path, monkeypatch):
         native_inputs.decode_bytes(truncated)
 
 
+def test_valid_payload_at_decompression_cap_is_admitted_but_one_more_byte_is_not(monkeypatch):
+    from planner import native_inputs
+
+    image = nib.Nifti1Image(np.zeros((4, 5, 6), dtype=np.uint8), np.eye(4))
+    image.header.set_xyzt_units("mm")
+    raw = image.to_bytes()
+    monkeypatch.setattr(native_inputs, "MAX_RAW_BYTES", len(raw))
+    assert native_inputs.decode_bytes(gzip.compress(raw)).shape == (4, 5, 6)
+    with pytest.raises(ValueError, match="decompression bound"):
+        native_inputs.decode_bytes(gzip.compress(raw + b"\x00"))
+
+
 def test_exact_byte_decode_no_reread_between_hash_and_decode(tmp_path, monkeypatch):
     """TOCTOU probe: the bytes hashed are the bytes decoded, even if the file
     on disk is replaced after verification."""

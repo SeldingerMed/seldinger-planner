@@ -1,5 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import type { CaseState } from "../api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { api, type CaseState } from "../api";
+import DeviceScenarioSync from "../DeviceScenarioSync";
+import SavedNumericalRuns from "./SavedNumericalRuns";
+import type { DeviceScenarioBinding, DeviceScenarioEntry } from "../deviceScenarios";
+import { verifyScenarioCatalog } from "../scenarioCatalog";
 import DeviceScene, { type SceneMesh } from "./DeviceScene";
 import PhysicsBench from "./PhysicsBench";
 import NumericalPhysics from "./NumericalPhysics";
@@ -51,10 +55,19 @@ const initial: Placement = {
   coilLength: 100,
   braidAngle: 55,
 };
+// Matches the separate bounded read-only native-surface producer (60k triangles).
+const MAX_ANATOMY_SURFACE_BYTES = 3_000_084;
 const finite3 = (p: unknown): p is Triple =>
   Array.isArray(p) &&
   p.length === 3 &&
   p.every((v) => typeof v === "number" && Number.isFinite(v));
+function scenarioDimensions(p: Placement) {
+  const category = DEVICE_CATALOG.devices.find(d => d.id === p.deviceId)?.category;
+  if (category === "intrasaccular") return `${p.diameter} mm diameter × ${p.height} mm height`;
+  if (category === "flow-diverter") return `${p.diameter} mm diameter × ${p.length} mm length`;
+  if (category === "coil") return `${p.diameter} mm illustrative sac diameter · ${p.coilLength} mm secondary coil length`;
+  return `Stored parameters: diameter ${p.diameter} mm · length ${p.length} mm · height ${p.height} mm`;
+}
 function Slider({
   label,
   value,
@@ -143,7 +156,11 @@ export default function DeviceStudio({
 }: Props) {
   const [placement, setPlacement] = useState<Placement>(initial),
     [showReferences, setReferences] = useState(false),
-    [view, setView] = useState<"bench" | "anatomy">("bench");
+    [view, setView] = useState<"bench" | "anatomy">(
+      file && caseState?.spatial_units === "mm" && sourceRevision ? "anatomy" : "bench",
+    );
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const [layout, setLayout] = useState<"linked" | "volume">("volume"),
     [clip, setClip] = useState(2),
     [ctaOpacity, setCtaOpacity] = useState(0.12),
@@ -163,6 +180,12 @@ export default function DeviceStudio({
     [loading, setLoading] = useState(false),
     [scenarios, setScenarios] = useState<Scenario[]>([]),
     [compareId, setCompareId] = useState("");
+  const [catalogue, setCatalogue] = useState<{key:string; version:string|null; error:string}|null>(null);
+  const [nativeDraft, setNativeDraft] = useState<{key:string; rows:DeviceScenarioEntry[]}>({key:"",rows:[]});
+  const [nativeReady, setNativeReady] = useState<{key:string; value:boolean}>({key:"",value:false});
+  const [nativeDirty, setNativeDirty] = useState<{key:string; value:boolean}>({key:"",value:false});
+  const [nativeBusy, setNativeBusy] = useState(false);
+  const [numericalEpoch, setNumericalEpoch] = useState(0);
   const [picked, setPicked] = useState<Triple[]>([]),
     [name, setName] = useState("Alternative 1"),
     [showCTA, setShowCTA] = useState(true),
@@ -179,7 +202,9 @@ export default function DeviceStudio({
     setAnatomy(null);
     setAnatomyMeshes([]);
     setScenarios([]);
-    setView("bench");
+    const nextView = file && caseState?.spatial_units === "mm" && sourceRevision ? "anatomy" : "bench";
+    viewRef.current = nextView;
+    setView(nextView);
     setPlacement(structuredClone(initial));
     setPicked([]);
     setLocation(null);
@@ -265,13 +290,13 @@ export default function DeviceStudio({
           if (
             !r.ok ||
             r.headers.get("X-Mask-Sha256") !== e.mask_sha256 ||
-            Number(r.headers.get("content-length")) > 2500084
+            Number(r.headers.get("content-length")) > MAX_ANATOMY_SURFACE_BYTES
           )
             throw new Error(
               "Accepted-mask surface unavailable. Reopen after the local API is updated.",
             );
           const bytes = await r.arrayBuffer();
-          if (bytes.byteLength > 2500084 || bytes.byteLength < 134)
+          if (bytes.byteLength > MAX_ANATOMY_SURFACE_BYTES || bytes.byteLength < 134)
             throw new Error("Surface size rejected");
           const hash = await sha256Hex(bytes);
           if (hash !== r.headers.get("X-Surface-Sha256"))
@@ -296,6 +321,10 @@ export default function DeviceStudio({
           setLoadedIdentity(identity);
           setAnatomy(a);
           setAnatomyMeshes(meshes);
+          if (viewRef.current === "anatomy") {
+            setPlacement(prior => ({...prior, path:a.path, center:a.center!, axis:a.axis!, offset:0}));
+            setLayout("linked");
+          }
         }
       } catch (e) {
         if (active) {
@@ -310,32 +339,62 @@ export default function DeviceStudio({
       active = false;
     };
   }, [identity]);
+  const canAnatomy = !!(file && loadedIdentity === identity && !loadError && !loading &&
+    anatomy && anatomyMeshes.length === 2 && caseState?.spatial_units === "mm");
+  const nativeSourceKey = `${identity}:${anatomy?.geometryResultId ?? "none"}`;
+  const catalogueVersion = catalogue?.key === nativeSourceKey ? catalogue.version : null;
+  const nativeKey = `${nativeSourceKey}:${catalogueVersion ?? "unconfirmed"}`;
+  useEffect(() => {
+    if (view !== "anatomy" || !canAnatomy) return;
+    let active = true;
+    setCatalogue({key:nativeSourceKey,version:null,error:""});
+    (async () => {
+      try {
+        const version = await verifyScenarioCatalog(await api<unknown>("/device-scenario-catalog"));
+        if (active) setCatalogue({key:nativeSourceKey,version,error:""});
+      } catch {
+        if (active) setCatalogue({key:nativeSourceKey,version:null,error:"Device catalogue could not be matched to this app. Reopen the studio after updating."});
+      }
+    })();
+    return () => { active = false; };
+  }, [view, canAnatomy, nativeSourceKey]);
+  const nativeBinding: DeviceScenarioBinding | null = canAnatomy && catalogueVersion && caseState && sourceRevision && anatomy ? {
+    case_id:caseState.case_id, image_sha256:caseState.image_sha256, artifact_version:caseState.artifact_version,
+    reference_revision:sourceRevision, geometry_result_id:anatomy.geometryResultId, catalog_version:catalogueVersion,
+  } : null;
+  const readyToEdit = view === "bench" || (nativeBinding !== null && nativeReady.key === nativeKey && nativeReady.value);
+  const hasNativeDraft = nativeDirty.key === nativeKey && nativeDirty.value;
   const binding: SceneBinding = useMemo(
     () => ({
       caseId: caseState?.case_id ?? "device-bench",
       imageSha: caseState?.image_sha256 ?? "none",
       artifactVersion: caseState?.artifact_version ?? "0",
       referenceRevision: sourceRevision ?? "none",
-      catalogVersion: DEVICE_CATALOG.catalogVersion,
+      catalogVersion: view === "anatomy" ? (catalogueVersion ?? "unconfirmed") : DEVICE_CATALOG.catalogVersion,
       geometryResultId:
         view === "anatomy"
           ? (anatomy?.geometryResultId ?? "none")
           : "device-bench",
     }),
-    [identity, anatomy?.geometryResultId, view],
+    [identity, anatomy?.geometryResultId, view, catalogueVersion],
   );
   const storageKey = `seldinger-device-scenarios-v1:${bindingKey(binding)}`;
   useEffect(() => {
+    if (view !== "bench") return;
     try {
       setScenarios(restoreScenarios(localStorage.getItem(storageKey), binding));
     } catch {
       setScenarios([]);
     }
-  }, [storageKey]);
+  }, [storageKey, view]);
+  const displayScenarios: Scenario[] = view === "bench" ? scenarios :
+    nativeBinding && nativeDraft.key === nativeKey ? nativeDraft.rows.map((row) => ({
+      ...row, binding, modelVersion:"procedural-device-v2" as const,
+    })) : [];
   const report = useMemo(
     () =>
-      comparePlacement(device, placement, view === "anatomy" ? anatomy : null),
-    [device, placement, anatomy, view],
+      comparePlacement(device, placement, view === "anatomy" && canAnatomy ? anatomy : null),
+    [device, placement, anatomy, view, canAnatomy],
   );
   const selectedModel = useMemo(() => {
     try {
@@ -344,10 +403,14 @@ export default function DeviceStudio({
       return { value: null, error: (e as Error).message };
     }
   }, [device, placement, angle]);
-  const compare = scenarios.find((s) => s.id === compareId);
+  function scenarioAvailable(row: Scenario) {
+    const spec = DEVICE_CATALOG.devices.find((item) => item.id === row.placement.deviceId);
+    return readyToEdit && !!spec && (!referenceOnly(spec) || showReferences);
+  }
+  const compare = displayScenarios.find((s) => s.id === compareId && scenarioAvailable(s));
   const clearance = useMemo(() => {
     if (
-      view !== "anatomy" ||
+      view !== "anatomy" || !canAnatomy ||
       device.category === "flow-diverter" ||
       !selectedModel.value ||
       !anatomy?.neckOrigin ||
@@ -361,8 +424,9 @@ export default function DeviceStudio({
       anatomy.axis,
       anatomy.center,
     );
-  }, [view, device, selectedModel, anatomy]);
+  }, [view, device, selectedModel, anatomy, canAnatomy]);
   const meshes = useMemo(() => {
+    if (view === "anatomy" && !canAnatomy) return [];
     const rows: SceneMesh[] =
       view === "anatomy"
         ? anatomyMeshes.filter((m) =>
@@ -411,6 +475,7 @@ export default function DeviceStudio({
     return rows;
   }, [
     view,
+    canAnatomy,
     anatomyMeshes,
     showVessel,
     showSac,
@@ -435,23 +500,19 @@ export default function DeviceStudio({
   }
   function save() {
     try {
-      const rows = saveScenario(scenarios, binding, placement, name);
-      localStorage.setItem(storageKey, JSON.stringify(rows));
-      setScenarios(rows);
+      if (!readyToEdit) return;
+      const rows = saveScenario(displayScenarios, binding, placement, name);
+      if (view === "anatomy") {
+        setNativeDraft({key:nativeKey,rows:rows.map(({id,name,placement}) => ({id,name,placement}))});
+      } else {
+        localStorage.setItem(storageKey, JSON.stringify(rows));
+        setScenarios(rows);
+      }
       setName(`Alternative ${rows.length + 1}`);
     } catch (e) {
       setError((e as Error).message);
     }
   }
-  const canAnatomy = !!(
-    file &&
-    loadedIdentity === identity &&
-    !loadError &&
-    !loading &&
-    anatomy &&
-    anatomyMeshes.length === 2 &&
-    caseState?.spatial_units === "mm"
-  );
   return (
     <section
       className="device-studio"
@@ -470,7 +531,8 @@ export default function DeviceStudio({
               ? "DEVICE BENCH · not patient anatomy"
               : `CTA · revision ${caseState?.artifact_version}`}
           </span>
-          <button onClick={onClose}>Close studio</button>
+          <button disabled={hasNativeDraft} onClick={onClose}>Close studio</button>
+          {hasNativeDraft && <button disabled={nativeBusy} onClick={onClose}>Discard local draft and close</button>}
         </div>
       </header>
       <div className="ds-body">
@@ -517,6 +579,7 @@ export default function DeviceStudio({
           <div className="ds-toolbar">
             <button
               className={view === "bench" ? "selected" : ""}
+              disabled={hasNativeDraft || nativeBusy}
               onClick={() => {
                 setView("bench");
                 setLayout("volume");
@@ -558,8 +621,8 @@ export default function DeviceStudio({
           </div>
           <div className="ds-canvas-wrap">
             <DeviceScene
-              key={`${view}:${identity}:${showCTA}`}
-              file={view === "anatomy" && showCTA ? file : null}
+              key={`${view}:${identity}:${showCTA}:${canAnatomy}`}
+              file={view === "anatomy" && canAnatomy && showCTA ? file : null}
               meshes={meshes}
               clip={view === "anatomy" ? clip : 2}
               ctaOpacity={ctaOpacity}
@@ -662,47 +725,53 @@ export default function DeviceStudio({
                 onChange={(e) => setName(e.target.value)}
               />
               <button
-                disabled={!selectedModel.value || report.blocked}
+                disabled={!selectedModel.value || report.blocked || !readyToEdit || nativeBusy}
                 onClick={save}
               >
-                Save placement
+                {view === "bench" ? "Save placement" : "Add alternative to draft"}
               </button>
               <button
                 onClick={() => {
-                  setScenarios([]);
+                  if (!readyToEdit) return;
                   setCompareId("");
-                  try {
-                    localStorage.removeItem(storageKey);
-                  } catch {}
+                  if (view === "anatomy") setNativeDraft({key:nativeKey,rows:[]});
+                  else {
+                    setScenarios([]);
+                    try { localStorage.removeItem(storageKey); } catch {}
+                  }
                 }}
               >
                 Clear saved alternatives
               </button>
             </div>
+            {view === "anatomy" && catalogue?.key === nativeSourceKey && catalogue.error && <p role="alert">{catalogue.error}</p>}
+            {view === "anatomy" && nativeBinding && <DeviceScenarioSync key={nativeKey}
+              binding={nativeBinding} eligible rows={nativeDraft.key === nativeKey ? nativeDraft.rows : []}
+              onRowsChange={(rows) => setNativeDraft({key:nativeKey,rows})}
+              onReadyChange={(value) => setNativeReady({key:nativeKey,value})}
+              onDirtyChange={(value) => setNativeDirty({key:nativeKey,value})}
+              onBusy={setNativeBusy} />}
             <div className="ds-scenarios">
-              {scenarios.map((s) => (
+              {displayScenarios.map((s) => (
                 <article key={s.id}>
                   <strong>{s.name}</strong>
                   <span>
                     {
                       DEVICE_CATALOG.devices.find(
                         (d) => d.id === s.placement.deviceId,
-                      )?.name
+                      )?.name ?? `Unavailable model: ${s.placement.deviceId}`
                     }
                   </span>
-                  <small>
-                    {s.placement.diameter} mm · {s.placement.length} mm ·{" "}
-                    {s.placement.height} mm
-                  </small>
-                  <button
-                    onClick={() => setPlacement(structuredClone(s.placement))}
+                  <small>{scenarioDimensions(s.placement)}</small>
+                  <button disabled={!scenarioAvailable(s)}
+                    onClick={() => { if (scenarioAvailable(s)) setPlacement(structuredClone(s.placement)); }}
                   >
                     Restore
                   </button>
-                  <button
-                    onClick={() =>
-                      setCompareId((v) => (v === s.id ? "" : s.id))
-                    }
+                  <button disabled={!scenarioAvailable(s)}
+                    onClick={() => {
+                      if (scenarioAvailable(s)) setCompareId((v) => (v === s.id ? "" : s.id));
+                    }}
                   >
                     {compareId === s.id
                       ? "Hide comparison"
@@ -714,9 +783,10 @@ export default function DeviceStudio({
             <p>
               {view === "bench"
                 ? "Bench examples are separate from anatomy placements. No bench placement is silently applied to a CTA."
-                : "Saved in this browser, bound to this image, case revision and geometry result. Reopen after anatomy changes; older alternatives are not reused as current."}
+                : "Alternatives are bound to this image, geometry and catalogue. Add them to the draft, then explicitly save the scenario set to the local workspace."}
             </p>
           </section>
+          {view === "anatomy" && <SavedNumericalRuns binding={nativeBinding} refreshKey={String(numericalEpoch)} />}
         </main>
         <aside className="ds-inspector">
           <h2>{device.name}</h2>
@@ -830,7 +900,7 @@ export default function DeviceStudio({
                 />
               </label>
             ))}
-          {view === "anatomy" && (
+          {view === "anatomy" && canAnatomy && (
             <div className="ds-picking">
               <p>
                 Crosshair RAS:{" "}
@@ -897,6 +967,7 @@ export default function DeviceStudio({
             </p>
           </details>
           <NumericalPhysics
+            onStored={() => setNumericalEpoch(e => e + 1)}
             caseState={view === "anatomy" && canAnatomy ? caseState : null}
             sourceRevision={
               view === "anatomy" && canAnatomy ? sourceRevision : null

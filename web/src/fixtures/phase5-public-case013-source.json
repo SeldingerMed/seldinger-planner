@@ -1,0 +1,77 @@
+{
+  "fixture_scope": "Actual calibrated public source metadata and development API case, no image bytes",
+  "case": {
+    "case_id": "NybY4R1jZdMpmuGFIHirJg",
+    "title": "Public case013 Phase5 development workflow",
+    "image_sha256": "ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c",
+    "source_url": "https://zenodo.org/records/15697196",
+    "dimensions": [
+      192,
+      192,
+      192
+    ],
+    "spacing_mm": [
+      0.578125,
+      0.578125,
+      0.625
+    ],
+    "spatial_units": "mm",
+    "artifact_version": "4",
+    "notes": "",
+    "measurements": [],
+    "aneurysm_plan": null,
+    "aneurysm_evidence": null
+  },
+  "source": {
+    "source_id": "zenodo-case013-planning-context-p5",
+    "case_label": "Installed NIfTI source (zenodo-case013-planning-context-p5)",
+    "source_url": "local://installed-source",
+    "license_url": null,
+    "citation": "Server-installed NIfTI source",
+    "image_sha256": "ea86cbd72aecb251f758ecd9195111cd64c1a69823debf08feb7c48d509a427c",
+    "image_url": "/api/image-sources/zenodo-case013-planning-context-p5/volume",
+    "reference_revision": "7fbc62e79b3e222b2746ce2db73fad9b34f046eecaaa4a7b74bceab56942b3a6",
+    "spatial_units": "mm",
+    "dimensions": [
+      192,
+      192,
+      192
+    ],
+    "spacing_mm": [
+      0.578125,
+      0.578125,
+      0.625
+    ],
+    "image_affine_ras": [
+      [
+        -0.578125,
+        0.0,
+        0.0,
+        55.41725158691406
+      ],
+      [
+        0.0,
+        -0.578125,
+        0.0,
+        55.5
+      ],
+      [
+        0.0,
+        0.0,
+        0.625,
+        -204.1540069580078
+      ],
+      [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "method": "installed_nifti_source",
+    "selection_basis": "server-installed calibrated volume",
+    "clinical_validation": false,
+    "stl_registration_validated": false,
+    "case_id": "NybY4R1jZdMpmuGFIHirJg"
+  }
+}

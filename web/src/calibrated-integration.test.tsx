@@ -138,6 +138,7 @@ test("opens calibrated image-only source with mm evidence and model controls, no
         return new Promise<Response>((resolve) => {
           finishCompute = resolve;
         });
+      if (url.endsWith("/anatomy-proposal")) return new Response("{}", { status: 409 });
       if (url.endsWith("/segmentations"))
         return new Response(
           JSON.stringify({ current: { vessel: null, aneurysm: null } }),
@@ -406,6 +407,18 @@ test("opens calibrated image-only source with mm evidence and model controls, no
     ).toBe(true),
   );
   expect(await screen.findByText("Current estimate")).toBeInTheDocument();
+  // Read-only proposal conflicts intentionally invalidate the editor. Actual
+  // App recovery is the global reload, including when case version is unchanged.
+  const putsBeforeConflict = vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "PUT").length;
+  fireEvent.click(screen.getByRole("button", { name: "Propose geometry from accepted anatomy" }));
+  const recover = await screen.findByRole("button", { name: "Reload saved state (discard edits)" });
+  expect(recover).toBeEnabled();
+  expect(screen.queryByTestId("parent-path-count")).toBeNull();
+  expect(screen.getByRole("button", { name: "Device studio" })).toBeDisabled();
+  fireEvent.click(recover);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Propose geometry from accepted anatomy" })).toBeEnabled());
+  expect(screen.getByTestId("parent-path-count")).toBeInTheDocument();
+  expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(putsBeforeConflict);
   // A renderer reset must not forget a still-running geometry operation.
   deferCompute = true;
   fireEvent.click(

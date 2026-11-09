@@ -1,0 +1,55 @@
+.top-actions .file-button[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.workflow-guide {
+  border: 1px solid #2b3b43;
+  border-radius: 7px;
+  padding: 14px;
+  margin: 14px 0;
+  background: #101a20;
+  min-width: 0;
+}
+.workflow-guide ol {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.workflow-guide li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+.workflow-guide li > a,
+.workflow-guide li > button {
+  text-align: left;
+  font-size: 12px;
+  padding: 9px;
+  border: 1px solid #344952;
+  border-radius: 5px;
+  background: #17272f;
+  color: #cbe4e7;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.workflow-guide li > a:focus-visible,
+.workflow-guide button:focus-visible {
+  outline: 2px solid #73c3c6;
+  outline-offset: 2px;
+}
+.workflow-guide small {
+  color: #b1c2cb;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.workflow-guide p {
+  line-height: 1.5;
+}
+.workflow-guide button:disabled {
+  color: #83949f;
+  background: #152027;
+  cursor: not-allowed;
+}

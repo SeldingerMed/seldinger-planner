@@ -178,6 +178,15 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
+it("notifies saved-run readers only after a verified computation acknowledgement", async () => {
+  const onStored = vi.fn();
+  apiMock.mockResolvedValue(envelope("rod-deployment", rodResult()));
+  render(<NumericalPhysics {...rodProps()} {...{onStored}} />);
+  fillRod();
+  fireEvent.click(screen.getByRole("button", {name:"Compute solved numerics"}));
+  await waitFor(() => expect(onStored).toHaveBeenCalledOnce());
+});
+
 it("disables the solver panel without a fully bound anatomy scope", () => {
   render(
     <NumericalPhysics

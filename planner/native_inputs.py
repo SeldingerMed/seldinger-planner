@@ -31,18 +31,28 @@ def verified_bytes(path, sha256):
     return payload
 
 
-def decode_bytes(payload):
+def decode_bytes(payload, *, max_itemsize=4):
+    """Decode one bounded volume. Only pinned legacy sources use float64.
+
+    The default four-byte bound remains unchanged for all calibrated installed
+    sources and masks. A trusted caller may retain the original unknown-unit
+    public source's eight-byte scalar contract; this does not admit that dtype
+    into the installed-source registry or establish spatial calibration.
+    """
     import nibabel as nib
 
+    if type(max_itemsize) is not int or max_itemsize not in (4, 8):
+        raise ValueError("Unsupported native scalar byte bound")
+    max_raw_bytes = MAX_RAW_BYTES if max_itemsize == 4 else MAX_VOXELS * max_itemsize + 65536 + 352
     if payload[:2] == b"\x1f\x8b":
         try:
             with gzip.GzipFile(fileobj=io.BytesIO(payload)) as stream:
-                raw = stream.read(MAX_RAW_BYTES + 1)
+                raw = stream.read(max_raw_bytes + 1)
         except (EOFError, OSError):
             raise ValueError("Native artifact decompression failed") from None
     else:
         raw = payload
-    if not 352 <= len(raw) <= MAX_RAW_BYTES:
+    if not 352 <= len(raw) <= max_raw_bytes:
         raise ValueError("Native artifact decompression bound exceeded")
     # Check shape before accessing data; malformed headers must not allocate
     # an unbounded array even if the compressed file itself is small.

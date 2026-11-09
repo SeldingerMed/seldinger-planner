@@ -8,7 +8,7 @@ import struct
 import subprocess
 from pathlib import Path
 
-MAX_TRIANGLES = 50_000
+MAX_TRIANGLES = 60_000
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -80,9 +80,18 @@ def native_surface(path: Path, expected_sha: str):
         or image.header.get_xyzt_units()[0] != "mm"
     ):
         raise ValueError("Unsupported native mask geometry")
-    if image.get_data_dtype() != np.uint8 or image.dataobj.slope != 1 or image.dataobj.inter != 0:
+    if (
+        image.get_data_dtype() != np.uint8
+        or getattr(image.dataobj, "slope", None) != 1
+        or getattr(image.dataobj, "inter", None) != 0
+    ):
         raise ValueError("Unsupported mask encoding")
-    mesh = surface_from_mask(np.asarray(image.dataobj), image.affine, reject_boundary=False)
+    mesh = surface_from_mask(
+        np.asarray(image.dataobj),
+        image.affine,
+        reject_boundary=False,
+        triangle_budget=MAX_TRIANGLES,
+    )
     return triangles_to_stl(mesh["triangles_world"])
 
 

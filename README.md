@@ -16,6 +16,19 @@ The device studio now pairs the analytical bench with bounded native-mask rod an
 
 See [native numerical setup, API contracts and limits](docs/native-physics.md). The model-free numerical runtime and synthetic numerical tests have a separate CI lane. The exercised browser integration uses production components with generated images/masks, not clinical data or a new full-App source-import validation.
 
+## Phase 5 anatomy-assisted planning
+
+The imported-CTA workflow now connects accepted vessel/sac masks, editable path/plane proposals, explicitly computed measurements, saved anatomical device alternatives and a fresh source-bound brief. Proposal generation does not accept a mask, save operator landmarks, confirm a reformat scene or choose a device.
+
+- Original-artifact RSNA vessel/sac inference and initialized SAM2 correction use pinned local workers. A correction changes one native slice of an existing full mask; immutable ancestry distinguishes that edit from standalone single-slice segmentation. Acceptance invalidates dependent results.
+- Device alternatives on admitted anatomy use a server ledger with independent revisions, exact authored-catalogue identity, explicit saves and reload/discard recovery. The separate analytical bench retains local-only alternatives.
+- Saved rod and Stokes runs are read through the validated numerical ledger into the studio and brief. Parameter hashes and geometry/result identities remain visible; custom rest-shape coordinates are represented by count/hash in scalar exports. These are anatomy/operator-parameter runs, not solved outcomes for a commercial device alternative.
+- Guided readiness separates current saved evidence from dirty drafts, pending confirmation, failed reads and stale downstream results. A fresh export rereads the coherent source-bound snapshot instead of exporting cached screen state.
+
+Actual public case013 execution covers inference, proposal/edit/save, correction acceptance, geometry recomputation, native reformats, scenario save/reopen and browser downloads. The nontrivial rod rest-shape experiment converged in 103 iterations and its recorded discrete energy and sampled clearance were independently recomputed. The full native flow domain exceeds the retained Stokes mesh budgets; that refusal remains a negative result, without cropping the anatomy or increasing limits to force success. Reference-STL frame/units and training overlap remain unresolved, so these records do not establish external-reference accuracy. See [source/model provenance](docs/verification/phase5-source-model-evidence.md), [reference annotation contract](docs/verification/phase5-reference-annotation-contract.md) the [correction-consistency report](docs/verification/phase5-evaluation-report.md), and the [implementation contract](docs/plans/phase5-anatomy-workflow.md).
+
+Existing territory workflows, DICOM preparation, native reformats and explicit rigid registration remain separate source/scene contracts. No dataset images, model weights or local SQLite workspaces are distributed with this source.
+
 ## Historical hackathon source and original work
 
 The source checkout includes the planning workspace. Images and trained artifacts are installed separately under the source/model contracts below. Public source does not mean a hosted deployment.

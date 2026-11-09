@@ -5,7 +5,7 @@ export type SegmentationEntry = {
   image_sha256: string;
   reference_revision: string;
   produced_artifact_version: string;
-  producer: "owned_vessel" | "sam2_prompted_slice" | "aneurysm_model";
+  producer: "owned_vessel" | "rsna_vessel_model" | "sam2_prompted_slice" | "aneurysm_model";
   role: "vessel" | "aneurysm";
   mask_sha256: string;
   mask_url: string;

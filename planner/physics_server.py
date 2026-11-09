@@ -1,6 +1,7 @@
 """Local case/source-bound numerical HTTP interface. No imaging imports."""
 
 import hashlib
+import json
 import math
 import sqlite3
 from typing import Annotated, Literal
@@ -470,3 +471,7 @@ def register_physics_routes(app, db_path, sources, read_case, results_dir, runne
     @app.get("/api/cases/{case_id}/centerline-proposals")
     def read_centerline(case_id: str):
         return read(case_id, "centerline")
+
+    # Reuse the fully validated read boundary for local composition. No second
+    # ledger-only path and no recursive HTTP request or numerical recomputation.
+    return lambda case_id, kind: json.loads(read(case_id, kind).body)

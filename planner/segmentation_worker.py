@@ -42,6 +42,7 @@ _KIND_PYTHON = {
     "vessel": ML_PYTHON,
     "sam2": ML_PYTHON,
     "aneurysm": ANEURYSM_PYTHON,
+    "rsna-vessel": ANEURYSM_PYTHON,
 }
 
 SUBPROCESS_TIMEOUT_SECONDS = 180
@@ -100,7 +101,7 @@ def _sanitize(text):
     return excerpt
 
 
-def run_local_model(job, output_dir):
+def run_local_model(job, output_dir, *, blob_dir=None):
     """Run the installed local model for one validated job in a child process.
 
     Executes the fixed project ML runtime as ``python -m
@@ -121,6 +122,7 @@ def run_local_model(job, output_dir):
     output_dir.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     # Deliberately isolate module resolution to this fresh project.
+    env.pop("PYTHONHOME", None)
     env["PYTHONPATH"] = str(_REPO_ROOT)
     env["OMP_NUM_THREADS"] = str(_CPU_THREADS)
     env["MKL_NUM_THREADS"] = str(_CPU_THREADS)
@@ -130,6 +132,8 @@ def run_local_model(job, output_dir):
         "planner.segmentation_worker",
         str(output_dir),
     ]
+    if blob_dir is not None:
+        command.extend(["--blob-dir", str(Path(blob_dir).resolve())])
     try:
         completed = subprocess.run(
             command,
@@ -168,12 +172,10 @@ def run_local_model(job, output_dir):
     return {"mask_path": mask_path, "metadata": metadata}
 
 
-def _load_correction_base(job, source):
+def _load_correction_base(job, source, *, blob_dir=None):
     """Reverify a server-selected opaque blob identity, never a supplied path."""
-    import hashlib
     import re
 
-    import nibabel as nib
     import numpy as np
 
     base = job["base_mask"]
@@ -193,13 +195,12 @@ def _load_correction_base(job, source):
         or base.get("producer") not in ("aneurysm_model", "sam2_prompted_slice")
     ):
         raise ValueError("Correction base identity does not match this job")
-    path = MASK_BLOB_DIR / f"{digest}.nii.gz"
+    path = (MASK_BLOB_DIR if blob_dir is None else Path(blob_dir)) / f"{digest}.nii.gz"
     if path.is_symlink() or not path.is_file() or not 0 < path.stat().st_size <= _MAX_MASK_BYTES:
         raise ValueError("Correction base blob is unavailable")
-    with path.open("rb") as stream:
-        if hashlib.file_digest(stream, "sha256").hexdigest() != digest:
-            raise ValueError("Correction base blob hash mismatch")
-    mask_image = nib.load(str(path))
+    from planner.native_inputs import decode_bytes, verified_bytes
+
+    mask_image = decode_bytes(verified_bytes(path, digest))
     if (
         mask_image.shape != source.shape
         or mask_image.get_data_dtype() != np.uint8
@@ -264,9 +265,8 @@ def _source_bundle(job):
     raise ValueError("Unknown installed image source")
 
 
-def _run_job(job, output_dir):
+def _run_job(job, output_dir, *, blob_dir=None):
     """Child entry point: verify the fixed reference, infer, save artifacts."""
-    import hashlib
 
     import nibabel as nib
     import numpy as np
@@ -274,7 +274,7 @@ def _run_job(job, output_dir):
     if not isinstance(job, dict):
         raise TypeError("job must be a JSON object")
     kind = job.get("kind")
-    if kind not in ("vessel", "sam2", "aneurysm"):
+    if kind not in _KIND_PYTHON:
         raise ValueError("Unsupported segmentation kind")
     case_id = job.get("case_id")
     image_sha256 = job.get("image_sha256")
@@ -288,11 +288,16 @@ def _run_job(job, output_dir):
     expected_sha = manifest["image"]["sha256"]
     if image_sha256 != expected_sha or reference_revision != installed_revision:
         raise ValueError("Job does not match the installed reference revision")
-    actual_sha = hashlib.sha256(image_path.read_bytes()).hexdigest()
-    if actual_sha != expected_sha:
-        raise ValueError("Installed reference image hash mismatch")
+    from planner.native_inputs import decode_bytes, verified_bytes
 
-    source = nib.load(str(image_path))
+    source_payload = verified_bytes(image_path, expected_sha)
+    if expected_units == "mm":
+        from planner.image_source import _validate_installed_nifti
+
+        _validate_installed_nifti(source_payload, manifest["image"])
+    source = decode_bytes(source_payload, max_itemsize=8 if expected_units == "unknown" else 4)
+    if source.affine is None:
+        raise ValueError("Source image has no usable affine")
     data = np.asarray(source.dataobj)
     if data.ndim != 3 or data.size == 0:
         raise ValueError("Source image must be a nonempty 3D volume")
@@ -302,10 +307,7 @@ def _run_job(job, output_dir):
         raise ValueError("Source image contains non-finite voxels")
     native_shape = tuple(int(value) for value in data.shape)
     source_units = source.header.get_xyzt_units()[0] or "unknown"
-    if (
-        job.get("source_id") in ("zenodo-case006-calibrated", "zenodo-case006-planning-context")
-        and source_units != expected_units
-    ):
+    if source_units != expected_units:
         raise ValueError("Calibrated source unit declaration does not match its registry")
     source_dtype = str(source.get_data_dtype())
     window = job.get("display_window", [0, 600])
@@ -334,7 +336,7 @@ def _run_job(job, output_dir):
             checkpoint_path=VESSEL_CHECKPOINT,
             landmarks_path=VESSEL_LANDMARKS,
         )
-        mask_xyz = np.asarray(result["mask"], dtype=np.uint8)
+        mask_xyz = np.asarray(result["mask"])
         slice_index = None
         segmentation_extent = "full_volume"
         prompt_provenance = None
@@ -352,7 +354,11 @@ def _run_job(job, output_dir):
         rgb = ((normalized - window[0]) / span * 255.0).round().astype(np.uint8)
         image = np.repeat(rgb[:, :, None], 3, axis=2)
         correction_base = job.get("base_mask")
-        base_volume = _load_correction_base(job, source) if correction_base is not None else None
+        base_volume = (
+            _load_correction_base(job, source, blob_dir=blob_dir)
+            if correction_base is not None
+            else None
+        )
         prior_args = (
             {"initial_mask": base_volume[:, :, k].T.copy()} if base_volume is not None else {}
         )
@@ -394,20 +400,36 @@ def _run_job(job, output_dir):
             "three_dimensional_propagation": False,
         }
     else:
-        if job.get("role") != "aneurysm":
-            raise ValueError("aneurysm requires the aneurysm role")
+        expected_role = "vessel" if kind == "rsna-vessel" else "aneurysm"
+        if job.get("role") != expected_role:
+            raise ValueError("Original RSNA job role does not match its fixed kind")
         # Lazily import the parent-owned helper; only the fixed installed
         # checkpoint constant is passed, never a job-supplied path.
         from planner.aneurysm_inference import predict_aneurysm
 
-        result = predict_aneurysm(data, source.affine, checkpoint_path=ANEURYSM_CHECKPOINT)
-        mask_xyz = np.asarray(result["mask"], dtype=np.uint8)
+        role_args = {"role": "vessel"} if kind == "rsna-vessel" else {}
+        result = predict_aneurysm(
+            data, source.affine, checkpoint_path=ANEURYSM_CHECKPOINT, **role_args
+        )
+        mask_xyz = np.asarray(result["mask"])
         slice_index = None
         segmentation_extent = "full_context_roi"
         prompt_provenance = None
 
-    if mask_xyz.shape != native_shape or not np.isin(mask_xyz, [0, 1]).all():
+    if (
+        mask_xyz.shape != native_shape
+        or mask_xyz.dtype.kind not in "biuf"
+        or not np.isin(mask_xyz, [0, 1]).all()
+    ):
         raise ValueError("Candidate mask is not a binary volume of the source shape")
+    mask_xyz = np.asarray(mask_xyz, dtype=np.uint8)
+    # Model execution may be long. A changed source cannot publish an output
+    # under its old identity, even though decoding used the correct frozen bytes.
+    verified_bytes(image_path, expected_sha)
+    if correction_base is not None:
+        base_digest = correction_base["mask_sha256"]
+        base_root = MASK_BLOB_DIR if blob_dir is None else Path(blob_dir)
+        verified_bytes(base_root / f"{base_digest}.nii.gz", base_digest)
 
     header = source.header.copy()
     candidate_image = nib.Nifti1Image(mask_xyz, source.affine, header=header)
@@ -417,6 +439,8 @@ def _run_job(job, output_dir):
 
     # Re-read and assert the saved artifact before reporting success.
     saved = nib.load(str(mask_path))
+    if not isinstance(saved, nib.Nifti1Image):
+        raise TypeError("Saved mask must remain NIfTI-1")
     saved_data = np.asanyarray(saved.dataobj)
     if saved.shape != native_shape or not np.allclose(saved.affine, source.affine):
         raise ValueError("Saved mask geometry does not match the source image")
@@ -428,12 +452,13 @@ def _run_job(job, output_dir):
     provenance = {key: value for key, value in result.items() if key != "mask"}
     producer = {
         "vessel": "owned_vessel",
+        "rsna-vessel": "rsna_vessel_model",
         "sam2": "sam2_prompted_slice",
         "aneurysm": "aneurysm_model",
     }[kind]
     metadata = {
         "producer": producer,
-        "role": "vessel" if kind == "vessel" else "aneurysm",
+        "role": "vessel" if kind in ("vessel", "rsna-vessel") else "aneurysm",
         "provenance": provenance,
         "case_id": case_id,
         "image_sha256": image_sha256,
@@ -452,7 +477,7 @@ def _run_job(job, output_dir):
         "automatic_aneurysm_segmentation_within_selected_context": kind == "aneurysm",
         "clinical_validation": "none",
     }
-    if kind == "aneurysm":
+    if kind in ("aneurysm", "rsna-vessel"):
         metadata["input_context"] = "server_installed_curated_reference_selected_roi"
         metadata["slice_index"] = None
         metadata["prompt_provenance"] = None
@@ -471,11 +496,18 @@ def _run_job(job, output_dir):
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    if len(argv) != 1:
-        print("usage: python -m planner.segmentation_worker <output_dir>", file=sys.stderr)
+    if len(argv) == 3 and argv[1] == "--blob-dir":
+        configuration = {"blob_dir": Path(argv[2])}
+    elif len(argv) == 1:
+        configuration = {}
+    else:
+        print(
+            "usage: python -m planner.segmentation_worker <output_dir> [--blob-dir <trusted-directory>]",
+            file=sys.stderr,
+        )
         return 2
     job = json.load(sys.stdin)
-    _run_job(job, Path(argv[0]))
+    _run_job(job, Path(argv[0]), **configuration)
     return 0
 
 

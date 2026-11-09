@@ -14,6 +14,11 @@ DEADLINE_SECONDS = 120
 
 
 def compute_job(job, *, blob_dir):
+    if job.get("kind") == "anatomy-proposal":
+        from planner.anatomy_worker import compute_proposal_job
+
+        return compute_proposal_job(job, blob_dir=blob_dir)
+
     import numpy as np
 
     from planner.native_inputs import load_native_masks

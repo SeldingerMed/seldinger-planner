@@ -174,10 +174,12 @@ export default function NumericalPhysics({
   caseState,
   sourceRevision,
   geometryResultId,
+  onStored,
 }: {
   caseState: CaseLike | null;
   sourceRevision: string | null;
   geometryResultId: string | null;
+  onStored?: () => void;
 }) {
   const [mode, setMode] = useState<"rod" | "stokes">("rod");
   const [rodDraft, setRodDraft] = useState({
@@ -348,6 +350,7 @@ export default function NumericalPhysics({
           : null,
       );
       setError("");
+      onStored?.();
     } catch (e) {
       if (epoch.current !== requestEpoch) return;
       setResult(null);
