@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CaseState } from "../api";
 import { sha256Hex } from "../browserCrypto";
 import * as browserCrypto from "../browserCrypto";
@@ -19,13 +19,13 @@ vi.mock("./DeviceScene", () => ({ default: ({file,meshes}:{file:File|null;meshes
   return <div data-testid="device-scene" data-mount={mount.current} data-has-file={String(file !== null)} data-mesh-ids={JSON.stringify(meshes.map((mesh)=>mesh.id))} />;
 } }));
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear(); });
-async function mount({save = false, saveStatus = 200, onClose = () => {}, scenarioSet = workflow.scenarios, surfaceReady = Promise.resolve(), surfaceStatus = 200}:{save?:boolean;saveStatus?:number;onClose?:()=>void;scenarioSet?:unknown;surfaceReady?:Promise<void>;surfaceStatus?:number} = {}) {
+async function mount({save = false, saveStatus = 200, onClose = () => {}, scenarioSet = workflow.scenarios, geometry = workflow.geometry, geometryError = false, surfaceReady = Promise.resolve(), surfaceStatus = 200}:{save?:boolean;saveStatus?:number;onClose?:()=>void;scenarioSet?:unknown;geometry?:unknown;geometryError?:boolean;surfaceReady?:Promise<void>;surfaceStatus?:number} = {}) {
   const bytes = new Uint8Array(200);
   const digest = await sha256Hex(bytes.buffer);
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/local-brief")) return Response.json(numericalBrief);
-    if (url.endsWith("/morphometry")) return new Response(JSON.stringify(workflow.geometry));
+    if (url.endsWith("/morphometry")) return new Response(JSON.stringify(geometry));
     if (url.endsWith("/segmentations")) return new Response(JSON.stringify(workflow.segmentations));
     if (url.includes("/surface")) {
       await surfaceReady;
@@ -41,10 +41,45 @@ async function mount({save = false, saveStatus = 200, onClose = () => {}, scenar
   vi.stubGlobal("fetch", fetch);
   const view = render(<DeviceStudio file={new File([""],"public-case013.nii.gz")} caseState={workflow.case as CaseState}
     sourceRevision={workflow.geometry.reference_revision} onClose={onClose} />);
-  if(surfaceStatus === 200) await waitFor(() => expect(screen.getByRole("button",{name:"Place in CTA"})).toBeEnabled());
+  if (geometryError) await screen.findByText(/Compute current accepted-mask geometry first/);
+  else if(surfaceStatus === 200) await waitFor(() => expect(screen.getByRole("button",{name:"Place in CTA"})).toBeEnabled());
   else await screen.findByText(/Accepted-mask surface unavailable/);
   return Object.assign(fetch,{view});
 }
+test.each(["aneurysm_seed", "neck_normal"])("rejects missing %s before placement adoption or mesh loads", async (field) => {
+  const geometry = structuredClone(workflow.geometry);
+  delete (geometry.operator_inputs as unknown as Record<string, unknown>)[field];
+  const fetch = await mount({ geometry, geometryError: true });
+  expect(screen.getByTestId("device-scene")).toHaveAttribute("data-has-file", "false");
+  expect(screen.getByTestId("device-scene")).toHaveAttribute("data-mesh-ids", "[]");
+  expect(screen.getByRole("button", { name: "Add alternative to draft" })).toBeDisabled();
+  expect(fetch.mock.calls.some(([url]) => String(url).includes("/surface"))).toBe(false);
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
+});
+
+test("a stale initial set is clean until the operator creates a draft, which remains dirty on stale reload", async () => {
+  const stale = {
+    ...workflow.scenarios,
+    current: { status: "stale", set_id: workflow.scenarios.current.set_id, scenarios: null, stale_reasons: ["device_scenario_dependencies_changed"] },
+  };
+  const fetch = await mount({ scenarioSet: stale });
+  await screen.findByText(/Saved set is stale/);
+  expect(screen.getByText(/0 scenario\(s\) in this draft/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Close studio" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: /^WEB SLTerumo/ }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Add alternative to draft" })).toBeEnabled());
+  fireEvent.click(screen.getByRole("button", { name: "Add alternative to draft" }));
+  await screen.findByText(/1 scenario\(s\) in this draft/);
+  expect(screen.getByRole("button", { name: "Close studio" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Reload saved scenarios" }));
+  await waitFor(() => expect(fetch.mock.calls.filter(([url]) => String(url).endsWith("/device-scenarios"))).toHaveLength(2));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Reload saved scenarios" })).toBeEnabled());
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+  expect(screen.getByRole("button", { name: "Close studio" })).toBeDisabled();
+  expect(screen.getByText(/1 scenario\(s\) in this draft/)).toBeInTheDocument();
+  expect(fetch.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
+});
+
 test("opens directly on source-bound anatomy when a calibrated case is already loaded", async () => {
   await mount();
   const sync = await screen.findByRole("region", {name:"Saved scenario set"});

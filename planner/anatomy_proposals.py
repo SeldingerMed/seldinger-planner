@@ -145,7 +145,13 @@ def propose_aneurysm_inputs(
     neck_normal = eigenvectors[:, 0]
     sac_ras = (aff[:3, :3] @ np.argwhere(sac).T).T + aff[:3, 3]
     outward = sac_ras.mean(axis=0) - neck_origin
-    if float(neck_normal @ outward) < 0.0:
+    orientation = float(neck_normal @ outward)
+    # Numerical sign resolution relative to the physical grid, not an
+    # anatomical accuracy threshold. An in-plane centroid cannot define a
+    # dome side; an EDT seed may also be in that plane, so do not invent one.
+    if not np.isfinite(orientation) or abs(orientation) <= float(max(lengths)) * 1e-6:
+        raise ValueError("Neck normal orientation is ambiguous; choose operator inputs manually")
+    if orientation < 0.0:
         neck_normal = -neck_normal
     norm = float(np.linalg.norm(neck_normal))
     if not np.isfinite(norm) or norm <= 1e-12:

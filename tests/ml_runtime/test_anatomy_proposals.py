@@ -133,6 +133,17 @@ def test_parent_path_stations_remain_outside_the_selected_sac():
     assert not aneurysm[tuple(indices.T)].any()
 
 
+@pytest.mark.parametrize("shift", [-2, -1, 0, 1, 2])
+def test_symmetric_sac_interface_does_not_invent_an_outward_orientation(shift):
+    x, y, z = np.indices((32, 32, 32))
+    tube = ((x - 16) ** 2 + (y - 16) ** 2 <= 4) & (z >= 10) & (z <= 23)
+    sphere = (x - 16) ** 2 + (y - 16) ** 2 + (z - 16) ** 2 <= 25
+    sac = np.roll(sphere & ~tube, shift, axis=2)
+    vessel = tube | sac
+    with pytest.raises(ValueError, match="orientation is ambiguous"):
+        propose_aneurysm_inputs(vessel, sac, AFFINE, spatial_units="mm")
+
+
 def test_target_selects_requested_component_among_many():
     vessel, aneurysm = _green_masks()
     x, y, z = np.indices(vessel.shape)

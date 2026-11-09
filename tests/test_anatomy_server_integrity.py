@@ -32,6 +32,30 @@ def test_fractional_target_beyond_last_center_is_422_before_runner(tmp_path, mon
     assert calls == []
 
 
+def test_contradictory_provider_dimensions_are_sanitized_before_runner_or_write(
+    tmp_path, monkeypatch
+):
+    calls = []
+    client, case, revision, directory, _, _ = configured(
+        tmp_path, monkeypatch, lambda job: calls.append(job)
+    )
+    trusted = anatomy_server.trusted_grid
+
+    def contradict(bundle):
+        grid = trusted(bundle)
+        return {**grid, "shape": [4, 5, 7]}
+
+    monkeypatch.setattr(anatomy_server, "trusted_grid", contradict)
+    response = request(client, case, revision)
+    assert response.status_code == 503, response.text
+    assert response.json() == {
+        "detail": "Anatomy proposal is unavailable; no inputs were confirmed"
+    }
+    assert calls == [] and str(directory) not in response.text
+    with _connect(tmp_path / "workspace.sqlite3") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM geometry_inputs").fetchone()[0] == 0
+
+
 def test_default_supervisor_uses_server_configured_blob_root(tmp_path, monkeypatch):
     seen = []
 
