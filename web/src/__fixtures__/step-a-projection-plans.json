@@ -1,0 +1,144 @@
+{
+  "not_confirmed": {
+    "artifact_version": "1",
+    "case_id": "8p7wbsp42cCnuoPBF2lR4Q",
+    "current": {
+      "status": "not_confirmed"
+    },
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "plan_revision": 0,
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1"
+  },
+  "current": {
+    "artifact_version": "1",
+    "case_id": "8p7wbsp42cCnuoPBF2lR4Q",
+    "current": {
+      "dependencies": {
+        "artifact_version": "1",
+        "case_id": "8p7wbsp42cCnuoPBF2lR4Q",
+        "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+        "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1",
+        "version": "step-a-carm-views-v1"
+      },
+      "input_sha256": "d093e9543f75bdac8d9cc8aa583be5b906f7b6abed5afeaf2e1093559af6c0ee",
+      "inputs": {
+        "confirmed": true,
+        "isocenter": [
+          10.0,
+          16.0,
+          16.0
+        ],
+        "target_path": [
+          [
+            5.0,
+            16.0,
+            16.0
+          ],
+          [
+            10.0,
+            16.0,
+            16.0
+          ],
+          [
+            10.0,
+            21.0,
+            16.0
+          ]
+        ],
+        "views": [
+          {
+            "detector_height_mm": 200.0,
+            "detector_width_mm": 200.0,
+            "name": "AP",
+            "primary_deg": 0.0,
+            "secondary_deg": 0.0,
+            "source_detector_mm": 1200.0,
+            "source_isocenter_mm": 750.0
+          },
+          {
+            "detector_height_mm": 200.0,
+            "detector_width_mm": 200.0,
+            "name": "Working LAO",
+            "primary_deg": 30.0,
+            "secondary_deg": 20.0,
+            "source_detector_mm": 1200.0,
+            "source_isocenter_mm": 750.0
+          },
+          {
+            "detector_height_mm": 200.0,
+            "detector_width_mm": 300.0,
+            "name": "Lateral",
+            "primary_deg": 90.0,
+            "secondary_deg": 0.0,
+            "source_detector_mm": 1200.0,
+            "source_isocenter_mm": 750.0
+          }
+        ]
+      },
+      "plan_id": "PMG6hLzYxcbOWkTPdQ4kqg",
+      "result": {
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "foreshortening_method": "central_ray_parallel_approximation",
+        "target_length_mm": 10.0,
+        "target_point_count": 3,
+        "version": "step-a-carm-views-v1",
+        "view_source": "operator_confirmed",
+        "views": [
+          {
+            "detector_height_mm": 200.0,
+            "detector_width_mm": 200.0,
+            "foreshortening_percent": 50.0,
+            "magnification_at_isocenter": 1.6,
+            "name": "AP",
+            "primary_deg": 0.0,
+            "secondary_deg": 0.0,
+            "source_detector_mm": 1200.0,
+            "source_isocenter_mm": 750.0,
+            "target_in_field": true
+          },
+          {
+            "detector_height_mm": 200.0,
+            "detector_width_mm": 200.0,
+            "foreshortening_percent": 26.80517384958726,
+            "magnification_at_isocenter": 1.6,
+            "name": "Working LAO",
+            "primary_deg": 30.0,
+            "secondary_deg": 20.0,
+            "source_detector_mm": 1200.0,
+            "source_isocenter_mm": 750.0,
+            "target_in_field": true
+          },
+          {
+            "detector_height_mm": 200.0,
+            "detector_width_mm": 300.0,
+            "foreshortening_percent": 50.0,
+            "magnification_at_isocenter": 1.6,
+            "name": "Lateral",
+            "primary_deg": 90.0,
+            "secondary_deg": 0.0,
+            "source_detector_mm": 1200.0,
+            "source_isocenter_mm": 750.0,
+            "target_in_field": true
+          }
+        ]
+      },
+      "status": "current"
+    },
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "plan_revision": 1,
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1"
+  },
+  "stale": {
+    "artifact_version": "2",
+    "case_id": "8p7wbsp42cCnuoPBF2lR4Q",
+    "current": {
+      "inputs": null,
+      "plan_id": "PMG6hLzYxcbOWkTPdQ4kqg",
+      "result": null,
+      "status": "stale"
+    },
+    "image_sha256": "96aeccf6c593f81638a9010fb28fc4116099223296a5782f1edb11add52f711e",
+    "plan_revision": 1,
+    "reference_revision": "53b52a45cd5f44b88ddd39c54b21a113bab96d337c4dbeb5a9ca23b0f7bfe6a1"
+  }
+}

@@ -12,6 +12,7 @@ import MorphometryResults from "./MorphometryResults";
 import MorphometryInputs from "./MorphometryInputs";
 import TerritoryStudio from "./TerritoryStudio";
 import ReformatStudio from "./ReformatStudio";
+import CArmStudio from "./CArmStudio";
 import {
   findNativeCaseSource,
   type NativeCaseSource,
@@ -55,6 +56,11 @@ export default function App() {
     owner: symbol | null;
     busy: boolean;
   }>({ owner: null, busy: false });
+  const [carmDirty, setCarmDirty] = useState(false);
+  const [carmActivity, setCarmActivity] = useState<{
+    owner: symbol | null;
+    busy: boolean;
+  }>({ owner: null, busy: false });
   const [file, setFile] = useState<File | null>(null);
   const [nativeVolume, setNativeVolume] = useState<NativeVolume | null>(null);
   const [digest, setDigest] = useState("");
@@ -79,7 +85,11 @@ export default function App() {
   const [deviceDirty, setDeviceDirty] = useState(false);
   const [deviceEpoch, setDeviceEpoch] = useState(0);
   const geometryDirty =
-    geometryInputsDirty || deviceDirty || territoryDirty || reformatDirty;
+    geometryInputsDirty ||
+    deviceDirty ||
+    territoryDirty ||
+    reformatDirty ||
+    carmDirty;
   const draftDirty = geometryDirty || planDirty || (!!caseState && notes !== caseState.notes);
   const [geometryEpoch, setGeometryEpoch] = useState(0);
   const [source, setSource] = useState("");
@@ -94,7 +104,8 @@ export default function App() {
     deviceBusy ||
     deviceCalculationBusy ||
     territoryBusy ||
-    reformatActivity.busy;
+    reformatActivity.busy ||
+    carmActivity.busy;
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const workflowLocked = busy || draftDirty || conflict;
@@ -174,10 +185,28 @@ export default function App() {
     nativeSource?.reference_revision,
     reloadEpoch,
   ]);
+  const carmBusyChanged = useMemo(() => {
+    const owner = Symbol("carm-request-owner");
+    return (busy: boolean) =>
+      setCarmActivity((prior) =>
+        busy
+          ? { owner, busy: true }
+          : prior.owner === owner
+            ? { owner, busy: false }
+            : prior,
+      );
+  }, [
+    caseState?.case_id,
+    caseState?.image_sha256,
+    caseState?.artifact_version,
+    nativeSource?.reference_revision,
+    reloadEpoch,
+  ]);
   function failVolume(message: string) {
     setNativeVolume(null);
     setTerritoryDirty(false);
     setReformatDirty(false);
+    setCarmDirty(false);
     setSegmentation(null);
     setReference(null);
     setRequestedReference(null);
@@ -218,6 +247,7 @@ export default function App() {
     setCase(null);
     setTerritoryDirty(false);
     setReformatDirty(false);
+    setCarmDirty(false);
     setNativeVolume(null);
     setSegmentation(null);
     setA(null);
@@ -398,6 +428,7 @@ export default function App() {
       }
       setTerritoryDirty(false);
       setReformatDirty(false);
+      setCarmDirty(false);
       setReloadEpoch((value) => value + 1);
       setA(null);
       setB(null);
@@ -927,6 +958,7 @@ export default function App() {
             {nativeSource && (
               <a href="#native-reformats">Reformats and fusion</a>
             )}
+            {nativeSource && <a href="#carm-views">C-arm views</a>}
             <a href="#manual-evidence">Evidence</a>
             <a href="#muse-discussion">Muse ↗</a>
           </nav>
@@ -947,11 +979,37 @@ export default function App() {
                 geometryInputsDirty ||
                 deviceDirty ||
                 territoryDirty ||
+                carmDirty ||
                 planDirty ||
                 notes !== caseState.notes
               }
               onDirtyChange={setReformatDirty}
               onBusy={reformatBusyChanged}
+            />
+          )}
+          {caseState && nativeSource && (
+            <CArmStudio
+              caseState={caseState}
+              binding={nativeSource}
+              volume={
+                nativeVolume?.file === file && digest === caseState.image_sha256
+                  ? nativeVolume.image
+                  : null
+              }
+              cursor={location}
+              windowRange={windowRange}
+              disabled={
+                busy ||
+                conflict ||
+                geometryInputsDirty ||
+                deviceDirty ||
+                territoryDirty ||
+                reformatDirty ||
+                planDirty ||
+                notes !== caseState.notes
+              }
+              onDirtyChange={setCarmDirty}
+              onBusy={carmBusyChanged}
             />
           )}
           {territoryWorkspace && caseState && nativeSource && (

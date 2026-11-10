@@ -96,7 +96,7 @@ def _collect_input_files(input_dir):
     return blobs
 
 
-def _parse_file_meta(data: bytes):
+def _parse_file_meta(data: bytes, transfer_syntaxes=NATIVE_TRANSFER_SYNTAXES):
     """Bounded explicit-LE group0002 parsing BEFORE pydicom can inflate a dataset."""
     if len(data) < 144 or data[128:132] != b"DICM":
         _fail("DICOM Part10 file meta required")
@@ -150,8 +150,8 @@ def _parse_file_meta(data: bytes):
         pos += header + length
     if pos != end or not {2, 3, 16} <= found.keys():
         _fail("Missing required file meta identifiers")
-    if found[16] not in NATIVE_TRANSFER_SYNTAXES:
-        _fail("Unsupported transfer syntax; only native uncompressed little-endian accepted")
+    if found[16] not in transfer_syntaxes:
+        _fail("Unsupported transfer syntax")
     if end + 8 > len(data) or struct.unpack_from("<H", data, end)[0] == 2:
         _fail("File meta group length does not match the actual boundary")
     return found

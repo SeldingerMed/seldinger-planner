@@ -28,7 +28,7 @@ The destination must not exist. A successful conversion creates `SOURCE_ID/volum
 - One coherent study, series, patient frame and acquisition state; uniform calibrated slice displacement and consistent native scalar encoding. Physical positions determine order, never filenames or instance numbers.
 - MONOCHROME2, 8/16-bit integer scalar input. Linear rescale is baked into output values. Variable per-frame coefficients are identified as `per_frame_linear`, without misleading fixed coefficients.
 - At most 512 input files, 16 MiB per file, 256 MiB total; dimensions at most 2048 per axis, 8 million output voxels and 16 MiB output image. No automatic cropping, truncation or downsampling.
-- Reject symlinks and linked ancestry, projection XA/Enhanced XA, unsupported compression, duplicate/nonuniform spatial positions and malformed pixel lengths. A volumetric reconstruction is not inferred from `Modality=XA`.
+- Reject symlinks and linked ancestry, projection XA/Enhanced XA, unsupported compression, duplicate/nonuniform spatial positions and malformed pixel lengths. A volumetric reconstruction is not inferred from `Modality=XA`. Projection XA is never converted to a volume; its acquisition geometry alone can be admitted through the separate converter in [C-arm views and projection geometry](carm-projection.md).
 
 Absent linear-rescale macros use identity scaling (1, 0). Slice-displacement consistency uses absolute and relative tolerances of `1e-4`; accepted residual jitter is represented by the mean slice step.
 
