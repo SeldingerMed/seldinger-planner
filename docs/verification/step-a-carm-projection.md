@@ -10,6 +10,8 @@ Every input used here was generated synthetic data: a 128 x 128 x 96 phantom at 
 
 The Python geometry and its browser mirror are both checked against `web/src/__fixtures__/carm-geometry-vectors.json`. `tests/ingest_runtime/test_carm_vectors_independent.py` derives those vectors separately with NumPy (Rodrigues rotations and a linear ray/plane solve) and fails if the committed file drifts. The cases cover AP, both laterals, cranial and caudal 90, combined oblique views and a posterior detector.
 
+The same file carries hand-written angle labels and fixed-point text. Both implementations must reproduce them, so the exported brief and the studio print one view the same way: a half at the last printed digit rounds away from zero in both (45.25 reads 45.3).
+
 The declared convention matches the patient-referenced positioner angles of DICOM PS3.3 C.8.7.5.1.2: zero perpendicular to the chest, primary +90 at the patient's left (LAO), secondary +90 cranial. It was not checked against any vendor system.
 
 ## Independent projection check
@@ -39,13 +41,13 @@ The default API and the actual App were run against a scratch database with the 
 - Converter: a CT class, a file-meta and dataset class conflict, a non-XA modality, big-endian syntax, an oversize frame count, a missing study, non-DICOM bytes, symlinked inputs or output roots and an existing destination reject without leaving a bundle or staging directory. Sentinel patient and institution values and local paths do not reach the manifest, stdout or stderr.
 - Calibration: a missing angle, distance or pixel spacing, inconsistent distances, or a dynamic positioner yields `uncalibrated` with the missing terms listed. A biplane pair without mutual references, with mismatched studies or with inconsistent plane labels is rejected.
 - Plan routes: unconfirmed, malformed, out-of-bounds and out-of-grid inputs reject before any write. A stale case version, source revision or plan revision returns 409. A tampered ledger row makes the plan read and the brief fail with 503.
-- Browser: a 409, 5xx or mismatched acknowledgement locks the draft until an explicit reload; a 422 keeps it editable. A nonfinite source sample stops the projection instead of painting a partial image. Stale or contradictory plan envelopes and forged derived values are rejected by the client parser.
+- Browser: a 409, 5xx or mismatched acknowledgement locks the draft until an explicit reload; a 422 keeps it editable. A nonfinite source sample stops the projection instead of painting a partial image. The preview renders in slices of about 12 ms; a view replaced or unmounted mid-render is dropped and cannot overwrite the newer image. Stale or contradictory plan envelopes and forged derived values are rejected by the client parser.
 
-Mutation checks in a throwaway copy confirmed that the relevant tests fail when each of these is removed: the primary or secondary angle sign in either implementation, the static-positioner calibration term, the grid containment check, the nonfinite sample guard, the client foreshortening recomputation, the ambiguous-save lock, and the cross-studio dirty locks in the App.
+Mutation checks in a throwaway copy confirmed that the relevant tests fail when each of these is removed: the primary or secondary angle sign in either implementation, the static-positioner calibration term, the grid containment check, the nonfinite sample guard, the client foreshortening recomputation, the ambiguous-save lock, the cross-studio dirty locks in the App, the mutual biplane reference requirement, the tie rounding rule, the cancellation of a superseded preview render, the rejection of a target point beyond the detector plane, and the studio guards that discard a load or save response belonging to a previous case version.
 
 ## Observed checks
 
 - `uv run ruff check .` and `uv run ruff format --check .`: clean.
-- `uv run pytest -q`: 1069 passed, 125 skipped (optional runtimes).
-- `tests/ingest_runtime` in the locked ingest runtime: 60 passed.
-- `npm test`: 74 files, 623 tests passed. `npm run build`: passed. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
+- `uv run pytest -q`: 1071 passed, 125 skipped (optional runtimes).
+- `tests/ingest_runtime` in the locked ingest runtime: 63 passed.
+- `npm test`: 74 files, 632 tests passed. `npm run build`: passed. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.

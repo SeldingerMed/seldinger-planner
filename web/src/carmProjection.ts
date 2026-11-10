@@ -56,12 +56,36 @@ export function detectorToPixel(
   ];
 }
 
+export type ProjectionJob = {
+  /** Renders whole detector rows until the image is complete or `expired()`
+   * returns true. At least one row is rendered per call. Returns true once
+   * the image is complete. A failure is thrown again by every later call. */
+  advance(expired: () => boolean): boolean;
+  /** The finished image. Throws until `advance` has returned true. */
+  image(): ProjectionImage;
+};
+
+/** One-shot render. Blocks until the whole image is computed; interactive
+ * callers should drive `createProjectionJob` in short slices instead. */
 export function renderProjection(
   volume: NVImage,
   view: ViewNumbers,
   isocenter: Vec3,
   options: ProjectionOptions,
 ): ProjectionImage {
+  const job = createProjectionJob(volume, view, isocenter, options);
+  job.advance(() => false);
+  return job.image();
+}
+
+/** Resumable render, so a caller can yield to input between rows and drop a
+ * superseded view without finishing it. */
+export function createProjectionJob(
+  volume: NVImage,
+  view: ViewNumbers,
+  isocenter: Vec3,
+  options: ProjectionOptions,
+): ProjectionJob {
   validateOptions(options);
   const sampler = createNativeSampler(volume),
     cam = camera(view, isocenter);
@@ -76,8 +100,10 @@ export function renderProjection(
   const limit = [nx - 1, ny - 1, nz - 1];
   let peak = 0,
     through = 0,
-    samples = 0;
-  for (let j = 0; j < height; j++) {
+    samples = 0,
+    row = 0,
+    failure: Error | null = null;
+  const renderRow = (j: number) => {
     const y = (0.5 - (j + 0.5) / height) * 2 * cam.half_height_mm;
     for (let i = 0; i < width; i++) {
       const x = ((i + 0.5) / width - 0.5) * 2 * cam.half_width_mm;
@@ -166,15 +192,42 @@ export function renderProjection(
       sums[i + width * j] = sum;
       if (sum > peak) peak = sum;
     }
-  }
-  // Dense structures are dark on a light field, as in an unsubtracted run.
-  const rgba = new Uint8ClampedArray(width * height * 4);
-  for (let index = 0; index < sums.length; index++) {
-    const shade = peak > 0 ? Math.round(235 * (1 - sums[index] / peak)) : 235;
-    rgba[index * 4] = rgba[index * 4 + 1] = rgba[index * 4 + 2] = shade;
-    rgba[index * 4 + 3] = 255;
-  }
-  return { width, height, rgba, peak, rays_through_volume: through, samples };
+  };
+  return {
+    advance(expired) {
+      try {
+        for (let first = true; row < height; row++, first = false) {
+          if (!first && expired()) return false;
+          renderRow(row);
+        }
+      } catch (error) {
+        failure =
+          error instanceof Error ? error : new Error("Projection failed");
+        throw failure;
+      }
+      return true;
+    },
+    image() {
+      if (failure) throw failure;
+      if (row < height) throw new Error("Projection is not complete");
+      // Dense structures are dark on a light field, as in an unsubtracted run.
+      const rgba = new Uint8ClampedArray(width * height * 4);
+      for (let index = 0; index < sums.length; index++) {
+        const shade =
+          peak > 0 ? Math.round(235 * (1 - sums[index] / peak)) : 235;
+        rgba[index * 4] = rgba[index * 4 + 1] = rgba[index * 4 + 2] = shade;
+        rgba[index * 4 + 3] = 255;
+      }
+      return {
+        width,
+        height,
+        rgba,
+        peak,
+        rays_through_volume: through,
+        samples,
+      };
+    },
+  };
 }
 
 /** Target path and isocenter in pixel coordinates for the overlay. */

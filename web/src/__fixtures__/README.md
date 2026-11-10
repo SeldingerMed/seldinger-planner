@@ -8,7 +8,7 @@ The JSON files were captured from the actual default FastAPI application using `
 
 - `step-a-projection-plans.json`: actual `not_confirmed`, `current` and `stale` responses of the default application's C-arm projection-plan route for one generated-source case. The current plan holds three views over a 10 mm L-shaped target; the stale response followed a notes edit that advanced the case version.
 - `step-a-projection-series.json`: actual `GET /api/projection-series/{source_id}` responses for two bundles written by the real `planner.projection_ingest` converter from synthetic XA headers: a cross-referenced biplane pair and an uncalibrated rotational run.
-- `carm-geometry-vectors.json`: known C-arm frames, projections and foreshortening values. Derived with NumPy by `tests/ingest_runtime/test_carm_vectors_independent.py` (`--write` regenerates it), independently of the Python and TypeScript implementations that are both tested against it.
+- `carm-geometry-vectors.json`: known C-arm frames, projections and foreshortening values, plus hand-written angle labels and fixed-point text that pin one rounding rule for the brief and the studio. Derived with NumPy by `tests/ingest_runtime/test_carm_vectors_independent.py` (`--write` regenerates it), independently of the Python and TypeScript implementations that are both tested against it.
 
 Case/result identifiers are random synthetic test identifiers, not credentials. Regenerating the fixtures can change those identifiers. The frontend tests derive their expected identity from each captured fixture rather than substituting an image hash for its manifest revision.
 

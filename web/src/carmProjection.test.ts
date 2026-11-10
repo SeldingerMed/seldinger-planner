@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { NVImage } from "@niivue/niivue";
 import type { ViewNumbers } from "./carmGeometry";
 import {
+  createProjectionJob,
   detectorToPixel,
   projectOverlay,
   renderProjection,
@@ -110,6 +111,46 @@ test("the central ray sum through a uniform slab equals thickness times excess",
   expect(image.peak).toBeLessThan(central * 1.003);
   expect(image.rays_through_volume).toBeGreaterThan(0);
   expect(image.samples).toBeGreaterThan(image.rays_through_volume);
+});
+
+test("a render advanced one row at a time equals the one-shot render", () => {
+  const volume = phantom((x, y, z) => 50 * x + 7 * y * y - 3 * z + 400);
+  const view = { ...VIEW, primary_deg: 33, secondary_deg: -21 };
+  const options = { ...OPTIONS, width_px: 48, height_px: 40, threshold: 150 };
+  const whole = renderProjection(volume, view, [1, -2, 3], options);
+  const job = createProjectionJob(volume, view, [1, -2, 3], options);
+  expect(() => job.image()).toThrow("Projection is not complete");
+  let turns = 1;
+  // An always-expired deadline still renders one row per call.
+  while (!job.advance(() => true)) {
+    expect(() => job.image()).toThrow("Projection is not complete");
+    turns++;
+  }
+  expect(turns).toBe(40);
+  expect(job.advance(() => true)).toBe(true);
+  const sliced = job.image();
+  expect(sliced.peak).toBe(whole.peak);
+  expect(sliced.samples).toBe(whole.samples);
+  expect(sliced.rays_through_volume).toBe(whole.rays_through_volume);
+  expect(Array.from(sliced.rgba)).toEqual(Array.from(whole.rgba));
+  expect(new Set(sliced.rgba).size).toBeGreaterThan(50);
+});
+
+test("a failed job stays failed and never yields an image", () => {
+  const volume = phantom((_x, _y, z) => (z < -18 ? Number.NaN : 400));
+  const job = createProjectionJob(volume, VIEW, [0, 0, 0], OPTIONS);
+  let failure: unknown;
+  let turns = 0;
+  try {
+    while (!job.advance(() => true)) turns++;
+  } catch (error) {
+    failure = error;
+  }
+  expect(String(failure)).toMatch(/Nonfinite source sample/);
+  // Image up is cranial, so the poisoned caudal slices are reached late.
+  expect(turns).toBeGreaterThan(8);
+  expect(() => job.advance(() => false)).toThrow(/Nonfinite source sample/);
+  expect(() => job.image()).toThrow(/Nonfinite source sample/);
 });
 
 test("threshold above every value yields a blank, light field", () => {

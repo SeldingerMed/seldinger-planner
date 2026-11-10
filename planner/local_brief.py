@@ -131,6 +131,8 @@ def project_projection_plan(identity, envelope) -> dict:
 
 
 def render_projection_plan(plan) -> list[str]:
+    from planner.carm_geometry import fixed
+
     lines = ["## C-arm working views", "", f"- Status: {plan['status']}"]
     for field in ("plan_revision", "plan_id", "input_sha256", "convention"):
         if field in plan:
@@ -138,7 +140,7 @@ def render_projection_plan(plan) -> list[str]:
     if plan["status"] != "current":
         return [*lines, "", "No current confirmed C-arm views are included.", ""]
     lines += [
-        f"- Target path: {plan['target_point_count']} points, {plan['target_length_mm']:.2f} mm",
+        f"- Target path: {plan['target_point_count']} points, {fixed(plan['target_length_mm'], 2)} mm",
         f"- Foreshortening method: {plan['foreshortening_method'].replace('_', ' ')}",
         "",
         (
@@ -153,14 +155,14 @@ def render_projection_plan(plan) -> list[str]:
             f"### `{view['name']}`",
             "",
             (
-                f"- Angles: {view['angle_label']} (primary {view['primary_deg']:.1f},"
-                f" secondary {view['secondary_deg']:.1f} degrees)"
+                f"- Angles: {view['angle_label']} (primary {fixed(view['primary_deg'], 1)},"
+                f" secondary {fixed(view['secondary_deg'], 1)} degrees)"
             ),
-            f"- Source to detector (mm): {view['source_detector_mm']:.1f}",
-            f"- Source to isocenter (mm): {view['source_isocenter_mm']:.1f}",
-            f"- Detector (mm): {view['detector_width_mm']:.1f} x {view['detector_height_mm']:.1f}",
-            f"- Magnification at isocenter: {view['magnification_at_isocenter']:.3f}",
-            f"- Target foreshortening (%): {view['foreshortening_percent']:.1f}",
+            f"- Source to detector (mm): {fixed(view['source_detector_mm'], 1)}",
+            f"- Source to isocenter (mm): {fixed(view['source_isocenter_mm'], 1)}",
+            f"- Detector (mm): {fixed(view['detector_width_mm'], 1)} x {fixed(view['detector_height_mm'], 1)}",
+            f"- Magnification at isocenter: {fixed(view['magnification_at_isocenter'], 3)}",
+            f"- Target foreshortening (%): {fixed(view['foreshortening_percent'], 1)}",
             f"- Target inside detector field: {'yes' if view['target_in_field'] else 'no'}",
             "",
         ]

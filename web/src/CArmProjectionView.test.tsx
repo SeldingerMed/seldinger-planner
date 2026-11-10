@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import type { NVImage } from "@niivue/niivue";
 import CArmProjectionView from "./CArmProjectionView";
 import type { ViewNumbers } from "./carmGeometry";
@@ -65,7 +65,9 @@ function stubCanvas() {
 }
 afterEach(() => {
   cleanup();
+  // Spies first: one of them wraps the fake setTimeout.
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 test("paints the simulated projection, the target path and the isocenter", async () => {
@@ -113,7 +115,7 @@ test.each([
   ],
   [
     { threshold: null },
-    "Enter valid view values to preview a simulated projection.",
+    "Enter a valid projection threshold to preview a simulated projection.",
   ],
   [{ disabled: true }, "Simulated projection paused."],
 ])("explains why nothing is shown %#", async (change, message) => {
@@ -139,5 +141,93 @@ test("canvas and source failures are reported instead of a stale image", async (
   expect(
     await screen.findByText(/Nonfinite source sample/),
   ).toBeInTheDocument();
+  expect(screen.queryByLabelText(/Simulated projection/)).toBeNull();
+});
+
+test("a superseded view is dropped between slices and never replaces the newer image", async () => {
+  const calls = stubCanvas();
+  vi.useFakeTimers();
+  // Every deadline check reports an expired slice, so each timer turn renders
+  // exactly one detector row and no view can finish in one turn.
+  let clock = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => (clock += 1000));
+  const timers = vi.spyOn(globalThis, "setTimeout");
+  const turn = () => act(async () => void vi.advanceTimersToNextTimer());
+  // The first view is 160 rows tall. Left running, it would finish after the
+  // 80-row view that replaces it and wipe that newer image.
+  const tall = { ...view, detector_width_mm: 50, detector_height_mm: 100 };
+  const first = render(<CArmProjectionView {...props} view={tall} />);
+  for (let row = 0; row < 4; row++) await turn();
+  expect(screen.getByText("Computing simulated projection…")).toBeVisible();
+  expect(screen.queryByLabelText(/Simulated projection/)).toBeNull();
+  expect(vi.getTimerCount()).toBe(1);
+  const before = timers.mock.calls.length;
+  first.rerender(
+    <CArmProjectionView {...props} view={{ ...view, primary_deg: -40 }} />,
+  );
+  // The dropped view's pending slice is gone; only the newer view is queued.
+  expect(vi.getTimerCount()).toBe(1);
+  await act(async () => void vi.runAllTimers());
+  // One timer turn per row of the newer 80-row view and none for the old one.
+  expect(timers.mock.calls.length - before).toBe(80);
+  expect(vi.getTimerCount()).toBe(0);
+  expect(screen.getByLabelText(/Simulated projection/)).toHaveAttribute(
+    "height",
+    "80",
+  );
+  expect(screen.getByText(/Not an acquired angiogram/)).toHaveTextContent(
+    "RAO 40.0 / CAU 20.0",
+  );
+  expect(calls.filter((call) => call.startsWith("put"))).toEqual([
+    "put 160x80",
+  ]);
+  // A further edit withdraws the painted image at once: the caption names
+  // the edited view, so the previous view's pixels must not stay under it.
+  first.rerender(
+    <CArmProjectionView {...props} view={{ ...view, primary_deg: 10 }} />,
+  );
+  await turn();
+  expect(screen.queryByLabelText(/Simulated projection/)).toBeNull();
+  expect(screen.getByText("Computing simulated projection…")).toBeVisible();
+  await act(async () => void vi.runAllTimers());
+  expect(screen.getByLabelText(/Simulated projection/)).toBeInTheDocument();
+  // A replaced volume object under the same identity is not trusted either.
+  first.rerender(
+    <CArmProjectionView
+      {...props}
+      view={{ ...view, primary_deg: 10 }}
+      volume={{ ...volume } as unknown as NVImage}
+    />,
+  );
+  await turn();
+  expect(screen.queryByLabelText(/Simulated projection/)).toBeNull();
+  first.unmount();
+  expect(vi.getTimerCount()).toBe(0);
+  // Unmounting mid-render stops the remaining slices as well.
+  const again = render(<CArmProjectionView {...props} view={tall} />);
+  for (let row = 0; row < 3; row++) await turn();
+  expect(vi.getTimerCount()).toBe(1);
+  again.unmount();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("a failure in a later slice is reported and clears the image", async () => {
+  stubCanvas();
+  let clock = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => (clock += 1000));
+  const slices = vi.spyOn(globalThis, "setTimeout");
+  // Only the caudal end of the volume is poisoned, so the first rows succeed.
+  const img = new Float32Array(n ** 3).fill(400);
+  img.fill(Number.NaN, 0, n * n);
+  render(
+    <CArmProjectionView
+      {...props}
+      volume={{ ...volume, img } as unknown as NVImage}
+    />,
+  );
+  expect(
+    await screen.findByText(/Nonfinite source sample/),
+  ).toBeInTheDocument();
+  expect(slices.mock.calls.length).toBeGreaterThan(5);
   expect(screen.queryByLabelText(/Simulated projection/)).toBeNull();
 });

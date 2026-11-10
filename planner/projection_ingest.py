@@ -272,7 +272,7 @@ def _manifest(blobs, scope):
             _fail("A biplane bundle requires one plane A and one plane B instance")
         if a["study"] != b["study"] or a["instance"] == b["instance"]:
             _fail("Biplane instances must be distinct and share one study")
-        if b["instance"] not in a["references"] and a["instance"] not in b["references"]:
+        if b["instance"] not in a["references"] or a["instance"] not in b["references"]:
             _fail("Biplane instances must cross-reference each other")
         planes.sort(key=lambda plane: plane["plane"])
         linkage = "cross_referenced"

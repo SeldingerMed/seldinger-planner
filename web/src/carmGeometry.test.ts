@@ -70,9 +70,17 @@ test("hand-computed anchors: patient left lands on image right, magnified", () =
       [0, 1, 0],
     ),
   ).toBeCloseTo(0.4, 12);
-  expect(angleLabel(30, 20)).toBe("LAO 30.0 / CRA 20.0");
-  expect(angleLabel(-45.25, -10)).toBe("RAO 45.3 / CAU 10.0");
-  expect(angleLabel(0, 0)).toBe("LAO/RAO 0.0 / CRA/CAU 0.0");
+});
+
+test("angle labels and fixed-point text match the table shared with the brief", () => {
+  // planner/carm_geometry.py is tested against the same rows, so the exported
+  // brief and this studio cannot print one view two ways.
+  expect(vectors.labels.length).toBeGreaterThanOrEqual(9);
+  for (const row of vectors.labels)
+    expect(angleLabel(row.primary_deg, row.secondary_deg)).toBe(row.label);
+  expect(vectors.fixed.length).toBeGreaterThanOrEqual(9);
+  for (const row of vectors.fixed)
+    expect(row.value.toFixed(row.digits)).toBe(row.text);
 });
 
 test.each([
@@ -94,6 +102,37 @@ test("points at or behind the source are refused", () => {
   expect(() => project(cam, [0, -750, 0])).toThrow();
   expect(() => project(cam, [0, -900, 0])).toThrow();
   expect(() => project(cam, [0, Number.NaN, 0])).toThrow();
+});
+
+test("points beyond the detector plane are refused", () => {
+  // AP at 1200 / 750: the detector plane is 450 mm anterior of the isocenter.
+  const cam = camera(VIEW, [0, 0, 0]);
+  expect(project(cam, [10, 450, 0])).toEqual([-10, 0, 1200]);
+  expect(() => project(cam, [10, 450.5, 0])).toThrow(
+    "Point is beyond the detector",
+  );
+  // A detector 1 mm past the isocenter cannot hold a path that extends 5 mm.
+  const tight = { ...VIEW, source_detector_mm: 301, source_isocenter_mm: 300 };
+  expect(() =>
+    summarizeView(
+      tight,
+      [0, 0, 0],
+      [
+        [0, -5, 0],
+        [0, 5, 0],
+      ],
+    ),
+  ).toThrow("Point is beyond the detector");
+  expect(
+    summarizeView(
+      tight,
+      [0, 0, 0],
+      [
+        [0, -5, 0],
+        [0, 1, 0],
+      ],
+    ).foreshortening_percent,
+  ).toBe(100);
 });
 
 test("the proposal finds a perpendicular view with the least angulation", () => {

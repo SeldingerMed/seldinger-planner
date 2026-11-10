@@ -657,5 +657,99 @@
       "magnification_at_isocenter": 1.6,
       "target_in_field": true
     }
+  ],
+  "labels": [
+    {
+      "primary_deg": 30.0,
+      "secondary_deg": 20.0,
+      "label": "LAO 30.0 / CRA 20.0"
+    },
+    {
+      "primary_deg": 0.0,
+      "secondary_deg": 0.0,
+      "label": "LAO/RAO 0.0 / CRA/CAU 0.0"
+    },
+    {
+      "primary_deg": 0.04,
+      "secondary_deg": -0.04,
+      "label": "LAO/RAO 0.0 / CRA/CAU 0.0"
+    },
+    {
+      "primary_deg": -45.25,
+      "secondary_deg": -10.0,
+      "label": "RAO 45.3 / CAU 10.0"
+    },
+    {
+      "primary_deg": 0.25,
+      "secondary_deg": -0.75,
+      "label": "LAO 0.3 / CAU 0.8"
+    },
+    {
+      "primary_deg": -30.5,
+      "secondary_deg": 20.25,
+      "label": "RAO 30.5 / CRA 20.3"
+    },
+    {
+      "primary_deg": 12.35,
+      "secondary_deg": -12.65,
+      "label": "LAO 12.3 / CAU 12.7"
+    },
+    {
+      "primary_deg": 89.95,
+      "secondary_deg": 0.125,
+      "label": "LAO 90.0 / CRA 0.1"
+    },
+    {
+      "primary_deg": -180.0,
+      "secondary_deg": 90.0,
+      "label": "RAO 180.0 / CRA 90.0"
+    }
+  ],
+  "fixed": [
+    {
+      "value": 45.25,
+      "digits": 1,
+      "text": "45.3"
+    },
+    {
+      "value": -45.25,
+      "digits": 1,
+      "text": "-45.3"
+    },
+    {
+      "value": 0.125,
+      "digits": 2,
+      "text": "0.13"
+    },
+    {
+      "value": 1.005,
+      "digits": 2,
+      "text": "1.00"
+    },
+    {
+      "value": 2.5,
+      "digits": 0,
+      "text": "3"
+    },
+    {
+      "value": 1200.0,
+      "digits": 1,
+      "text": "1200.0"
+    },
+    {
+      "value": 1.6,
+      "digits": 3,
+      "text": "1.600"
+    },
+    {
+      "value": 50.94999,
+      "digits": 1,
+      "text": "50.9"
+    },
+    {
+      "value": 0.0625,
+      "digits": 3,
+      "text": "0.063"
+    }
   ]
 }

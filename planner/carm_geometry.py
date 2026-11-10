@@ -14,6 +14,7 @@ the field of view.
 """
 
 import math
+from decimal import ROUND_HALF_UP, Decimal
 from itertools import pairwise
 
 from planner.territory_geometry import dot, path_distances, point3, subtract
@@ -111,6 +112,9 @@ def project(cam, point):
     depth = dot(relative, cam["d"])
     if not math.isfinite(depth) or depth < MIN_DEPTH_MM:
         raise ValueError("Point is not in front of the X-ray source")
+    if depth > cam["source_detector_mm"]:
+        # The detector cannot sit inside the anatomy it images.
+        raise ValueError("Point is beyond the detector")
     scale = cam["source_detector_mm"] / depth
     x, y = dot(relative, cam["u"]) * scale, dot(relative, cam["v"]) * scale
     if not math.isfinite(x) or not math.isfinite(y):
@@ -130,13 +134,24 @@ def foreshortening_fraction(path, direction):
     return min(1.0, max(0.0, 1.0 - math.fsum(visible) / total))
 
 
+def fixed(value, digits):
+    """Decimal text of a finite number, rounded exactly like ECMAScript ``toFixed``.
+
+    The browser renders the same quantities with ``Number.prototype.toFixed``,
+    which rounds the exact binary value and resolves a tie away from zero.
+    Python's ``format`` resolves ties to even, so ``45.25`` would read ``45.2``
+    in the brief and ``45.3`` in the studio."""
+    step = Decimal(1).scaleb(-digits)
+    return f"{Decimal(float(value)).quantize(step, rounding=ROUND_HALF_UP):.{digits}f}"
+
+
 def angle_label(primary_deg, secondary_deg):
     """Operator-facing angle naming, for example ``LAO 30.0 / CRA 20.0``."""
 
     def part(value, positive, negative):
         if abs(value) < 0.05:
             return f"{positive}/{negative} 0.0"
-        return f"{positive if value > 0 else negative} {abs(value):.1f}"
+        return f"{positive if value > 0 else negative} {fixed(abs(value), 1)}"
 
     return f"{part(primary_deg, 'LAO', 'RAO')} / {part(secondary_deg, 'CRA', 'CAU')}"
 

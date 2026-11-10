@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { NVImage } from "@niivue/niivue";
 import { angleLabel, type ViewNumbers } from "./carmGeometry";
 import {
+  createProjectionJob,
   projectOverlay,
-  renderProjection,
   type ProjectionImage,
+  type ProjectionJob,
 } from "./carmProjection";
 import { stable } from "./territoryWorkflow";
 import type { Vec3 } from "./obliqueSlice";
@@ -21,6 +22,8 @@ type Props = {
 type Paint = { gateKey: string; volume: NVImage; image: ProjectionImage };
 const LONG_SIDE_PX = 160;
 const STEP_MM = 1;
+/** Main-thread time one render slice may hold before yielding to input. */
+const SLICE_MS = 12;
 
 /** Display-only simulated projection with the target path drawn over it. */
 export default function CArmProjectionView({
@@ -37,8 +40,7 @@ export default function CArmProjectionView({
   const [paint, setPaint] = useState<Paint | null>(null),
     [error, setError] = useState(""),
     [overlayNote, setOverlayNote] = useState("");
-  const run = useRef(0),
-    canvas = useRef<HTMLCanvasElement | null>(null);
+  const canvas = useRef<HTMLCanvasElement | null>(null);
   const ready = !!volume && !!view && !!isocenter && threshold !== null;
   const current =
     ready &&
@@ -49,33 +51,40 @@ export default function CArmProjectionView({
       : null;
 
   useEffect(() => {
-    const token = ++run.current;
     if (!volume || !view || !isocenter || threshold === null || disabled) {
       setPaint(null);
       setError("");
       return;
     }
-    const timer = setTimeout(() => {
-      if (token !== run.current) return;
+    // The ray sum runs in short slices so typing in an angle field stays
+    // responsive. The cleanup clears the pending slice, which drops a
+    // superseded or unmounted view before it can finish or set state.
+    let job: ProjectionJob | null = null,
+      timer: ReturnType<typeof setTimeout>;
+    const slice = () => {
       try {
-        const aspect = view.detector_height_mm / view.detector_width_mm;
-        const width = Math.max(
-            8,
-            Math.round(aspect > 1 ? LONG_SIDE_PX / aspect : LONG_SIDE_PX),
-          ),
-          height = Math.max(
-            8,
-            Math.round(aspect > 1 ? LONG_SIDE_PX : LONG_SIDE_PX * aspect),
-          );
-        const image = renderProjection(volume, view, isocenter, {
-          width_px: width,
-          height_px: height,
-          step_mm: STEP_MM,
-          threshold,
-        });
-        if (token !== run.current) return;
+        if (!job) {
+          const aspect = view.detector_height_mm / view.detector_width_mm;
+          job = createProjectionJob(volume, view, isocenter, {
+            width_px: Math.max(
+              8,
+              Math.round(aspect > 1 ? LONG_SIDE_PX / aspect : LONG_SIDE_PX),
+            ),
+            height_px: Math.max(
+              8,
+              Math.round(aspect > 1 ? LONG_SIDE_PX : LONG_SIDE_PX * aspect),
+            ),
+            step_mm: STEP_MM,
+            threshold,
+          });
+        }
+        const deadline = performance.now() + SLICE_MS;
+        if (!job.advance(() => performance.now() >= deadline)) {
+          timer = setTimeout(slice, 0);
+          return;
+        }
         setError("");
-        setPaint({ gateKey, volume, image });
+        setPaint({ gateKey, volume, image: job.image() });
       } catch (failure) {
         setPaint(null);
         setError(
@@ -84,7 +93,8 @@ export default function CArmProjectionView({
             : "Simulated projection failed",
         );
       }
-    }, 0);
+    };
+    timer = setTimeout(slice, 0);
     return () => clearTimeout(timer);
   }, [gateKey, volume]);
 
@@ -138,11 +148,13 @@ export default function CArmProjectionView({
               ? "No verified source volume is loaded."
               : !isocenter
                 ? "Set an isocenter to preview a simulated projection."
-                : !view || threshold === null
+                : !view
                   ? "Enter valid view values to preview a simulated projection."
-                  : disabled
-                    ? "Simulated projection paused."
-                    : "Computing simulated projection…"}
+                  : threshold === null
+                    ? "Enter a valid projection threshold to preview a simulated projection."
+                    : disabled
+                      ? "Simulated projection paused."
+                      : "Computing simulated projection…"}
         </p>
       </div>
     );

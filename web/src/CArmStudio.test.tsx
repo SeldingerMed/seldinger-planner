@@ -224,6 +224,100 @@ test("an acknowledgement that differs from the draft is not accepted", async () 
   expect(screen.queryByText("saved")).toBeNull();
 });
 
+function Versioned({
+  version,
+  cursor,
+}: {
+  version: string;
+  cursor: Vec3 | null;
+}) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <CArmStudio
+      {...base}
+      caseState={{ ...state, artifact_version: version }}
+      cursor={cursor}
+      disabled={busy}
+      onBusy={setBusy}
+    />
+  );
+}
+const nextVersion = { ...plans.not_confirmed, artifact_version: "2" };
+const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+test("a late load for the previous case version cannot replace the newer draft", async () => {
+  let answerOld!: (response: Response) => void;
+  const fetch = vi
+    .fn()
+    .mockReturnValueOnce(new Promise<Response>((r) => (answerOld = r)))
+    .mockResolvedValueOnce(json(nextVersion));
+  vi.stubGlobal("fetch", fetch);
+  const view = render(<Versioned version="1" cursor={null} />);
+  view.rerender(<Versioned version="2" cursor={[10, 16, 16]} />);
+  await screen.findByText(/Plan revision 0 · not confirmed/);
+  // The saved plan of version 1 arrives after version 2 is on screen.
+  answerOld(json(plans.current));
+  await settle();
+  expect(screen.getByText(/Plan revision 0 · not confirmed/)).toBeVisible();
+  expect(screen.queryByText(/Plan revision 1/)).toBeNull();
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(field("View name").value).not.toBe("AP");
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Add crosshair to target path" }),
+    ).toBeEnabled(),
+  );
+  click("Add crosshair to target path");
+  expect(screen.getByText(/Plan revision 0 · unsaved draft/)).toBeVisible();
+});
+
+test.each([
+  ["acknowledgement", () => json(plans.current)],
+  ["failure", () => json({ detail: "unavailable" }, 503)],
+])(
+  "a late save %s for the previous case version is ignored",
+  async (_name, answer) => {
+    let acknowledge!: (response: Response) => void;
+    const fetch = vi.fn((_url: string, init?: RequestInit) =>
+      init?.method === "PUT"
+        ? new Promise<Response>((r) => (acknowledge = r))
+        : Promise.resolve(
+            json(
+              fetch.mock.calls.length === 1 ? plans.not_confirmed : nextVersion,
+            ),
+          ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const view = render(<Versioned version="1" cursor={null} />);
+    await screen.findByText(/Plan revision 0 · not confirmed/);
+    for (const point of inputs.target_path) {
+      view.rerender(<Versioned version="1" cursor={point as Vec3} />);
+      click("Add crosshair to target path");
+    }
+    view.rerender(<Versioned version="1" cursor={inputs.isocenter as Vec3} />);
+    click("Set isocenter to crosshair");
+    for (const planned of inputs.views) {
+      setView(planned);
+      click("Add view to plan");
+    }
+    fireEvent.click(screen.getByRole("checkbox", { name: /I confirm/ }));
+    click("Confirm and save C-arm views");
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    // The case version moves on while the write is still in flight.
+    view.rerender(<Versioned version="2" cursor={null} />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3));
+    await screen.findByText(/Plan revision 0 · not confirmed/);
+    acknowledge(answer());
+    await settle();
+    expect(screen.getByText(/Plan revision 0 · not confirmed/)).toBeVisible();
+    expect(screen.queryByText(/Plan revision 1/)).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText(/could not be confirmed/)).toBeNull();
+    await waitFor(() => expect(field("View name")).toBeEnabled());
+  },
+);
+
 test("a saved plan loads as authoritative, and any edit returns it to draft", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(plans.current)));
   const dirty = vi.fn();

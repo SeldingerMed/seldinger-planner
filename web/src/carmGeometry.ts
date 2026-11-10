@@ -122,6 +122,9 @@ export function project(
   const depth = dot(relative, cam.d);
   if (!Number.isFinite(depth) || depth < MIN_DEPTH_MM)
     throw new Error("Point is not in front of the X-ray source");
+  // The detector cannot sit inside the anatomy it images.
+  if (depth > cam.source_detector_mm)
+    throw new Error("Point is beyond the detector");
   const scale = cam.source_detector_mm / depth;
   const x = dot(relative, cam.u) * scale,
     y = dot(relative, cam.v) * scale;

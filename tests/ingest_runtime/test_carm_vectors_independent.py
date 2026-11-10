@@ -124,7 +124,76 @@ def build():
         "note": "Synthetic vectors derived independently with NumPy; see tests/ingest_runtime/test_carm_vectors_independent.py",
         "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
         "cases": cases,
+        "labels": [
+            {"primary_deg": p, "secondary_deg": s, "label": label} for p, s, label in LABELS
+        ],
+        "fixed": [{"value": v, "digits": d, "text": text} for v, d, text in FIXED],
     }
+
+
+# Operator-facing angle text, written out by hand. A half at the first decimal
+# rounds away from zero (45.25 reads 45.3), which is what the browser's toFixed
+# does with these exactly representable values; 12.35 and 12.65 are not exact
+# halves in binary and round to the nearer side of the stored value.
+LABELS = [
+    (30.0, 20.0, "LAO 30.0 / CRA 20.0"),
+    (0.0, 0.0, "LAO/RAO 0.0 / CRA/CAU 0.0"),
+    (0.04, -0.04, "LAO/RAO 0.0 / CRA/CAU 0.0"),
+    (-45.25, -10.0, "RAO 45.3 / CAU 10.0"),
+    (0.25, -0.75, "LAO 0.3 / CAU 0.8"),
+    (-30.5, 20.25, "RAO 30.5 / CRA 20.3"),
+    (12.35, -12.65, "LAO 12.3 / CAU 12.7"),
+    (89.95, 0.125, "LAO 90.0 / CRA 0.1"),
+    (-180.0, 90.0, "RAO 180.0 / CRA 90.0"),
+]
+
+
+# Fixed-point text shared by the exported brief (Python) and the studio
+# (ECMAScript toFixed). Written by hand; checked below with exact rationals.
+FIXED = [
+    (45.25, 1, "45.3"),
+    (-45.25, 1, "-45.3"),
+    (0.125, 2, "0.13"),
+    (1.005, 2, "1.00"),
+    (2.5, 0, "3"),
+    (1200.0, 1, "1200.0"),
+    (1.6, 3, "1.600"),
+    (50.94999, 1, "50.9"),
+    (0.0625, 3, "0.063"),
+]
+
+
+def test_fixed_table_follows_exact_half_away_from_zero_rounding():
+    from fractions import Fraction
+
+    for value, digits, text in FIXED:
+        scaled = Fraction(abs(value)) * 10**digits
+        whole = scaled.numerator // scaled.denominator
+        whole += 1 if scaled - whole >= Fraction(1, 2) else 0
+        body = str(whole).rjust(digits + 1, "0")
+        expected = body[: len(body) - digits] + ("." + body[len(body) - digits :] if digits else "")
+        assert ("-" if value < 0 else "") + expected == text
+
+
+def test_label_table_follows_exact_half_away_from_zero_rounding():
+    from decimal import ROUND_HALF_UP, Decimal
+    from fractions import Fraction
+
+    for primary, secondary, label in LABELS:
+        parts = []
+        for value, positive, negative in ((primary, "LAO", "RAO"), (secondary, "CRA", "CAU")):
+            # Exact rational arithmetic on the stored double, no float formatting.
+            tenths = Fraction(abs(value)) * 10
+            whole = tenths.numerator // tenths.denominator
+            whole += 1 if tenths - whole >= Fraction(1, 2) else 0
+            if abs(value) < 0.05:
+                parts.append(f"{positive}/{negative} 0.0")
+            else:
+                parts.append(f"{positive if value > 0 else negative} {whole // 10}.{whole % 10}")
+            assert Decimal(whole).scaleb(-1) == Decimal(abs(value)).quantize(
+                Decimal("0.1"), rounding=ROUND_HALF_UP
+            )
+        assert " / ".join(parts) == label
 
 
 def _close(actual, expected):

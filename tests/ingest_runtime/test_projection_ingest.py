@@ -157,7 +157,7 @@ def test_compressed_headers_are_read_without_decoding_pixels(tmp_path):
     assert plane["calibration"]["status"] == "calibrated" and plane["frame_count"] == 4
 
 
-def biplane_pair(tmp_path, *, link=True, same_study=True, labels=("BIPLANE A", "BIPLANE B")):
+def biplane_pair(tmp_path, *, link="both", same_study=True, labels=("BIPLANE A", "BIPLANE B")):
     a = classic(1, ImageType=["ORIGINAL", "PRIMARY", labels[0]])
     b = classic(
         2,
@@ -167,11 +167,12 @@ def biplane_pair(tmp_path, *, link=True, same_study=True, labels=("BIPLANE A", "
     )
     if not same_study:
         b.StudyInstanceUID = STUDY + ".9"
-    if link:
+    # DICOM requires each plane of a biplane acquisition to reference the other.
+    for source, target in ((a, b), (b, a))[: {"both": 2, "one_way": 1, "none": 0}[link]]:
         ref = Dataset()
         ref.ReferencedSOPClassUID = XRayAngiographicImageStorage
-        ref.ReferencedSOPInstanceUID = b.SOPInstanceUID
-        a.ReferencedImageSequence = Sequence([ref])
+        ref.ReferencedSOPInstanceUID = target.SOPInstanceUID
+        source.ReferencedImageSequence = Sequence([ref])
     return write(tmp_path / "a.dcm", a), write(tmp_path / "b.dcm", b)
 
 
@@ -187,7 +188,8 @@ def test_biplane_linkage_is_verified_and_ordered(tmp_path):
 @pytest.mark.parametrize(
     "options",
     [
-        {"link": False},
+        {"link": "none"},
+        {"link": "one_way"},
         {"same_study": False},
         {"labels": ("BIPLANE A", "BIPLANE A")},
         {"labels": ("SINGLE PLANE", "BIPLANE B")},

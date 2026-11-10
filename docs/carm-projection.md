@@ -37,6 +37,8 @@ For every view the server derives:
 - `magnification_at_isocenter`: `source_detector_mm / source_isocenter_mm`.
 - `target_in_field`: whether every target point projects inside the detector under the full pinhole model.
 
+Every target point must lie between the source and the detector plane of every view. A view that would put the source or the detector inside the target path is rejected, in the studio and at save.
+
 `GET /api/cases/{case_id}/projection-plan` returns the saved plan or `not_confirmed`. `PUT` saves an operator-confirmed plan (`confirmed: true`) against the exact case version, source revision and prior plan revision. Saved plans are immutable; a later source or case change reports the plan as `stale` and withholds its values. The isocenter and target points must lie inside the admitted image grid.
 
 The **C-arm views** studio builds the plan from the viewer crosshair or from the current saved reformat path. **Propose low-foreshortening angles** searches whole-degree views within 120 degrees primary and 45 degrees secondary, treats views within 0.5 percentage points of the minimum as tied, and returns the least angulated of them. It fills the editor only. It does not consider vessel overlap, table or gantry reach, or dose.

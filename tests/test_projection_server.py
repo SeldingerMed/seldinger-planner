@@ -90,6 +90,8 @@ def test_confirmation_and_shape_rejections_do_not_store(tmp_path, monkeypatch):
         {"views": [{**VIEW, "secondary_deg": -91.0}]},
         {"views": [{**VIEW, "source_isocenter_mm": 1200.0}]},
         {"views": [{**VIEW, "detector_width_mm": 10.0}]},
+        # The detector plane would cut through the target path.
+        {"views": [{**VIEW, "source_detector_mm": 301.0, "source_isocenter_mm": 300.0}]},
         {"views": [{**VIEW, "extra": 1}]},
         {"target_path": [[5.0, 16.0, 16.0]]},
         {"target_path": [[5.0, 16.0, 16.0], [5.0, 16.0, 16.0]]},

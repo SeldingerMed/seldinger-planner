@@ -10,6 +10,7 @@ from planner.carm_geometry import (
     CONVENTION,
     angle_label,
     camera,
+    fixed,
     foreshortening_fraction,
     project,
     summarize_view,
@@ -78,10 +79,18 @@ def test_hand_computed_anchor_values():
     assert foreshortening_fraction([[0, 0, 0], [7, 0, 0], [7, 0, 2]], (0, 1, 0)) == 0.0
 
 
-def test_angle_labels_name_the_declared_directions():
-    assert angle_label(30, 20) == "LAO 30.0 / CRA 20.0"
-    assert angle_label(-45.25, -10) == "RAO 45.2 / CAU 10.0"
-    assert angle_label(0, 0) == "LAO/RAO 0.0 / CRA/CAU 0.0"
+def test_angle_labels_match_the_shared_table():
+    # The browser mirror is tested against the same rows, so the brief and the
+    # studio cannot name one view two ways.
+    assert len(VECTORS["labels"]) >= 9
+    for row in VECTORS["labels"]:
+        assert angle_label(row["primary_deg"], row["secondary_deg"]) == row["label"]
+
+
+def test_fixed_rounds_like_the_browser():
+    assert len(VECTORS["fixed"]) >= 9
+    for row in VECTORS["fixed"]:
+        assert fixed(row["value"], row["digits"]) == row["text"]
 
 
 @pytest.mark.parametrize(
@@ -116,3 +125,17 @@ def test_rejects_missing_fields_and_points_behind_the_source():
         project(cam, [0, -900, 0])
     with pytest.raises(ValueError):
         summarize_view(VIEW, [0, 0, 0], [[0, -800, 0], [0, 0, 0]])
+
+
+def test_rejects_points_beyond_the_detector_plane():
+    # AP at 1200 / 750: the detector plane is 450 mm anterior of the isocenter.
+    cam = camera(VIEW, [0, 0, 0])
+    assert project(cam, [10, 450, 0]) == (-10.0, 0.0, 1200.0)
+    with pytest.raises(ValueError, match="beyond the detector"):
+        project(cam, [10, 450.5, 0])
+    # A detector 1 mm past the isocenter cannot hold a path that extends 5 mm.
+    tight = {**VIEW, "source_detector_mm": 301.0, "source_isocenter_mm": 300.0}
+    with pytest.raises(ValueError, match="beyond the detector"):
+        summarize_view(tight, [0, 0, 0], [[0, -5, 0], [0, 5, 0]])
+    inside = summarize_view(tight, [0, 0, 0], [[0, -5, 0], [0, 1, 0]])
+    assert inside["foreshortening_percent"] == 100.0
