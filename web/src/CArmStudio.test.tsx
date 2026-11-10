@@ -418,6 +418,20 @@ test("target and view admission errors are explained and change nothing", async 
   expect(screen.getByTestId("projection").dataset.threshold).toBe("null");
 });
 
+test("the projection threshold is seeded from the window and then independent of it", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(plans.not_confirmed)));
+  const view = render(<CArmStudio {...base} cursor={null} />);
+  await screen.findByText(/Plan revision 0 · not confirmed/);
+  const input = field("Projection threshold (source intensity units)");
+  expect(input.value).toBe("300");
+  expect(input).toHaveAccessibleDescription(
+    /independent of it afterwards: changing the window or level does not change/,
+  );
+  view.rerender(<CArmStudio {...base} windowRange={[0, 100]} cursor={null} />);
+  expect(input.value).toBe("300");
+  expect(screen.getByTestId("projection").dataset.threshold).toBe("300");
+});
+
 test("the angle proposal fills the editor without touching the plan", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(plans.not_confirmed)));
   const view = render(<Harness cursor={null} />);

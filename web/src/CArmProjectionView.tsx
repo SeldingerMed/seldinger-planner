@@ -56,6 +56,8 @@ export default function CArmProjectionView({
       setError("");
       return;
     }
+    // A failure belongs to the gate that produced it, not to its replacement.
+    setError("");
     // The ray sum runs in short slices so typing in an angle field stays
     // responsive. The cleanup clears the pending slice, which drops a
     // superseded or unmounted view before it can finish or set state.

@@ -22,6 +22,7 @@ from pydicom.uid import (
     JPEGLosslessSV1,
     XRayAngiographicImageStorage,
 )
+from pydicom.valuerep import IS
 
 from planner.dicom_ingest import IngestError
 from planner.projection_ingest import convert_projection, main
@@ -147,6 +148,13 @@ def test_mask_and_frame_time_vector_are_retained(tmp_path):
     assert plane["mask_operation"] == "avg_sub" and plane["mask_frame_numbers"] == [1, 2]
     assert plane["frame_time_vector_ms"] == [0.0, 100.0, 100.0, 250.0]
     assert plane["frame_time_ms"] is None
+    # A single declared mask frame survives a real DICOM round trip as well.
+    mask.MaskFrameNumbers = 3
+    single = load(
+        convert_projection([write(tmp_path / "s.dcm", ds)], tmp_path / "out", "s2", scope="public")
+    )["planes"][0]
+    assert single["mask_operation"] == "avg_sub" and single["mask_frame_numbers"] == [3]
+    assert type(single["mask_frame_numbers"][0]) is int
 
 
 @pytest.mark.parametrize(
@@ -154,6 +162,8 @@ def test_mask_and_frame_time_vector_are_retained(tmp_path):
     [
         ([1, 2], [1, 2]),
         (3, [3]),
+        ([IS("2"), IS("4")], [2, 4]),  # an int subclass keeps its exact value
+        (IS("3"), [3]),
         ([1.9, 2], None),  # never truncated into a frame the header did not name
         ([2.0], None),
         (True, None),

@@ -218,8 +218,12 @@ def _mask(ds, frames):
             values = [raw] if isinstance(raw, int) else list(raw)
         except TypeError:
             values = []
-        # Frame numbers are kept only as declared: no coercion or truncation.
-        if not all(type(x) is int for x in values):
+        # Frame numbers are kept only as declared: an integer type is required,
+        # so nothing is truncated. The attribute is VR US and pydicom yields
+        # plain ints; an int subclass is taken at its exact value.
+        if all(isinstance(x, int) and not isinstance(x, bool) for x in values):
+            values = [int(x) for x in values]
+        else:
             values = []
         if values and len(set(values)) == len(values) and all(1 <= x <= frames for x in values):
             numbers = values

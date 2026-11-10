@@ -231,3 +231,27 @@ test("a failure in a later slice is reported and clears the image", async () => 
   expect(slices.mock.calls.length).toBeGreaterThan(5);
   expect(screen.queryByLabelText(/Simulated projection/)).toBeNull();
 });
+
+test("a failure message does not outlive the render that produced it", async () => {
+  stubCanvas();
+  vi.useFakeTimers();
+  let clock = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => (clock += 1000));
+  const img = new Float32Array(n ** 3).fill(Number.NaN);
+  const view = render(
+    <CArmProjectionView
+      {...props}
+      volume={{ ...volume, img } as unknown as NVImage}
+    />,
+  );
+  await act(async () => void vi.runAllTimers());
+  expect(screen.getByText(/Nonfinite source sample/)).toBeVisible();
+  // A sound volume replaces the failed one and is still rendering.
+  view.rerender(<CArmProjectionView {...props} />);
+  await act(async () => void vi.advanceTimersToNextTimer());
+  expect(vi.getTimerCount()).toBe(1);
+  expect(screen.queryByText(/Nonfinite source sample/)).toBeNull();
+  expect(screen.getByText("Computing simulated projection…")).toBeVisible();
+  await act(async () => void vi.runAllTimers());
+  expect(screen.getByLabelText(/Simulated projection/)).toBeInTheDocument();
+});

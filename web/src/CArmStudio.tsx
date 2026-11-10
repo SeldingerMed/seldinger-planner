@@ -595,10 +595,16 @@ export default function CArmStudio({
                 <input
                   inputMode="decimal"
                   value={thresholdText}
+                  aria-describedby="carm-threshold-note"
                   onChange={(e) => setThresholdText(e.target.value)}
                 />
               </label>
             </div>
+            <p className="carm-note" id="carm-threshold-note">
+              The projection threshold starts at the middle of the viewer window
+              and is independent of it afterwards: changing the window or level
+              does not change the simulated projection.
+            </p>
             <div className="native-actions">
               <button
                 type="button"

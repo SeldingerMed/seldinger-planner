@@ -49,5 +49,5 @@ Mutation checks in a throwaway copy confirmed that the relevant tests fail when 
 
 - `uv run ruff check .` and `uv run ruff format --check .`: clean.
 - `uv run pytest -q`: 1071 passed, 125 skipped (optional runtimes).
-- `tests/ingest_runtime` in the locked ingest runtime: 73 passed.
-- `npm test`: 74 files, 648 tests passed. `npm run build`: passed. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
+- `tests/ingest_runtime` in the locked ingest runtime: 75 passed.
+- `npm test`: 74 files, 650 tests passed. `npm run build`: passed. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
