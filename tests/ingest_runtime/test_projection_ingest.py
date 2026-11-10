@@ -272,6 +272,42 @@ def enhanced(*, moving=False):
     return ds
 
 
+@pytest.mark.parametrize(
+    ("declared", "frame_time", "vector"),
+    [
+        ({}, None, None),
+        ({"FrameTime": 40.0}, 40.0, None),
+        ({"FrameTimeVector": [0, 33.5]}, None, [0.0, 33.5]),
+        ({"FrameTimeVector": [0, 33.5, 33.5]}, None, None),  # not one entry per frame
+        ({"FrameTime": 0}, None, None),
+    ],
+)
+def test_enhanced_xa_keeps_declared_root_frame_timing(tmp_path, declared, frame_time, vector):
+    ds = enhanced()
+    for keyword, value in declared.items():
+        setattr(ds, keyword, value)
+    plane = load(
+        convert_projection(
+            [write(tmp_path / "e.dcm", ds)], tmp_path / "out", "enh", scope="synthetic"
+        )
+    )["planes"][0]
+    assert plane["sop_class"] == "enhanced_xa"
+    assert plane["frame_time_ms"] == frame_time
+    assert plane["frame_time_vector_ms"] == vector
+
+
+def test_a_lone_biplane_half_keeps_its_label_without_claiming_linkage(tmp_path):
+    ds = classic(1)
+    ds.ImageType = ["ORIGINAL", "PRIMARY", "BIPLANE B"]
+    manifest = load(
+        convert_projection(
+            [write(tmp_path / "b.dcm", ds)], tmp_path / "out", "half", scope="synthetic"
+        )
+    )
+    assert manifest["biplane_linkage"] == "not_applicable"
+    assert [plane["plane"] for plane in manifest["planes"]] == ["b"]
+
+
 def test_enhanced_xa_shared_geometry_is_extracted(tmp_path):
     source = write(tmp_path / "e.dcm", enhanced())
     plane = load(convert_projection([source], tmp_path / "out", "enh", scope="synthetic"))[

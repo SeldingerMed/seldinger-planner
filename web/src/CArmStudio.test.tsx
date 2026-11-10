@@ -447,6 +447,10 @@ test("the angle proposal fills the editor without touching the plan", async () =
   expect(screen.getByText(/does not consider vessel overlap/)).toBeVisible();
 });
 
+const half = structuredClone(seriesFixtures.uncalibrated);
+half.source_id = "synthetic-half";
+half.manifest.planes[0].plane = "b";
+
 test("acquired run geometry is shown with its calibration gate and can seed the editor", async () => {
   const fetch = vi.fn(async (url: string) =>
     url.endsWith("/projection-plan")
@@ -455,7 +459,9 @@ test("acquired run geometry is shown with its calibration gate and can seed the 
         ? json(seriesFixtures.biplane)
         : url.endsWith("/synthetic-rotation")
           ? json(seriesFixtures.uncalibrated)
-          : json({}, 404),
+          : url.endsWith("/synthetic-half")
+            ? json(half)
+            : json({}, 404),
   );
   vi.stubGlobal("fetch", fetch);
   render(<Harness cursor={null} />);
@@ -483,6 +489,19 @@ test("acquired run geometry is shown with its calibration gate and can seed the 
   await screen.findByText(
     /uncalibrated: imager pixel spacing, static positioner/,
   );
+  expect(
+    screen.getByText(/synthetic-rotation · .* · single plane$/),
+  ).toBeVisible();
+  // One half of a biplane run converted alone is not presented as single plane.
+  type("Installed projection source ID", "synthetic-half");
+  click("Load run geometry");
+  await screen.findByText(
+    /synthetic-half · .* · one plane of a biplane acquisition, pairing not verified/,
+  );
+  expect(screen.getByRole("row", { name: /^B / })).toBeVisible();
+  type("Installed projection source ID", "synthetic-rotation");
+  click("Load run geometry");
+  await screen.findByText(/synthetic-rotation ·/);
   expect(
     screen.getByRole("button", {
       name: "Copy plane SINGLE geometry to the view editor",
@@ -533,6 +552,84 @@ test("copies the current saved reformat path as the target", async () => {
   const count = scenes.current.current.inputs.path.length;
   await screen.findByText(new RegExp(`Target path: ${count} points`));
   expect(screen.getByText(/unsaved draft/)).toBeInTheDocument();
+});
+
+// A 320 mm grid, so a zigzag between two far corners can pass 10 m.
+const wide = {
+  ...volume,
+  getAffine: () => [
+    [10, 0, 0, 0],
+    [0, 10, 0, 0],
+    [0, 0, 10, 0],
+    [0, 0, 0, 1],
+  ],
+} as unknown as NVImage;
+const corners: Vec3[] = [
+  [0, 0, 0],
+  [310, 310, 310],
+];
+const leg = Math.hypot(310, 310, 310);
+
+test("a target path cannot be extended past the saved length bound", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(json(plans.not_confirmed)));
+  const props = { ...base, volume: wide };
+  const view = render(<CArmStudio {...props} cursor={null} />);
+  await screen.findByText(/Plan revision 0 · not confirmed/);
+  // 18 legs of 536.9 mm stay under 10 m; the 19th would reach 10.2 m.
+  for (let i = 0; i < 20; i++) {
+    view.rerender(<CArmStudio {...props} cursor={corners[i % 2]} />);
+    click("Add crosshair to target path");
+  }
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Target path exceeds the 10000 mm length bound",
+  );
+  expect(
+    screen.getByText(
+      new RegExp(`Target path: 19 points · ${(18 * leg).toFixed(1)} mm`),
+    ),
+  ).toBeVisible();
+});
+
+test("an over-long saved reformat path is refused at copy time", async () => {
+  const identity = {
+    case_id: scenes.current.case_id,
+    image_sha256: scenes.current.image_sha256,
+    artifact_version: scenes.current.artifact_version,
+    reference_revision: scenes.current.reference_revision,
+  };
+  const long = structuredClone(scenes.current);
+  long.current.inputs.path = Array.from({ length: 20 }, (_, i) => [
+    ...corners[i % 2],
+  ]);
+  long.current.result.path_point_count = 20;
+  long.current.result.path_length_mm = 19 * leg;
+  const fetch = vi.fn(async (url: string) =>
+    url.endsWith("/projection-plan")
+      ? json({
+          ...identity,
+          plan_revision: 0,
+          current: { status: "not_confirmed" },
+        })
+      : json(long),
+  );
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <CArmStudio
+      {...base}
+      volume={wide}
+      cursor={null}
+      caseState={{ ...identity, spatial_units: "mm" }}
+      binding={identity}
+    />,
+  );
+  await screen.findByText(/Plan revision 0 · not confirmed/);
+  click("Copy saved reformat path");
+  // The scene parser holds the same bound, so the response never becomes a path.
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "A current saved reformat path could not be copied",
+  );
+  expect(screen.getByText(/Target path: 0 points/)).toBeVisible();
+  expect(screen.queryByText(/unsaved draft/)).toBeNull();
 });
 
 test("a source without verified millimeter units gets no C-arm planning", async () => {

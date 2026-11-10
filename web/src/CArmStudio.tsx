@@ -16,6 +16,7 @@ import {
   type ViewSummary,
 } from "./carmGeometry";
 import {
+  MAX_PATH_LENGTH_MM,
   MAX_VIEWS,
   parsePlan,
   parseProjectionSeries,
@@ -88,6 +89,8 @@ function parseEditor(editor: Editor): ViewNumbers {
   }
   return validateView(view);
 }
+
+const PATH_TOO_LONG = `Target path exceeds the ${MAX_PATH_LENGTH_MM} mm length bound`;
 
 export default function CArmStudio({
   caseState,
@@ -228,6 +231,10 @@ export default function CArmStudio({
       notice(error instanceof Error ? error.message : fallback);
     }
   }
+  // The save contract's length bound, enforced where the path is built.
+  function bounded(path: Vec3[]) {
+    if (pathLength(path) > MAX_PATH_LENGTH_MM) throw new Error(PATH_TOO_LONG);
+  }
   const appendCursor = () =>
     attempt(() => {
       if (!current || !cursor || !inside(cursor))
@@ -235,7 +242,7 @@ export default function CArmStudio({
       if (current.path.length >= 128)
         throw new Error("Target path is limited to 128 points");
       const path = [...current.path, [...cursor] as Vec3];
-      if (path.length > 1) pathLength(path);
+      if (path.length > 1) bounded(path);
       edit({ path });
     }, "Invalid target point");
   const isocenterFromCursor = () =>
@@ -270,7 +277,9 @@ export default function CArmStudio({
       if (scene.current.status !== "current")
         throw new Error("No current saved reformat path");
       const path = scene.current.inputs.path.map((p) => [...p] as Vec3);
-      pathLength(path);
+      // parseScene enforces the same bound on a saved path; the draft keeps
+      // its own invariant regardless.
+      bounded(path);
       if (path.some((p) => !inside(p)))
         throw new Error("Saved path is outside the loaded source");
       setDraft({ ...current, path, dirty: true, confirmed: false, error: "" });
@@ -802,7 +811,10 @@ export default function CArmStudio({
                     {series.source_id} · {series.scope} ·{" "}
                     {series.biplane_linkage === "cross_referenced"
                       ? "biplane, cross-referenced"
-                      : "single plane"}
+                      : series.planes[0].plane === "a" ||
+                          series.planes[0].plane === "b"
+                        ? "one plane of a biplane acquisition, pairing not verified"
+                        : "single plane"}
                   </caption>
                   <thead>
                     <tr>

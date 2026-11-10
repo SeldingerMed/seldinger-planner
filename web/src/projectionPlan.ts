@@ -16,6 +16,8 @@ import {
 import type { Vec3 } from "./obliqueSlice";
 
 export const PLAN_VERSION = "step-a-carm-views-v1";
+/** Target-length bound of planner/projection_plan.py. */
+export const MAX_PATH_LENGTH_MM = 10000;
 export const MAX_VIEWS = 8;
 export const VIEW_NAME = /^[A-Za-z0-9][A-Za-z0-9 _-]{0,39}$/;
 export type PlanView = ViewNumbers & { name: string };
@@ -92,7 +94,8 @@ export function inputsValid(value: unknown): value is PlanInputs {
   if (new Set(views.map((view) => view.name)).size !== views.length)
     return false;
   try {
-    if (pathLength(value.target_path as Vec3[]) > 10000) return false;
+    if (pathLength(value.target_path as Vec3[]) > MAX_PATH_LENGTH_MM)
+      return false;
     for (const view of views)
       summarizeView(view, value.isocenter, value.target_path as Vec3[]);
   } catch {

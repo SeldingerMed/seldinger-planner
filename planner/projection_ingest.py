@@ -128,10 +128,7 @@ def _classic_geometry(ds, frames):
     plane = {"SINGLE PLANE": "single", "BIPLANE A": "a", "BIPLANE B": "b"}.get(
         (list(getattr(ds, "ImageType", [])) + ["", "", ""])[2].strip().upper(), "unknown"
     )
-    vector = getattr(ds, "FrameTimeVector", None)
-    if vector is not None:
-        values = [_number(x, 0, 1e5) for x in (vector if frames > 1 else [vector])]
-        vector = values if len(values) == frames and None not in values else None
+    frame_time, vector = _timing(ds, frames)
     return {
         "plane": plane,
         "positioner_motion": motion,
@@ -147,9 +144,21 @@ def _classic_geometry(ds, frames):
             getattr(ds, "DistanceSourceToPatient", None), 0, 1e4, low_open=True
         ),
         "imager_pixel_spacing_mm": _spacing(getattr(ds, "ImagerPixelSpacing", None)),
-        "frame_time_ms": _number(getattr(ds, "FrameTime", None), 0, 1e5, low_open=True),
+        "frame_time_ms": frame_time,
         "frame_time_vector_ms": vector,
     }
+
+
+def _timing(ds, frames):
+    """Frame Time and Frame Time Vector as the header declares them, or None."""
+    vector = getattr(ds, "FrameTimeVector", None)
+    if vector is not None:
+        try:
+            values = [_number(x, 0, 1e5) for x in (vector if frames > 1 else [vector])]
+        except TypeError:
+            values = []
+        vector = values if len(values) == frames and None not in values else None
+    return _number(getattr(ds, "FrameTime", None), 0, 1e5, low_open=True), vector
 
 
 def _spacing(value):
@@ -178,6 +187,9 @@ def _enhanced_geometry(ds, frames):
         str(getattr(ds, "PlaneIdentification", "")).strip().upper(), "unknown"
     )
     static = not moving and position is not None
+    # Root-level timing is kept when declared. Per-frame acquisition times in
+    # the Frame Content functional group are not read in Step A.
+    frame_time, vector = _timing(ds, frames)
     return {
         "plane": plane,
         "positioner_motion": "static" if static else "dynamic" if moving else "unknown",
@@ -198,8 +210,8 @@ def _enhanced_geometry(ds, frames):
         if not moving
         else None,
         "imager_pixel_spacing_mm": _spacing(getattr(properties, "ImagerPixelSpacing", None)),
-        "frame_time_ms": None,
-        "frame_time_vector_ms": None,
+        "frame_time_ms": frame_time,
+        "frame_time_vector_ms": vector,
     }
 
 
