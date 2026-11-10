@@ -149,6 +149,30 @@ def test_mask_and_frame_time_vector_are_retained(tmp_path):
     assert plane["frame_time_ms"] is None
 
 
+@pytest.mark.parametrize(
+    ("declared", "kept"),
+    [
+        ([1, 2], [1, 2]),
+        (3, [3]),
+        ([1.9, 2], None),  # never truncated into a frame the header did not name
+        ([2.0], None),
+        (True, None),
+        (["1"], None),
+        ([1, 1], None),
+        ([0], None),
+        ([5], None),
+        (None, None),
+    ],
+)
+def test_mask_frame_numbers_are_kept_only_as_declared_integers(declared, kept):
+    from types import SimpleNamespace
+
+    from planner.projection_ingest import _mask
+
+    item = SimpleNamespace(MaskOperation="AVG_SUB", MaskFrameNumbers=declared)
+    assert _mask(SimpleNamespace(MaskSubtractionSequence=[item]), 4) == ("avg_sub", kept)
+
+
 def test_compressed_headers_are_read_without_decoding_pixels(tmp_path):
     ds = classic(1)
     ds.PixelData = pydicom.encaps.encapsulate([b"\x00\x01"] * 4)

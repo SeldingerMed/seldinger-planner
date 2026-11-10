@@ -216,7 +216,9 @@ export type ProjectionPlane = {
   source_isocenter_mm: number | null;
   imager_pixel_spacing_mm: [number, number] | null;
   frame_time_ms: number | null;
-  mask_operation: string;
+  frame_time_vector_ms: number[] | null;
+  mask_operation: "none" | "avg_sub" | "tid" | "rev_tid" | "unknown";
+  mask_frame_numbers: number[] | null;
   calibration: { status: "calibrated" | "uncalibrated"; missing: string[] };
 };
 export type ProjectionSeries = {
@@ -226,6 +228,9 @@ export type ProjectionSeries = {
   biplane_linkage: "not_applicable" | "cross_referenced";
   planes: ProjectionPlane[];
 };
+// Bounds of planner/projection_source.py.
+const MAX_FRAMES = 2048,
+  MAX_DIMENSION = 4096;
 const seriesFail = (): never => {
   throw new Error("Projection series failed integrity checks.");
 };
@@ -237,13 +242,21 @@ const oneOf = (value: unknown, ...allowed: string[]) =>
 function planeValid(value: unknown): value is ProjectionPlane {
   if (!record(value) || Object.keys(value).length !== 19) return false;
   const spacing = value.imager_pixel_spacing_mm,
-    gate = value.calibration;
+    gate = value.calibration,
+    frames = value.frame_count as number,
+    vector = value.frame_time_vector_ms,
+    masks = value.mask_frame_numbers;
+  const whole = (n: unknown, low: number, high: number) =>
+    Number.isSafeInteger(n) && (n as number) >= low && (n as number) <= high;
   if (
     !oneOf(value.plane, "single", "a", "b", "unknown") ||
     !oneOf(value.sop_class, "xa", "enhanced_xa") ||
-    ![value.rows, value.columns, value.frame_count].every(
-      (n) => Number.isSafeInteger(n) && (n as number) >= 1,
-    ) ||
+    typeof value.input_sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(value.input_sha256) ||
+    !whole(value.input_bytes, 1, 2 ** 40) ||
+    !whole(value.rows, 1, MAX_DIMENSION) ||
+    !whole(value.columns, 1, MAX_DIMENSION) ||
+    !whole(frames, 1, MAX_FRAMES) ||
     !oneOf(value.burned_in_annotation, "yes", "no", "unknown") ||
     !oneOf(value.positioner_motion, "static", "dynamic", "unknown") ||
     !optional(value.primary_angle_deg, -180, 180) ||
@@ -251,7 +264,29 @@ function planeValid(value: unknown): value is ProjectionPlane {
     !optional(value.source_detector_mm, 1e-9, 1e4) ||
     !optional(value.source_isocenter_mm, 1e-9, 1e4) ||
     !optional(value.frame_time_ms, 1e-9, 1e5) ||
-    typeof value.mask_operation !== "string" ||
+    // The first entry of a frame time vector is zero by definition.
+    !(
+      vector === null ||
+      (Array.isArray(vector) &&
+        vector.length === frames &&
+        vector.every((v) => finite(v) && v >= 0 && v <= 1e5))
+    ) ||
+    !oneOf(
+      value.mask_operation,
+      "none",
+      "avg_sub",
+      "tid",
+      "rev_tid",
+      "unknown",
+    ) ||
+    !(
+      masks === null ||
+      (value.mask_operation === "avg_sub" &&
+        Array.isArray(masks) &&
+        masks.length >= 1 &&
+        new Set(masks).size === masks.length &&
+        masks.every((n) => whole(n, 1, frames)))
+    ) ||
     !(
       spacing === null ||
       (Array.isArray(spacing) &&

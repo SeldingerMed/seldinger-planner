@@ -157,6 +157,21 @@ test("an uncalibrated plane is parsed but never becomes a view", () => {
 });
 
 type Series = typeof seriesFixtures.biplane;
+const vectorOf = (v: Series, vector: unknown) =>
+  ((v.manifest.planes[0].frame_time_vector_ms as unknown) = vector);
+const maskOf = (v: Series, operation: string, numbers: unknown) => {
+  v.manifest.planes[0].mask_operation = operation;
+  (v.manifest.planes[0].mask_frame_numbers as unknown) = numbers;
+};
+
+test("a declared frame time vector and mask frames are admitted", () => {
+  const value = structuredClone(seriesFixtures.biplane);
+  vectorOf(value, [0, 66.67, 66.67, 133.34]);
+  maskOf(value, "avg_sub", [1, 4]);
+  const plane = parseProjectionSeries(value, "synthetic-biplane").planes[0];
+  expect(plane.frame_time_vector_ms).toEqual([0, 66.67, 66.67, 133.34]);
+  expect(plane.mask_frame_numbers).toEqual([1, 4]);
+});
 test.each<[string, (value: Series) => void]>([
   ["wrong source", (v) => (v.source_id = "other")],
   ["bad revision", (v) => (v.manifest_revision = "abc")],
@@ -185,6 +200,21 @@ test.each<[string, (value: Series) => void]>([
   ],
   ["angle out of range", (v) => (v.manifest.planes[0].primary_angle_deg = 200)],
   ["extra plane key", (v) => Object.assign(v.manifest.planes[0], { extra: 1 })],
+  ["short frame time vector", (v) => vectorOf(v, [0, 66.67, 66.67])],
+  ["nonfinite frame time", (v) => vectorOf(v, [0, 66.67, Number.NaN, 66.67])],
+  ["negative frame time", (v) => vectorOf(v, [0, 66.67, -1, 66.67])],
+  ["text frame time", (v) => vectorOf(v, [0, "66.67", 66.67, 66.67])],
+  ["frame time vector not a list", (v) => vectorOf(v, 66.67)],
+  ["unknown mask operation", (v) => maskOf(v, "subtract", null)],
+  ["mask frames without avg_sub", (v) => maskOf(v, "tid", [1])],
+  ["mask frame past the run", (v) => maskOf(v, "avg_sub", [5])],
+  ["fractional mask frame", (v) => maskOf(v, "avg_sub", [1.5])],
+  ["repeated mask frame", (v) => maskOf(v, "avg_sub", [2, 2])],
+  ["empty mask frames", (v) => maskOf(v, "avg_sub", [])],
+  ["too many frames", (v) => (v.manifest.planes[0].frame_count = 2049)],
+  ["matrix past the bound", (v) => (v.manifest.planes[0].rows = 4097)],
+  ["bad input digest", (v) => (v.manifest.planes[0].input_sha256 = "abc")],
+  ["zero input bytes", (v) => (v.manifest.planes[0].input_bytes = 0)],
   ["extra manifest key", (v) => Object.assign(v.manifest, { extra: 1 })],
 ])("rejects a contradictory projection series: %s", (_name, mutate) => {
   const value = structuredClone(seriesFixtures.biplane);

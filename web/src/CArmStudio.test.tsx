@@ -447,9 +447,14 @@ test("acquired run geometry is shown with its calibration gate and can seed the 
   render(<Harness cursor={null} />);
   await screen.findByText(/Plan revision 0 · not confirmed/);
   expect(screen.getByText(/No angiographic frames are stored/)).toBeVisible();
+  expect(screen.queryByText(/isocentric acquisition/)).toBeNull();
   type("Installed projection source ID", "synthetic-biplane");
   click("Load run geometry");
   await screen.findByText(/synthetic-biplane · synthetic · biplane/);
+  // Classic XA has no isocenter attribute; the distance's origin is stated.
+  expect(
+    screen.getByText(/source-to-object distance \(0018,1111\)/),
+  ).toHaveTextContent("holds only for an isocentric acquisition");
   expect(screen.getByRole("row", { name: /^A / })).toHaveTextContent(
     "RAO 30.5 / CRA 20.3",
   );

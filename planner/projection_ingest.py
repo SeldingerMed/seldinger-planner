@@ -2,7 +2,10 @@
 
 This operator CLI reads one projection X-ray angiography instance, or the two
 cross-referenced instances of one biplane acquisition, and writes a
-geometry-only manifest. Pixel data is never decoded or retained, so compressed
+geometry-only manifest. Classic XA carries no isocenter attribute: its
+``source_isocenter_mm`` is Distance Source to Patient (0018,1111), the source
+to center-of-field distance, which equals the isocenter distance only for an
+isocentric acquisition. Enhanced XA uses Distance Source to Isocenter. Pixel data is never decoded or retained, so compressed
 transfer syntaxes are accepted for their little-endian explicit headers. The
 scope argument declares the operator's data-use scope, not deidentification.
 Optional imaging dependencies are imported only during conversion.
@@ -137,6 +140,9 @@ def _classic_geometry(ds, frames):
         "source_detector_mm": _number(
             getattr(ds, "DistanceSourceToDetector", None), 0, 1e4, low_open=True
         ),
+        # PS3.3 C.8.7.5: source to center of field of view (SOD), "typically"
+        # the isocenter distance on cardiovascular equipment. Consumers tell
+        # the two apart by ``sop_class``.
         "source_isocenter_mm": _number(
             getattr(ds, "DistanceSourceToPatient", None), 0, 1e4, low_open=True
         ),
@@ -209,8 +215,11 @@ def _mask(ds, frames):
     if operation == "avg_sub" and len(item) == 1:
         raw = getattr(item[0], "MaskFrameNumbers", None)
         try:
-            values = [int(x) for x in ([raw] if isinstance(raw, int) else raw)]
-        except (TypeError, ValueError):
+            values = [raw] if isinstance(raw, int) else list(raw)
+        except TypeError:
+            values = []
+        # Frame numbers are kept only as declared: no coercion or truncation.
+        if not all(type(x) is int for x in values):
             values = []
         if values and len(set(values)) == len(values) and all(1 <= x <= frames for x in values):
             numbers = values

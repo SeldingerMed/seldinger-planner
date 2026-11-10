@@ -209,8 +209,17 @@ export default function CArmStudio({
       prior?.key === key ? { ...prior, error: message } : prior,
     );
   }
+  // One sampler per volume object: building it validates the header and
+  // inverts the affine, and a save checks up to 129 points.
+  const sampler = useMemo(() => {
+    try {
+      return volume ? createNativeSampler(volume) : null;
+    } catch {
+      return null;
+    }
+  }, [volume]);
   function inside(point: Vec3) {
-    return !!volume && createNativeSampler(volume).sample(point) !== null;
+    return !!sampler && sampler.sample(point) !== null;
   }
   function attempt(action: () => void, fallback: string) {
     try {
@@ -749,6 +758,15 @@ export default function CArmStudio({
               patient registration are unknown, so copying a plane only reuses
               its angles, distances and field size.
             </p>
+            {series?.key === key &&
+              series.planes.some((plane) => plane.sop_class === "xa") && (
+                <p className="carm-note">
+                  Classic XA records the source-to-object distance (0018,1111),
+                  measured to the center of the field of view. It is shown and
+                  copied here as the source-to-isocenter distance, which holds
+                  only for an isocentric acquisition.
+                </p>
+              )}
             <label>
               Installed projection source ID
               <input
