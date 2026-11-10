@@ -112,3 +112,45 @@
   outline: 2px solid #7ac7d9;
   outline-offset: 3px;
 }
+.carm-studio .carm-note {
+  color: #acbec8;
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 78ch;
+}
+.carm-studio .carm-figure {
+  max-width: 420px;
+}
+.carm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #c9d4d9;
+  margin: 12px 0;
+}
+.carm-table caption {
+  text-align: left;
+  padding-bottom: 6px;
+  color: #acbec8;
+}
+.carm-table th,
+.carm-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2c404c;
+  vertical-align: top;
+}
+.carm-studio input[type="range"] {
+  width: 100%;
+}
+.carm-table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.carm-table-scroll:focus-visible {
+  outline: 2px solid #8fd6c2;
+  outline-offset: 2px;
+}
+.carm-table-scroll .carm-table {
+  min-width: 520px;
+}

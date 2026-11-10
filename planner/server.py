@@ -71,6 +71,7 @@ def build_app(
     planning_source_store=None,
     geometry_runner=None,
     anatomy_runner=None,
+    projection_series_store=None,
 ):
     app = create_app(db_path, planning_context_provider=lambda case: planning_for_brief(case))
     allowed_origins = {
@@ -288,6 +289,13 @@ def build_app(
     from planner.reformat_server import register_reformat_routes
 
     read_scene = register_reformat_routes(app, db_path, image_sources, read_case)
+    from planner.projection_server import (
+        register_projection_routes,
+        register_projection_series_routes,
+    )
+
+    read_projection = register_projection_routes(app, db_path, image_sources, read_case)
+    register_projection_series_routes(app, projection_series_store)
 
     from planner.device_db import (
         CATEGORIES,
@@ -341,6 +349,7 @@ def build_app(
         read_scene,
         read_scenarios,
         read_numerical,
+        read_projection,
     )
 
     def planning_for_brief(case):

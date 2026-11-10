@@ -29,6 +29,12 @@ Actual public case013 execution covers inference, proposal/edit/save, correction
 
 Existing territory workflows, DICOM preparation, native reformats and explicit rigid registration remain separate source/scene contracts. No dataset images, model weights or local SQLite workspaces are distributed with this source.
 
+## Fusion Step A: C-arm views and projection geometry
+
+The planner now models a C-arm in the patient frame of an admitted volume. An operator can define an isocenter and target path, save up to eight named working views, read per-view foreshortening and field coverage, ask for a low-foreshortening angle proposal and preview a simulated projection of the volume. A separate local converter admits the acquisition geometry of a projection XA run (angles, distances, pixel spacing, frame timing and biplane linkage) without retaining pixels.
+
+This is the geometry layer for later 2D/3D fusion. Nothing is registered to an acquired angiogram, no angiogram is displayed, and the angle convention is declared from DICOM rather than verified against a vendor system. See [C-arm views and projection geometry](docs/carm-projection.md).
+
 ## Historical hackathon source and original work
 
 The source checkout includes the planning workspace. Images and trained artifacts are installed separately under the source/model contracts below. Public source does not mean a hosted deployment.

@@ -1,0 +1,115 @@
+{
+  "biplane": {
+    "source_id": "synthetic-biplane",
+    "manifest_revision": "8dacf4f25716e57fb938d12e9ad1ada0de0634ff78829f3822df389e292853e1",
+    "manifest": {
+      "angle_convention": "dicom_xa_patient_positioner_angles",
+      "biplane_linkage": "cross_referenced",
+      "clinical_validation": false,
+      "kind": "projection_series",
+      "method": "converted_dicom_xa_geometry",
+      "pixels_retained": false,
+      "planes": [
+        {
+          "burned_in_annotation": "no",
+          "calibration": {
+            "missing": [],
+            "status": "calibrated"
+          },
+          "columns": 1024,
+          "frame_count": 4,
+          "frame_time_ms": 66.67,
+          "frame_time_vector_ms": null,
+          "imager_pixel_spacing_mm": [
+            0.2,
+            0.2
+          ],
+          "input_bytes": 1070,
+          "input_sha256": "3a3f357f3946212c336a3a51621e40bcfdf291ab77530ced34a295156b718762",
+          "mask_frame_numbers": null,
+          "mask_operation": "none",
+          "plane": "a",
+          "positioner_motion": "static",
+          "primary_angle_deg": -30.5,
+          "rows": 1024,
+          "secondary_angle_deg": 20.25,
+          "sop_class": "xa",
+          "source_detector_mm": 1195.0,
+          "source_isocenter_mm": 765.0
+        },
+        {
+          "burned_in_annotation": "no",
+          "calibration": {
+            "missing": [],
+            "status": "calibrated"
+          },
+          "columns": 1024,
+          "frame_count": 4,
+          "frame_time_ms": 66.67,
+          "frame_time_vector_ms": null,
+          "imager_pixel_spacing_mm": [
+            0.2,
+            0.2
+          ],
+          "input_bytes": 968,
+          "input_sha256": "db028c71238a31bf3081db9b29ebe73149cb73583be54fd55e2c0284b34b9403",
+          "mask_frame_numbers": null,
+          "mask_operation": "none",
+          "plane": "b",
+          "positioner_motion": "static",
+          "primary_angle_deg": 90.0,
+          "rows": 1024,
+          "secondary_angle_deg": 0.0,
+          "sop_class": "xa",
+          "source_detector_mm": 1195.0,
+          "source_isocenter_mm": 765.0
+        }
+      ],
+      "scope": "synthetic",
+      "version": 1
+    }
+  },
+  "uncalibrated": {
+    "source_id": "synthetic-rotation",
+    "manifest_revision": "58ed40ebb192105172754a20dcf8de3dfa5dba550ad2d0844f3b8384ed2d15f3",
+    "manifest": {
+      "angle_convention": "dicom_xa_patient_positioner_angles",
+      "biplane_linkage": "not_applicable",
+      "clinical_validation": false,
+      "kind": "projection_series",
+      "method": "converted_dicom_xa_geometry",
+      "pixels_retained": false,
+      "planes": [
+        {
+          "burned_in_annotation": "no",
+          "calibration": {
+            "missing": [
+              "imager_pixel_spacing",
+              "static_positioner"
+            ],
+            "status": "uncalibrated"
+          },
+          "columns": 1024,
+          "frame_count": 4,
+          "frame_time_ms": 66.67,
+          "frame_time_vector_ms": null,
+          "imager_pixel_spacing_mm": null,
+          "input_bytes": 966,
+          "input_sha256": "b47b427bb4d7eac6e81420def8c275c2393d585f2380cef45a2cc94a4f4b8b07",
+          "mask_frame_numbers": null,
+          "mask_operation": "none",
+          "plane": "single",
+          "positioner_motion": "dynamic",
+          "primary_angle_deg": -30.5,
+          "rows": 1024,
+          "secondary_angle_deg": 20.25,
+          "sop_class": "xa",
+          "source_detector_mm": 1195.0,
+          "source_isocenter_mm": 765.0
+        }
+      ],
+      "scope": "synthetic",
+      "version": 1
+    }
+  }
+}

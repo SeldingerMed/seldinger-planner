@@ -303,7 +303,9 @@ describe("DeviceScenarioSync", () => {
   it("locks on a malformed envelope and recovers only via explicit reload", async () => {
     apiMock.mockRejectedValueOnce(new Error("deviceScenarios: bad"));
     const { props } = setup();
-    await screen.findByRole("alert");
+    // The alert region always exists; wait for the failed read itself, or the
+    // reload below can be clicked while the first read still holds the panel.
+    await screen.findByText(/could not be read/);
     expect(screen.queryByText(/scenario\(s\) in this draft/)).toBeTruthy();
     expect(apiMock).toHaveBeenCalledTimes(1);
     apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(CURRENT_ENVELOPE)));

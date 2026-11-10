@@ -66,6 +66,11 @@ export function createNativeSampler(volume: NVImage) {
   const at = (x: number, y: number, z: number) => raw[x + nx * (y + ny * z)];
   return {
     shape: [nx, ny, nz] as Vec3,
+    /** Validated buffer access for tight projection loops. Read-only use. */
+    raw,
+    slope,
+    inter,
+    toVoxel: inverse,
     sample(point: Vec3): number | null {
       if (point.length !== 3 || !point.every(finite))
         throw new Error("Invalid physical sample point");

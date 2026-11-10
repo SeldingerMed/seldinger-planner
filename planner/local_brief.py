@@ -12,6 +12,8 @@ from planner.numerical_projection import NUMERICAL_KINDS, project_numerical
 from planner.planning_context import IDENTITY_KEYS, freeze
 from planner.reformat_scene import VERSION, digest, summarize, validate_scene
 
+PLAN_ID = re.compile(r"[A-Za-z0-9_-]{16,128}")
+
 MODES = ("tavr", "coronary_pci", "aortic_peripheral")
 
 
@@ -70,6 +72,101 @@ def project_scene(identity, envelope):
         **result,
         "secondary": secondary_projection,
     }
+
+
+def project_projection_plan(identity, envelope) -> dict:
+    """Scalar-only projection of confirmed C-arm views: no isocenter or path arrays."""
+    from planner.carm_geometry import angle_label
+    from planner.projection_plan import VERSION as PLAN_VERSION
+    from planner.projection_plan import summarize as summarize_plan
+    from planner.projection_plan import validate_plan
+
+    if envelope is None:
+        return {"status": "unavailable"}
+    if not isinstance(envelope, dict) or set(envelope) != {
+        *IDENTITY_KEYS,
+        "plan_revision",
+        "current",
+    }:
+        raise ValueError("Invalid projection-plan envelope")
+    if any(envelope[k] != identity[k] for k in IDENTITY_KEYS):
+        raise ValueError("Projection plan identity contradicts brief")
+    revision = envelope["plan_revision"]
+    if type(revision) is not int or not 0 <= revision <= 1_000_000_000:
+        raise ValueError("Invalid projection-plan revision")
+    current = envelope["current"]
+    status = current["status"]
+    if status == "not_confirmed":
+        if revision != 0 or current != {"status": "not_confirmed"}:
+            raise ValueError("Contradictory absent projection plan")
+        return {"status": status, "plan_revision": revision}
+    plan_id = current["plan_id"]
+    if not isinstance(plan_id, str) or PLAN_ID.fullmatch(plan_id) is None or revision < 1:
+        raise ValueError("Invalid projection-plan identifier")
+    if status == "stale":
+        if current != {"status": "stale", "plan_id": plan_id, "inputs": None, "result": None}:
+            raise ValueError("Stale projection plan carries values")
+        return {"status": status, "plan_revision": revision, "plan_id": plan_id}
+    if (
+        status != "current"
+        or set(current) != {"status", "plan_id", "dependencies", "input_sha256", "inputs", "result"}
+        or current["dependencies"] != {**identity, "version": PLAN_VERSION}
+    ):
+        raise ValueError("Contradictory current projection plan")
+    inputs = validate_plan(current["inputs"])
+    result = summarize_plan(inputs)
+    if result != current["result"] or digest(inputs) != current["input_sha256"]:
+        raise ValueError("Projection plan integrity failed")
+    return {
+        "status": status,
+        "plan_revision": revision,
+        "plan_id": plan_id,
+        "input_sha256": current["input_sha256"],
+        **{key: value for key, value in result.items() if key != "views"},
+        "views": [
+            {"angle_label": angle_label(view["primary_deg"], view["secondary_deg"]), **view}
+            for view in result["views"]
+        ],
+    }
+
+
+def render_projection_plan(plan) -> list[str]:
+    from planner.carm_geometry import fixed
+
+    lines = ["## C-arm working views", "", f"- Status: {plan['status']}"]
+    for field in ("plan_revision", "plan_id", "input_sha256", "convention"):
+        if field in plan:
+            lines.append(f"- {field}: `{plan[field]}`")
+    if plan["status"] != "current":
+        return [*lines, "", "No current confirmed C-arm views are included.", ""]
+    lines += [
+        f"- Target path: {plan['target_point_count']} points, {fixed(plan['target_length_mm'], 2)} mm",
+        f"- Foreshortening method: {plan['foreshortening_method'].replace('_', ' ')}",
+        "",
+        (
+            "Operator-confirmed planning geometry derived from the cross-sectional source."
+            " The angle convention is declared, not verified against an angiography system,"
+            " and no view is registered to an acquired angiogram."
+        ),
+        "",
+    ]
+    for view in plan["views"]:
+        lines += [
+            f"### `{view['name']}`",
+            "",
+            (
+                f"- Angles: {view['angle_label']} (primary {fixed(view['primary_deg'], 1)},"
+                f" secondary {fixed(view['secondary_deg'], 1)} degrees)"
+            ),
+            f"- Source to detector (mm): {fixed(view['source_detector_mm'], 1)}",
+            f"- Source to isocenter (mm): {fixed(view['source_isocenter_mm'], 1)}",
+            f"- Detector (mm): {fixed(view['detector_width_mm'], 1)} x {fixed(view['detector_height_mm'], 1)}",
+            f"- Magnification at isocenter: {fixed(view['magnification_at_isocenter'], 3)}",
+            f"- Target foreshortening (%): {fixed(view['foreshortening_percent'], 1)}",
+            f"- Target inside detector field: {'yes' if view['target_in_field'] else 'no'}",
+            "",
+        ]
+    return lines
 
 
 def project_scenarios(identity, envelope, geometry) -> dict:
@@ -207,7 +304,14 @@ def project_scenarios(identity, envelope, geometry) -> dict:
 
 
 def register_local_brief(
-    app, read_case, read_plan, read_territory, read_scene, read_scenarios=None, read_numerical=None
+    app,
+    read_case,
+    read_plan,
+    read_territory,
+    read_scene,
+    read_scenarios=None,
+    read_numerical=None,
+    read_projection=None,
 ):
     def snapshot(case_id):
         case = freeze(read_case(case_id))
@@ -219,6 +323,7 @@ def register_local_brief(
             raise HTTPException(409, "Case changed while preparing brief")
         territories = {mode: freeze(read_territory(case_id, mode)) for mode in MODES}
         scene = freeze(read_scene(case_id))
+        projection = freeze(read_projection(case_id)) if read_projection is not None else None
         geometry = planning.get("morphometry_summary")
         # This reader requires current geometry. Without that prerequisite,
         # unavailable means not assessed, not that no saved set exists. Do not
@@ -236,7 +341,11 @@ def register_local_brief(
             raise HTTPException(409, "Geometry changed while preparing alternatives")
         if any(
             any(envelope[k] != identity[k] for k in IDENTITY_KEYS)
-            for envelope in [*territories.values(), scene]
+            for envelope in [
+                *territories.values(),
+                scene,
+                *([projection] if projection is not None else []),
+            ]
         ):
             raise HTTPException(409, "Source changed while preparing brief")
         return freeze(
@@ -245,6 +354,7 @@ def register_local_brief(
                 "planning": planning,
                 "territories": territories,
                 "scene": scene,
+                "projection": projection,
                 "scenarios": scenarios,
                 "numerical": {
                     kind: freeze(read_numerical(case_id, kind)) for kind in NUMERICAL_KINDS
@@ -260,6 +370,7 @@ def register_local_brief(
             before = snapshot(case_id)
             territory = project_territory_context(before["identity"], before["territories"])
             scene = project_scene(before["identity"], before["scene"])
+            projection = project_projection_plan(before["identity"], before["projection"])
             alternatives = project_scenarios(
                 before["identity"],
                 before["scenarios"],
@@ -317,6 +428,7 @@ def register_local_brief(
                 else "No current confirmed scene is included.",
                 "",
             ]
+            lines += render_projection_plan(projection)
             lines += ["## Saved device alternatives", "", f"- Status: {alternatives['status']}"]
             for field in (
                 "scenario_revision",
@@ -368,6 +480,7 @@ def register_local_brief(
                     "planning": before["planning"],
                     "territories": territory["modes"],
                     "scene": scene,
+                    "projection_plan": projection,
                     "device_scenarios": alternatives,
                     "numerical_runs": numerical,
                     "markdown": "\n".join(lines),
