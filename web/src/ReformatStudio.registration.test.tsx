@@ -47,6 +47,8 @@ vi.mock("./RegistrationProposal", () => ({
     secondary: NVImage;
     matrixText: string;
     disabled: boolean;
+    secondaryWindow: [number, number];
+    opacity: number;
     onPropose: (text: string) => void;
   }) => (
     <button
@@ -54,6 +56,7 @@ vi.mock("./RegistrationProposal", () => ({
       data-testid="proposal"
       data-matrix={props.matrixText}
       data-disabled={String(props.disabled)}
+      data-view={`${props.secondaryWindow.join(" ")} ${props.opacity}`}
       data-sources={String(
         props.primary === volume && props.secondary === secondary,
       )}
@@ -129,11 +132,32 @@ test("a proposal is offered only for a verified secondary and lands as an unconf
   expect(onDirty).toHaveBeenLastCalledWith(true);
   expect(fetch).toHaveBeenCalledTimes(1);
 
+  // The draft is reviewed in the preview, so the controls it is drawn with
+  // stay usable while the draft is unsaved. The saved view's stay closed.
+  const slider = (name: string) =>
+    screen.getByRole("slider", { name: new RegExp(`^${name}`) });
+  expect(slider("Path station")).toBeDisabled();
+  expect(slider("Lumen boundary threshold")).toBeDisabled();
+  for (const [name, value] of [
+    ["Secondary window low", "-50"],
+    ["Secondary window high", "900"],
+    ["Secondary opacity", "0.7"],
+  ]) {
+    expect(slider(name)).toBeEnabled();
+    fireEvent.change(slider(name), { target: { value } });
+  }
+  expect(screen.getByTestId("proposal").dataset.view).toBe("-50 900 0.7");
+  view.rerender(studio(true));
+  expect(slider("Secondary opacity")).toBeDisabled();
+  view.rerender(studio(false));
+  expect(slider("Secondary opacity")).toBeEnabled();
+
   // A different source ID withdraws the proposal control with the secondary.
   fireEvent.change(screen.getByLabelText("Secondary source ID"), {
     target: { value: "other-src" },
   });
   expect(screen.queryByTestId("proposal")).toBeNull();
+  expect(slider("Secondary opacity")).toBeDisabled();
   // Nor is it offered for a verified source that is not the one named.
   fireEvent.change(screen.getByLabelText("Secondary source ID"), {
     target: { value: "alias-src" },
@@ -141,4 +165,5 @@ test("a proposal is offered only for a verified secondary and lands as an unconf
   fireEvent.click(screen.getByRole("button", { name: "Load secondary" }));
   await screen.findByText("Secondary image verified · real-src");
   expect(screen.queryByTestId("proposal")).toBeNull();
+  expect(slider("Secondary opacity")).toBeDisabled();
 });

@@ -404,6 +404,17 @@ export default function ReformatStudio({
       opacity,
     ],
   );
+  // The draft preview is how an unsaved matrix is reviewed, and it is drawn
+  // with the secondary window and opacity. Those controls stay usable while
+  // the preview is shown, though the draft keeps the saved view closed.
+  const previewing =
+    !!current &&
+    !current.locked &&
+    !disabled &&
+    !localBusy &&
+    !!volume &&
+    selected?.key === key &&
+    current.sourceText === selected.metadata.source_id;
   const eligible =
     !!current &&
     !current.dirty &&
@@ -728,6 +739,7 @@ export default function ReformatStudio({
           },
           {
             label: "Secondary window low",
+            preview: true,
             value: secondaryLow,
             min: -1024,
             max: 4096,
@@ -736,6 +748,7 @@ export default function ReformatStudio({
           },
           {
             label: "Secondary window high",
+            preview: true,
             value: secondaryHigh,
             min: -1024,
             max: 4096,
@@ -744,6 +757,7 @@ export default function ReformatStudio({
           },
           {
             label: "Secondary opacity",
+            preview: true,
             value: opacity,
             min: 0,
             max: 1,
@@ -760,7 +774,7 @@ export default function ReformatStudio({
               max={item.max}
               step={item.step}
               value={item.value}
-              disabled={!eligible}
+              disabled={!(eligible || (item.preview && previewing))}
               onChange={(e) => item.set(Number(e.target.value))}
             />
           </label>
