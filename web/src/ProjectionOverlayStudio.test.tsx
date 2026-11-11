@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import {
@@ -18,6 +19,8 @@ import {
   maskBlob,
   maskEntry,
   medial,
+  nifti,
+  phantom,
   pivot,
   registrationAnswer,
   REVISION,
@@ -72,7 +75,8 @@ function server(routes: Routes = {}) {
           aneurysm: null,
         },
       });
-    if (url === maskEntry.mask_url)
+    const accepted = (routes.vessel ?? maskEntry) as typeof maskEntry;
+    if (url === accepted.mask_url)
       return (routes.mask ?? (() => bytes(maskBlob)))();
     if (url === "/api/projection-frames/phantom-run")
       return (routes.bundle ?? (() => json(bundleAnswer())))();
@@ -180,6 +184,9 @@ test("proposes, confirms and saves exactly what the operator reviewed", async ()
   click("Close larger view");
   expect(screen.getByRole("figure").className).not.toMatch(/enlarged/);
   expect(status("Overlay status").textContent).toBe(text);
+  expect(screen.getByRole("figure").textContent).toMatch(
+    /Not a validated registration\./,
+  );
   // Saving needs the explicit review tick.
   const save = screen.getByRole("button", { name: "Save confirmed proposal" });
   expect(save).toHaveProperty("disabled", true);
@@ -246,6 +253,61 @@ test("proposes, confirms and saves exactly what the operator reviewed", async ()
     screen.queryByRole("button", { name: "Save confirmed proposal" }),
   ).toBeNull();
 }, 60000);
+
+test("a review tick does not carry over to a new proposal", async () => {
+  const api = server();
+  render(<Harness />);
+  await openFrames();
+  enterGeometry();
+  click("Propose overlay");
+  await proposed();
+  const tick = () =>
+    screen.getByRole("checkbox", { name: /I reviewed the overlay/ });
+  fireEvent.click(tick());
+  expect(tick()).toHaveProperty("checked", true);
+  click("Propose overlay");
+  await waitFor(() =>
+    expect(status("Overlay status").textContent).toMatch(/^Computing/),
+  );
+  await proposed();
+  expect(tick()).toHaveProperty("checked", false);
+  expect(
+    screen.getByRole("button", { name: "Save confirmed proposal" }),
+  ).toHaveProperty("disabled", true);
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+}, 60000);
+
+test("its own pending request locks the controls without help from the owner", async () => {
+  let answer: (response: Response) => void = () => {};
+  server({
+    bundle: () =>
+      new Promise<Response>((resolve) => (answer = resolve)) as never,
+  });
+  // An owner that ignores the busy report and never disables the studio.
+  render(
+    <ProjectionOverlayStudio
+      caseState={caseState}
+      binding={binding}
+      volume={volume}
+      cursor={null}
+      disabled={false}
+      onBusy={() => {}}
+    />,
+  );
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  // The controls sit in fieldsets, which is where the lock is applied.
+  const controls = () =>
+    screen
+      .getByRole("button", { name: "Open admitted frames" })
+      .closest("fieldset")!;
+  expect(controls()).toHaveProperty("disabled", false);
+  click("Open admitted frames");
+  await waitFor(() => expect(controls()).toHaveProperty("disabled", true));
+  answer(json(bundleAnswer()));
+  await screen.findByRole("img", { name: "Admitted frame 12, plane single" });
+  expect(controls()).toHaveProperty("disabled", false);
+});
 
 test("a changed input drops the proposal before it can be saved", async () => {
   const api = server();
@@ -486,11 +548,14 @@ test("shows a saved proposal only while its evidence is unchanged", async () => 
   expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
   view.unmount();
 
-  // The bundle was reinstalled under another manifest revision.
+  // The bundle was reinstalled under another manifest revision. It is
+  // consistent in itself, with the same pixels, and is still not the bundle
+  // the proposal was confirmed against.
   server({
     registration: () => json(currentAnswer()),
     bundle: () =>
       json({ ...bundleAnswer(), manifest_revision: "b".repeat(64) }),
+    frame: () => bytes(gray, { "X-Frame-Manifest-Revision": "b".repeat(64) }),
   });
   const changed = render(<Harness />);
   await screen.findByRole("status", { name: "Saved overlay proposal" });
@@ -501,18 +566,59 @@ test("shows a saved proposal only while its evidence is unchanged", async () => 
   expect(screen.queryByRole("img")).toBeNull();
   changed.unmount();
 
-  // Another vessel mask has been accepted since.
+  // Another vessel mask has been accepted since: a new candidate with the
+  // same voxels, then the same candidate name with other bytes. Both are
+  // served consistently, and neither is the mask that was confirmed.
+  const regzipped = new Uint8Array(
+    gzipSync(nifti(phantom.mask, phantom.shape, phantom.affine), { level: 1 }),
+  );
+  expect(hex(regzipped)).not.toBe(maskEntry.mask_sha256);
+  for (const routes of [
+    {
+      vessel: {
+        ...maskEntry,
+        candidate_id: "vessel-candidate-2",
+        mask_url: maskEntry.mask_url.replace("candidate-1", "candidate-2"),
+      },
+    },
+    {
+      vessel: { ...maskEntry, mask_sha256: hex(regzipped) },
+      mask: () => bytes(regzipped),
+    },
+  ]) {
+    const api = server({
+      registration: () => json(currentAnswer()),
+      ...routes,
+    });
+    const remasked = render(<Harness />);
+    await screen.findByRole("status", { name: "Saved overlay proposal" });
+    click("Show saved overlay");
+    expect((await screen.findByRole("alert")).textContent).toMatch(
+      /no longer available unchanged/,
+    );
+    expect(screen.queryByRole("img")).toBeNull();
+    // Refused before any frame or mask byte was requested.
+    expect(api.keys().filter((key) => /frames|mask$/.test(key))).toEqual([]);
+    remasked.unmount();
+  }
+
+  // The same manifest revision now names other pixels for the frame.
+  const other = gray.map((value) => 255 - value);
+  const swapped = bundleAnswer();
+  swapped.manifest.planes[0].frames[0].sha256 = hex(other);
   server({
     registration: () => json(currentAnswer()),
-    vessel: { ...maskEntry, candidate_id: "vessel-candidate-2" },
+    bundle: () => json(swapped),
+    frame: () => bytes(other, { "X-Frame-Manifest-Revision": REVISION }),
   });
-  const remasked = render(<Harness />);
+  const reframed = render(<Harness />);
   await screen.findByRole("status", { name: "Saved overlay proposal" });
   click("Show saved overlay");
   expect((await screen.findByRole("alert")).textContent).toMatch(
     /no longer available unchanged/,
   );
-  remasked.unmount();
+  expect(screen.queryByRole("img")).toBeNull();
+  reframed.unmount();
 
   server({
     registration: () =>

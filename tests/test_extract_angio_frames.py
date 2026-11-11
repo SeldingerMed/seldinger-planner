@@ -136,6 +136,30 @@ def test_download_can_be_refused_and_unknown_platforms_are_named(tmp_path, monke
     assert code == 1 and "Frame extraction failed" in capsys.readouterr().err
 
 
+def test_an_oversized_download_is_abandoned_at_its_recorded_size(tmp_path, monkeypatch):
+    class Endless:
+        served = 0
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def read(self, count):
+            Endless.served += count
+            return bytes(count)
+
+    monkeypatch.setattr(tool.shutil, "which", lambda name: None)
+    pin(monkeypatch, b"", digest="0" * 64, size=3 << 20)
+    tools = tmp_path / "tools"
+    with pytest.raises(tool.ExtractError, match="larger than its recorded size"):
+        tool.ensure_ffmpeg(tools, opener=lambda url, timeout: Endless())
+    # Reading stops with the first chunk past the recorded size.
+    assert Endless.served == 4 << 20
+    assert not list(tools.rglob("ffmpeg")) and not list(tools.glob(".ffmpeg-download-*"))
+
+
 @pytest.mark.parametrize("frames", [[], list(range(9)), [3, 3], [-1], [1_000_001], [1.0], [True]])
 def test_frame_requests_are_bounded(tmp_path, frames):
     video = tmp_path / "v.mp4"
@@ -148,10 +172,14 @@ def test_frame_requests_are_bounded(tmp_path, frames):
 def test_other_argument_rejections(tmp_path):
     video = tmp_path / "v.mp4"
     video.write_bytes(b"x")
-    with pytest.raises(tool.ExtractError):
+    with pytest.raises(tool.ExtractError, match="not a regular file"):
         tool.extract(tmp_path / "absent.mp4", tmp_path / "out", [0], ffmpeg="/nonexistent")
-    with pytest.raises(tool.ExtractError):
+    (tmp_path / "folder.mp4").mkdir()
+    with pytest.raises(tool.ExtractError, match="not a regular file"):
+        tool.extract(tmp_path / "folder.mp4", tmp_path / "out", [0], ffmpeg="/nonexistent")
+    with pytest.raises(tool.ExtractError, match="plane must be single, a or b"):
         tool.extract(video, tmp_path / "out", [0], plane="c", ffmpeg="/nonexistent")
+    assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg on PATH")

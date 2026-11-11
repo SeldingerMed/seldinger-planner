@@ -285,6 +285,11 @@ def _admit_plane(spec, base: Path):
     declared_clean = spec["kind"] == "dicom" and burned == "no"
     if not declared_clean and spec["identifiers_removed"] is not True:
         _fail("Operator attestation that identifiers were removed is required")
+    # An attestation with nothing recorded says nothing about what was removed.
+    if spec["kind"] == "png" and crop is None:
+        _fail("A PNG plane needs a recorded crop")
+    if not declared_clean and crop is None and not redactions:
+        _fail("An attested plane needs a recorded crop or redaction")
     try:
         if crop is not None:
             validate_rectangle(crop, source_columns, source_rows, "crop")

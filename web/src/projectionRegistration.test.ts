@@ -430,9 +430,11 @@ describe("projection registration proposal", () => {
     const s = setup(AP, [4, -5, 7], [6, -7, 4]),
       run = (change: Partial<ProjectionRegistrationInput>) => () =>
         proposeProjectionRegistration({ ...s.input, ...change });
-    expect(
-      run({ points: s.points.slice(0, 3 * (LIMITS.min_points - 1)) }),
-    ).toThrow("Too few vessel points");
+    // Literal counts: 29 points are refused and 30 are registered.
+    expect(run({ points: s.points.slice(0, 3 * 29) })).toThrow(
+      "Too few vessel points",
+    );
+    expect(run({ points: s.points.slice(0, 3 * 30) })().point_count).toBe(30);
     expect(run({ points: s.points.slice(0, 91) })).toThrow(
       "Too few vessel points",
     );

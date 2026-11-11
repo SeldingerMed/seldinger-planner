@@ -15,9 +15,17 @@ if os.environ.get("SELDINGER_RUN_INGEST_TESTS") != "1":
 
 import numpy as np
 from pydicom.encaps import encapsulate
-from pydicom.uid import ExplicitVRBigEndian, ImplicitVRLittleEndian, JPEGLosslessSV1
+from pydicom.uid import (
+    ExplicitVRBigEndian,
+    ImplicitVRLittleEndian,
+    JPEG2000Lossless,
+    JPEGBaseline8Bit,
+    JPEGLosslessSV1,
+    RLELossless,
+)
 from test_projection_ingest import SENTINEL, classic, write
 
+from planner import frame_ingest
 from planner.dicom_ingest import IngestError
 from planner.frame_ingest import admit_frames, decode_png, main
 from planner.frame_source import InstalledFrameStore
@@ -198,68 +206,165 @@ def test_two_png_planes_and_cli(tmp_path, capsys):
     assert "rejected" in capsys.readouterr().err
 
 
+ATTEST = "Operator attestation that identifiers were removed is required"
+OUTSIDE = "Crop or redaction is outside the frame"
+COUNT = "One to eight frames per plane required"
+RELATIVE = "Input paths are relative to the request file"
+SEVEN = {"path": "frame-000007.png", "index": 7}
+
+
+# Each case names the guard that must refuse it. A later, more general check
+# would refuse most of these too, and that is not the behavior under test.
 @pytest.mark.parametrize(
-    "change",
+    "change,message",
     [
-        {"identifiers_removed": False},
-        {"identifiers_removed": "yes"},
-        {"crop": None},
-        {"crop": [8, 4, 200, 80]},
-        {"crop": [8, 4, 60, 80]},  # under 64 pixels wide
-        {"redactions": [[0, 0, 500, 10]]},
-        {"redactions": [[0, 0, 4, 4]] * 17},
-        {"frames": []},
-        {"frames": [{"path": "frame-000007.png", "index": 7}] * 2},
-        {"frames": [{"path": "frame-000007.png", "index": i} for i in range(9)]},
-        {"frames": [{"path": "frame-000007.png", "index": -1}]},
-        {"frames": [{"path": "frame-000007.png"}]},
-        {"frames": [{"path": "../frame-000007.png", "index": 7}]},
-        {"frames": [{"path": "absent.png", "index": 7}]},
-        {"frames": [{"path": "run.mp4", "index": 7}]},
-        {"container": "absent.mp4"},
-        {"plane": "c"},
-        {"kind": "mp4"},
-        {"path": "x.dcm"},  # a DICOM field on a PNG plane
+        ({"identifiers_removed": False}, ATTEST),
+        ({"identifiers_removed": "yes"}, "Invalid identifier attestation"),
+        ({"identifiers_removed": 1}, "Invalid identifier attestation"),
+        ({"crop": None}, "A PNG plane needs a recorded crop"),
+        ({"crop": None, "redactions": []}, "A PNG plane needs a recorded crop"),
+        ({"crop": [8, 4, 200, 80]}, OUTSIDE),
+        ({"crop": [-1, 4, 100, 80]}, OUTSIDE),
+        ({"crop": [8, 4, 100, 93]}, OUTSIDE),  # one row past the bottom edge
+        ({"crop": [8, 4, 100.0, 80]}, OUTSIDE),
+        ({"crop": [8, 4, 100]}, OUTSIDE),
+        ({"crop": [8, 4, 60, 80]}, "Stored frames must be 64 to 1024 pixels per side"),
+        ({"crop": [8, 4, 100, 63]}, "Stored frames must be 64 to 1024 pixels per side"),
+        ({"redactions": [[0, 0, 500, 10]]}, OUTSIDE),
+        ({"redactions": [[0, 0, 0, 10]]}, OUTSIDE),
+        ({"redactions": [[127, 95, 2, 1]]}, OUTSIDE),  # one column past the right edge
+        ({"redactions": [[0, 0, 4, 4]] * 17}, "Invalid redactions"),
+        ({"redactions": None}, "Invalid redactions"),
+        ({"frames": []}, COUNT),
+        ({"frames": [SEVEN] * 2}, "Frame indexes must be distinct"),
+        ({"frames": [{**SEVEN, "index": i} for i in range(9)]}, COUNT),
+        ({"frames": [{**SEVEN, "index": -1}]}, "Invalid frame index"),
+        ({"frames": [{**SEVEN, "index": 1_000_001}]}, "Invalid frame index"),
+        ({"frames": [{**SEVEN, "index": 7.0}]}, "Invalid frame index"),
+        ({"frames": [{**SEVEN, "index": True}]}, "Invalid frame index"),
+        ({"frames": [{"path": "frame-000007.png"}]}, "Invalid frame request"),
+        ({"frames": [{**SEVEN, "name": "x"}]}, "Invalid frame request"),
+        ({"frames": [{**SEVEN, "path": "../frame-000007.png"}]}, RELATIVE),
+        ({"frames": [{**SEVEN, "path": "sub/../frame-000007.png"}]}, RELATIVE),
+        ({"frames": [{**SEVEN, "path": "/frame-000007.png"}]}, RELATIVE),
+        ({"frames": [{**SEVEN, "path": ""}]}, RELATIVE),
+        ({"frames": [{**SEVEN, "path": 7}]}, RELATIVE),
+        ({"frames": [{**SEVEN, "path": "absent.png"}]}, "Select a regular projection file"),
+        ({"frames": [{**SEVEN, "path": "run.mp4"}]}, "Select an 8-bit grayscale PNG frame"),
+        ({"container": "absent.mp4"}, "Select a regular container file"),
+        ({"container": "../run.mp4"}, RELATIVE),
+        ({"plane": "c"}, "Invalid plane label"),
+        ({"kind": "mp4"}, "Invalid plane request"),
+        ({"path": "x.dcm"}, "Invalid plane request"),  # a DICOM field on a PNG plane
     ],
 )
-def test_png_requests_are_rejected_without_installing(tmp_path, change):
+def test_png_requests_are_rejected_without_installing(tmp_path, change, message):
+    (tmp_path / "sub").mkdir()
     request = png_request(tmp_path, **change)
-    with pytest.raises(IngestError):
+    with pytest.raises(IngestError) as caught:
         admit_frames(request, tmp_path / "installed", "run-01")
+    assert str(caught.value).startswith(message)
     assert not (tmp_path / "installed" / "run-01").exists()
     installed = tmp_path / "installed"
     assert not installed.exists() or not list(installed.iterdir())
 
 
+def test_the_frame_index_bound_is_inclusive(tmp_path):
+    request = png_request(tmp_path, frames=[{"path": "frame-000007.png", "index": 1_000_000}])
+    bundle = admit_frames(request, tmp_path / "installed", "run-01")
+    manifest = json.loads((bundle / "frames.json").read_text())
+    assert [f["index"] for f in manifest["planes"][0]["frames"]] == [1_000_000]
+
+
+def test_byte_bounds_refuse_before_installing(tmp_path, monkeypatch):
+    request = png_request(tmp_path)
+    size = (tmp_path / "frame-000007.png").stat().st_size
+    monkeypatch.setattr(frame_ingest, "MAX_PNG_BYTES", size - 1)
+    with pytest.raises(IngestError, match="Select an 8-bit grayscale PNG frame"):
+        admit_frames(request, tmp_path / "installed", "run-01")
+    monkeypatch.setattr(frame_ingest, "MAX_PNG_BYTES", size + 64)
+    monkeypatch.setattr(frame_ingest, "MAX_MANIFEST_BYTES", 256)
+    with pytest.raises(IngestError, match="Frame manifest byte bound exceeded"):
+        admit_frames(request, tmp_path / "installed", "run-01")
+    monkeypatch.setattr(frame_ingest, "MAX_REQUEST_BYTES", request.stat().st_size - 1)
+    with pytest.raises(IngestError, match="Request byte bound exceeded"):
+        admit_frames(request, tmp_path / "installed", "run-01")
+    assert not (tmp_path / "installed").exists()
+    monkeypatch.undo()
+    assert admit_frames(request, tmp_path / "installed", "run-01").is_dir()
+
+
+def test_a_published_bundle_that_fails_the_installed_reader_is_withdrawn(tmp_path, monkeypatch):
+    request = png_request(tmp_path)
+    read = frame_ingest.InstalledFrameStore.frame
+    calls = []
+
+    def second_frame_is_damaged(self, source_id, plane, index):
+        calls.append(index)
+        if len(calls) == 2:
+            raise ValueError("frame failed its digest")
+        return read(self, source_id, plane, index)
+
+    monkeypatch.setattr(frame_ingest.InstalledFrameStore, "frame", second_frame_is_damaged)
+    with pytest.raises(IngestError, match="Frame admission rejected"):
+        admit_frames(request, tmp_path / "installed", "run-01")
+    # Every published frame is read back, and a failure leaves nothing behind.
+    assert calls == [7, 40]
+    assert list((tmp_path / "installed").iterdir()) == []
+    monkeypatch.undo()
+    assert admit_frames(request, tmp_path / "installed", "run-01").is_dir()
+
+
+def test_an_occupied_destination_is_never_replaced(tmp_path):
+    request = png_request(tmp_path)
+    installed = tmp_path / "installed"
+    (installed / "run-01").mkdir(parents=True)  # empty, so a rename could replace it
+    (tmp_path / "elsewhere").mkdir()
+    os.symlink(tmp_path / "elsewhere", installed / "run-02")
+    os.symlink(tmp_path / "nowhere", installed / "run-03")  # dangling
+    for source_id in ("run-01", "run-02", "run-03"):
+        with pytest.raises(IngestError, match="destination already exists"):
+            admit_frames(request, installed, source_id)
+    assert list((installed / "run-01").iterdir()) == []
+    assert list((tmp_path / "elsewhere").iterdir()) == []
+    assert not (tmp_path / "nowhere").exists()
+    assert sorted(p.name for p in installed.iterdir()) == ["run-01", "run-02", "run-03"]
+
+
 def test_request_level_rejections(tmp_path):
     base = png_request(tmp_path)
     plane = json.loads(base.read_text())["planes"][0]
-    for body in (
-        {"scope": "private", "planes": [plane]},
-        {"scope": "synthetic", "planes": []},
-        {"scope": "synthetic", "planes": [plane, plane, plane]},
-        {"scope": "synthetic", "planes": [plane], "extra": 1},
-        {"scope": "synthetic", "planes": [plane, {**plane, "plane": "b"}]},  # single + b
-        {"scope": "synthetic", "planes": ["single"]},
-        [],
+    for body, message in (
+        ({"scope": "private", "planes": [plane]}, "Invalid declared scope"),
+        ({"scope": "synthetic", "planes": []}, "One or two planes required"),
+        ({"scope": "synthetic", "planes": [plane, plane, plane]}, "One or two planes required"),
+        ({"scope": "synthetic", "planes": [plane], "extra": 1}, "Invalid request fields"),
+        ({"planes": [plane]}, "Invalid request fields"),
+        # single + b
+        ({"scope": "synthetic", "planes": [plane, {**plane, "plane": "b"}]}, "Frame admission"),
+        ({"scope": "synthetic", "planes": [plane, plane]}, "Frame admission rejected"),
+        ({"scope": "synthetic", "planes": ["single"]}, "Invalid plane request"),
+        ([], "Invalid request fields"),
     ):
         base.write_text(json.dumps(body))
-        with pytest.raises(IngestError):
+        with pytest.raises(IngestError) as caught:
             admit_frames(base, tmp_path / "installed", "run-01")
+        assert str(caught.value).startswith(message), body
     base.write_text(json.dumps({"scope": "synthetic", "planes": [plane]}))
     for source_id in ("Run", "../x", "a", ""):
-        with pytest.raises(IngestError):
+        with pytest.raises(IngestError, match="Invalid opaque source_id"):
             admit_frames(base, tmp_path / "installed", source_id)
     # Frames of one plane share their size.
     (tmp_path / "small.png").write_bytes(png(image(1, 90, 128)))
     odd = {**plane, "frames": [*plane["frames"], {"path": "small.png", "index": 99}]}
     base.write_text(json.dumps({"scope": "synthetic", "planes": [odd]}))
-    with pytest.raises(IngestError):
+    with pytest.raises(IngestError, match="Frames of one plane must share their dimensions"):
         admit_frames(base, tmp_path / "installed", "run-01")
     link = tmp_path / "link.json"
     os.symlink(base, link)
-    with pytest.raises(IngestError):
+    with pytest.raises(IngestError, match="Select a regular projection file"):
         admit_frames(link, tmp_path / "installed", "run-01")
+    assert not (tmp_path / "installed").exists()
 
 
 def xa(tmp_path, name="run.dcm", *, bits=8, frames=4, syntax=None, **change):
@@ -388,35 +493,49 @@ def test_dicom_crop_or_incomplete_geometry_is_uncalibrated(tmp_path):
         assert InstalledFrameStore(bundle.parent).load(name)[0]["planes"][0]["geometry"] is None
 
 
+OUTSIDE_INSTANCE = "Frame index is outside the instance"
+MONOCHROME = "Unsigned single-sample monochrome pixel data required"
+LENGTH = "Pixel data length contradicts the frame dimensions"
+RAW = "Uncompressed little-endian pixel data required"
+
+
 @pytest.mark.parametrize(
-    "request_change,dataset_change,syntax",
+    "request_change,dataset_change,syntax,message",
     [
-        ({"frame_indexes": [4]}, {}, None),
-        ({"frame_indexes": [-1]}, {}, None),
-        ({"frame_indexes": []}, {}, None),
-        ({"frame_indexes": [0, 0]}, {}, None),
-        ({"frame_indexes": [0.0]}, {}, None),
+        ({"frame_indexes": [4]}, {}, None, OUTSIDE_INSTANCE),
+        ({"frame_indexes": [-1]}, {}, None, OUTSIDE_INSTANCE),
+        ({"frame_indexes": []}, {}, None, COUNT),
+        ({"frame_indexes": [0, 0]}, {}, None, "Frame indexes must be distinct"),
+        ({"frame_indexes": [0.0]}, {}, None, COUNT),
+        ({"frame_indexes": [True]}, {}, None, COUNT),
         (
             {"frame_indexes": list(range(9))},
             {"NumberOfFrames": 9, "PixelData": bytes(72 * 64 * 9)},
             None,
+            COUNT,
         ),
-        ({"frames": []}, {}, None),  # a PNG field on a DICOM plane
-        ({}, {"SamplesPerPixel": 3}, None),
-        ({}, {"PhotometricInterpretation": "RGB"}, None),
-        ({}, {"PixelRepresentation": 1}, None),
-        ({}, {"BitsAllocated": 32}, None),
-        ({}, {"PixelData": bytes(72 * 64 * 3)}, None),
-        ({}, {"PixelData": bytes(72 * 64 * 4 + 2)}, None),
-        ({}, {"Modality": "CT"}, None),
-        ({}, {"PixelData": encapsulate([bytes(64)])}, JPEGLosslessSV1),
-        ({}, {}, ExplicitVRBigEndian),
+        ({"frames": []}, {}, None, "Invalid plane request"),  # a PNG field on a DICOM plane
+        ({"path": "../run.dcm"}, {}, None, RELATIVE),
+        ({}, {"SamplesPerPixel": 3}, None, MONOCHROME),
+        ({}, {"PhotometricInterpretation": "RGB"}, None, MONOCHROME),
+        ({}, {"PixelRepresentation": 1}, None, MONOCHROME),
+        ({}, {"BitsAllocated": 32}, None, MONOCHROME),
+        ({}, {"BitsStored": 9}, None, MONOCHROME),
+        ({}, {"PixelData": bytes(72 * 64 * 3)}, None, LENGTH),
+        ({}, {"PixelData": bytes(72 * 64 * 4 + 2)}, None, LENGTH),
+        ({}, {"Modality": "CT"}, None, "Conflicting storage/modality identifiers"),
+        ({}, {"PixelData": encapsulate([bytes(64)])}, JPEGLosslessSV1, RAW),
+        ({}, {"PixelData": encapsulate([bytes(64)])}, JPEGBaseline8Bit, RAW),
+        ({}, {"PixelData": encapsulate([bytes(64)])}, JPEG2000Lossless, RAW),
+        ({}, {"PixelData": encapsulate([bytes(64)])}, RLELossless, RAW),
+        ({}, {}, ExplicitVRBigEndian, "Unsupported transfer syntax"),
     ],
 )
-def test_dicom_requests_are_rejected(tmp_path, request_change, dataset_change, syntax):
+def test_dicom_requests_are_rejected(tmp_path, request_change, dataset_change, syntax, message):
     xa(tmp_path, syntax=syntax, **dataset_change)
     with pytest.raises(IngestError) as caught:
         admit_frames(dicom_request(tmp_path, **request_change), tmp_path / "installed", "xa-01")
+    assert str(caught.value) == message
     assert SENTINEL not in str(caught.value) and "1.2.826" not in str(caught.value)
     assert not (tmp_path / "installed" / "xa-01").exists()
 

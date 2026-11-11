@@ -30,7 +30,9 @@ describe("overlay job", () => {
     // Driven in single steps, as a busy browser tab would.
     let slices = 0;
     while (!job.advance(() => true)) slices++;
-    expect(slices).toBeGreaterThan(5);
+    // The search itself gives way at every slice boundary, not only the
+    // stages around it.
+    expect(slices).toBeGreaterThan(1000);
     const result = job.result();
     expect(result.points).toEqual(medial.points);
     expect(result.pooling).toBe(1);

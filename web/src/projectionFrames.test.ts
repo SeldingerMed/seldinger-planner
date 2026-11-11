@@ -100,6 +100,27 @@ describe("frame bundle parsing", () => {
     expect(() => parseFrameBundle(answer, "phantom-run")).toThrow();
   });
 
+  it("keeps geometry for an uncropped DICOM plane and refuses it on a cropped one", () => {
+    const dicom = (crop: number[] | null) => {
+      const answer = plane((p) => {
+        p.geometry = VIEW;
+        p.deidentification.crop = crop;
+        if (!crop)
+          p.deidentification.source_rows = p.deidentification.source_columns =
+            SIDE;
+      });
+      answer.manifest.method = "admitted_dicom_xa_frames";
+      return answer;
+    };
+    const kept = parseFrameBundle(dicom(null), "phantom-run").planes[0];
+    expect(kept.geometry).toEqual(VIEW);
+    expect(kept.cropped).toBe(false);
+    // A crop moves the image center off the central ray.
+    expect(() =>
+      parseFrameBundle(dicom([100, 50, SIDE, SIDE]), "phantom-run"),
+    ).toThrow();
+  });
+
   it("rejects out-of-range geometry on a DICOM plane", () => {
     const dicom = plane((p) => {
       p.geometry = { ...VIEW, source_isocenter_mm: 1300 };

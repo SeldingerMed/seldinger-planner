@@ -13,6 +13,8 @@ from test_territory_workflow_server import configured
 
 from planner import frame_source
 from planner.frame_source import frame_filename
+from planner.projection_plan import PlanConflict
+from planner.projection_registration import RegistrationLedger
 from planner.segmentation_state import SegmentationLedger
 
 SQUARE = {"rows": ROWS, "columns": ROWS}
@@ -176,6 +178,8 @@ def test_confirmed_registration_roundtrips_with_known_values(tmp_path, monkeypat
         {"geometry_source": "guessed"},
         {"detector_scale": 1.5},
         {"detector_scale": 1.1},  # a scale other than one without a fit
+        {"fit_detector_scale": True, "detector_scale": 1.46},
+        {"fit_detector_scale": True, "detector_scale": 0.69},
         {"fit_detector_scale": 1},
         {"isocenter": [16.0, 16.0]},
         {"isocenter": [16.0, 16.0, "16"]},
@@ -188,7 +192,15 @@ def test_confirmed_registration_roundtrips_with_known_values(tmp_path, monkeypat
         {"view": {**VIEW, "name": "AP"}},
         {"view": {k: v for k, v in VIEW.items() if k != "secondary_deg"}},
         {"reported_score": {**SCORE, "matched_fraction": 1.2}},
+        {"reported_score": {**SCORE, "matched_fraction": -0.1}},
+        {"reported_score": {**SCORE, "in_field_fraction": 1.2}},
+        {"reported_score": {**SCORE, "in_field_fraction": -0.1}},
+        {"reported_score": {**SCORE, "uncovered_fraction": 1.2}},
+        {"reported_score": {**SCORE, "uncovered_fraction": -0.1}},
         {"reported_score": {**SCORE, "mean_distance_mm": -1.0}},
+        {"reported_score": {**SCORE, "mean_distance_mm": 1000.5}},
+        {"reported_start_score": {**SCORE, "mean_distance_mm": 1000.5}},
+        {"reported_start_score": {**SCORE, "uncovered_fraction": 1.2}},
         {"reported_score": {**SCORE, "accuracy_mm": 1.0}},
         {"reported_start_score": None},
         {"pixels": "AAAA"},
@@ -225,6 +237,39 @@ def test_bindings_must_match_the_admitted_frame_and_accepted_mask(tmp_path, monk
     assert response.status_code == 422, response.text
     assert "admitted frame or accepted mask" in response.json()["detail"]
     assert client.get(route).json()["registration_revision"] == 0
+
+
+def test_scalar_bounds_are_inclusive(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    edge = {"mean_distance_mm": 1000.0, "matched_fraction": 0.0, "in_field_fraction": 1.0}
+    for revision, scale in enumerate((0.7, 1.45)):
+        change = {
+            "fit_detector_scale": True,
+            "detector_scale": scale,
+            "reported_score": {**edge, "uncovered_fraction": 1.0},
+            "reported_start_score": {**edge, "uncovered_fraction": 0.0},
+        }
+        response = client.put(route, json=body(case, reference, mask, listed, revision, **change))
+        assert response.status_code == 200, response.text
+        assert response.json()["current"]["inputs"]["detector_scale"] == scale
+
+
+def test_the_ledger_refuses_an_identity_the_case_no_longer_has(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    assert client.put(route, json=body(case, reference, mask, listed)).status_code == 200
+    saved = client.get(route).json()["current"]["dependencies"]
+    identity = {k: v for k, v in saved.items() if k != "version"}
+    ledger = RegistrationLedger(tmp_path.resolve() / "case.sqlite3")
+    assert ledger.current(identity)[0] == 1
+    for change in (
+        {"image_sha256": "0" * 64},
+        {"artifact_version": str(int(identity["artifact_version"]) + 1)},
+        {"case_id": "absent"},
+    ):
+        with pytest.raises(PlanConflict):
+            ledger.current({**identity, **change})
 
 
 def test_manifest_geometry_must_be_used_as_admitted(tmp_path, monkeypatch):
