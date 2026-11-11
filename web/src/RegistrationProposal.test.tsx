@@ -121,6 +121,13 @@ test("a start under the overlap floor is described, not given a score of zero", 
   expect(startScoreText({ start_score: 0, start_overlap: 0.7499 })).toBe(
     "the starting matrix put only 74% of the secondary inside the primary and was not scored",
   );
+  // 0.29 × 100 is 28.999999999999996, and 0.2951 is nearer 30 than 29.
+  expect(startScoreText({ start_score: 0, start_overlap: 0.29 })).toContain(
+    "only 29% of",
+  );
+  expect(startScoreText({ start_score: 0, start_overlap: 0.2951 })).toContain(
+    "only 30% of",
+  );
   expect(startScoreText({ start_score: 0, start_overlap: 0 })).toBe(
     "the starting matrix put only 0% of the secondary inside the primary and was not scored",
   );
@@ -342,6 +349,43 @@ test("the preview is drawn again once a source it could not sample is replaced",
   expect(screen.getAllByRole("img")).toHaveLength(3);
   expect(images).toHaveLength(3);
   expect(warned).toHaveBeenCalledTimes(1);
+});
+
+test("the preview keeps the corners of a turned secondary in frame", () => {
+  const images = stubCanvas();
+  // A 64 mm cube turned 45° about the superior axis spans 90.5 mm across,
+  // more than the 80 mm that 1.25 times its edge would show.
+  const turn = Math.SQRT1_2,
+    centered = (mm: number, n: number) => [
+      [mm, 0, 0, (-mm * (n - 1)) / 2],
+      [0, mm, 0, (-mm * (n - 1)) / 2],
+      [0, 0, mm, (-mm * (n - 1)) / 2],
+      [0, 0, 0, 1],
+    ];
+  render(
+    controlled(vi.fn(), {
+      primary: makeVolume(40, centered(4, 40), () => 50),
+      secondary: makeVolume(16, centered(4, 16), () => 300),
+      matrixText: JSON.stringify([
+        [turn, -turn, 0, 0],
+        [turn, turn, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1],
+      ]),
+    }),
+  );
+  expect(images).toHaveLength(3);
+  const pixel = (image: Image, row: number, column: number) =>
+    Array.from(
+      image.data.slice(4 * (128 * row + column), 4 * (128 * row + column) + 4),
+    );
+  for (const image of images) {
+    expect(pixel(image, 64, 64)).toEqual([32, 96, 96, 255]);
+    // Primary alone at both ends of the middle row: the secondary ends
+    // inside the frame.
+    expect(pixel(image, 64, 0)).toEqual([64, 64, 64, 255]);
+    expect(pixel(image, 64, 127)).toEqual([64, 64, 64, 255]);
+  }
 });
 
 test("a source the preview cannot sample is reported, not drawn", () => {

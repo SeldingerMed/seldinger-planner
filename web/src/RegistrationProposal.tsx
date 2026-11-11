@@ -55,9 +55,15 @@ export function startScoreText({
   start_score,
   start_overlap,
 }: Pick<Proposal, "start_score" | "start_overlap">): string {
-  return start_overlap < REGISTRATION_LIMITS.min_overlap
-    ? `the starting matrix put only ${Math.floor(start_overlap * 100)}% of the secondary inside the primary and was not scored`
-    : `starting matrix ${start_score.toFixed(3)}`;
+  if (start_overlap >= REGISTRATION_LIMITS.min_overlap)
+    return `starting matrix ${start_score.toFixed(3)}`;
+  // Rounded as the proposal's own share is, but never up to the floor: a
+  // start just under it must not read as having met it.
+  const percent = Math.min(
+    Math.round(start_overlap * 100),
+    Math.round(REGISTRATION_LIMITS.min_overlap * 100) - 1,
+  );
+  return `the starting matrix put only ${percent}% of the secondary inside the primary and was not scored`;
 }
 
 export default function RegistrationProposal({
@@ -157,10 +163,22 @@ export default function RegistrationProposal({
             .slice(0, 3)
             .map((r) => r[0] * p[0] + r[1] * p[1] + r[2] * p[2] + r[3]) as Vec3,
         center = at(matrix, at(native, middle)),
+        // The box of the secondary as the draft matrix turns it, so that a
+        // turned volume keeps its corners in frame.
+        corners = Array.from({ length: 8 }, (_, c) =>
+          at(
+            matrix,
+            at(
+              native,
+              shape.map((n, j) => ((c >> j) & 1 ? n - 0.5 : -0.5)),
+            ),
+          ),
+        ),
         extent = Math.max(
           ...[0, 1, 2].map(
-            (j) =>
-              shape[j] * Math.hypot(native[0][j], native[1][j], native[2][j]),
+            (k) =>
+              Math.max(...corners.map((p) => p[k])) -
+              Math.min(...corners.map((p) => p[k])),
           ),
         ),
         mm = Math.min(300, Math.max(40, 1.25 * extent)) / PIXELS;
