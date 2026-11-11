@@ -318,8 +318,35 @@ test("the draft preview fuses the secondary where the draft matrix puts it", () 
   expect(pixel(images[3], 64, 64)).toEqual([0, 128, 128, 255]);
 });
 
+test("the preview is drawn again once a source it could not sample is replaced", () => {
+  const images = stubCanvas();
+  const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const primary = makeVolume(32, grid(0), () => 50),
+    unavailable =
+      "Draft registration preview is unavailable for these sources.";
+  const view = render(
+    controlled(vi.fn(), {
+      primary,
+      secondary: makeVolume(16, grid(0), () => Number.NaN),
+    }),
+  );
+  expect(status()).toContain(unavailable);
+  expect(images).toHaveLength(0);
+  view.rerender(
+    controlled(vi.fn(), {
+      primary,
+      secondary: makeVolume(16, grid(0), () => 300),
+    }),
+  );
+  expect(status()).not.toContain(unavailable);
+  expect(screen.getAllByRole("img")).toHaveLength(3);
+  expect(images).toHaveLength(3);
+  expect(warned).toHaveBeenCalledTimes(1);
+});
+
 test("a source the preview cannot sample is reported, not drawn", () => {
   const images = stubCanvas();
+  const warned = vi.spyOn(console, "warn").mockImplementation(() => {});
   render(
     controlled(vi.fn(), {
       secondary: makeVolume(16, grid(0), () => Number.NaN),
@@ -331,4 +358,9 @@ test("a source the preview cannot sample is reported, not drawn", () => {
   );
   expect(images).toHaveLength(0);
   expect(screen.queryByRole("img")).toBeNull();
+  // The cause goes to the console, since the status line cannot name it.
+  expect(warned).toHaveBeenCalledWith(
+    "Draft registration preview failed",
+    expect.any(Error),
+  );
 });

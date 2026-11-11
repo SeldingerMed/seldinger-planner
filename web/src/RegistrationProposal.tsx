@@ -181,7 +181,10 @@ export default function RegistrationProposal({
           }
         context.putImageData(image, 0, 0);
       });
-    } catch {
+    } catch (error) {
+      // The status line cannot tell an unsupported pair from a defect in
+      // the sampling; the console can.
+      console.warn("Draft registration preview failed", error);
       setPreviewError(true);
     }
   }, [
@@ -226,8 +229,10 @@ export default function RegistrationProposal({
           unchanged.
         </p>
       )}
-      {matrix && !previewError ? (
-        <figure>
+      {/* The canvases stay mounted through a failure, hidden: the effect
+          draws before a figure it had removed could be put back. */}
+      {matrix && (
+        <figure hidden={previewError}>
           <div className="registration-preview">
             {PLANES.map((plane, index) => (
               <canvas
@@ -249,7 +254,8 @@ export default function RegistrationProposal({
             image right is patient left. Sagittal: image left is anterior.
           </figcaption>
         </figure>
-      ) : (
+      )}
+      {(!matrix || previewError) && (
         <p role="status">
           {matrix
             ? "Draft registration preview is unavailable for these sources."
