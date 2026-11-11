@@ -119,7 +119,7 @@ The studio reports the mean capped distance from projected 3D points to 2D crest
 4. Set vessel polarity and sensitivity, and select **Propose overlay**. The projected mask is drawn in cyan and the extracted 2D lines in amber. **Larger view** enlarges the figure, and the projected vessels can be hidden to see the frame beneath.
 5. Tick the review box and select **Save confirmed proposal**, or discard.
 
-A proposal belongs to the exact frame, mask, geometry, isocenter and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available.
+A proposal belongs to the exact frame, mask, geometry, isocenter and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
 
 ## The saved record
 

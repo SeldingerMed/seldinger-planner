@@ -287,10 +287,14 @@ export function parseFrameBundle(
   };
 }
 
-export async function loadFrameBundle(sourceId: string): Promise<FrameBundle> {
+export async function loadFrameBundle(
+  sourceId: string,
+  signal?: AbortSignal,
+): Promise<FrameBundle> {
   if (!FRAME_SOURCE_ID.test(sourceId)) throw new Error("Invalid frame source");
   const response = await fetch(`/api/projection-frames/${sourceId}`, {
     cache: "no-store",
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) throw new Error("Frame bundle unavailable");
   return parseFrameBundle(await response.json(), sourceId);
@@ -314,13 +318,14 @@ export async function loadVerifiedFrame(
   bundle: FrameBundle,
   planeLabel: PlaneLabel,
   index: number,
+  signal?: AbortSignal,
 ): Promise<VerifiedFrame> {
   const plane = bundle.planes.find((item) => item.plane === planeLabel),
     frame = plane?.frames.find((item) => item.index === index);
   if (!plane || !frame) throw new Error("Unknown frame");
   const response = await fetch(
     `/api/projection-frames/${bundle.source_id}/planes/${plane.plane}/frames/${frame.index}`,
-    { cache: "no-store" },
+    { cache: "no-store", ...(signal ? { signal } : {}) },
   );
   const size = plane.rows * plane.columns;
   if (

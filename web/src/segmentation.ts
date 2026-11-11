@@ -5,7 +5,11 @@ export type SegmentationEntry = {
   image_sha256: string;
   reference_revision: string;
   produced_artifact_version: string;
-  producer: "owned_vessel" | "rsna_vessel_model" | "sam2_prompted_slice" | "aneurysm_model";
+  producer:
+    | "owned_vessel"
+    | "rsna_vessel_model"
+    | "sam2_prompted_slice"
+    | "aneurysm_model";
   role: "vessel" | "aneurysm";
   mask_sha256: string;
   mask_url: string;
@@ -21,6 +25,7 @@ export type SegmentationBinding = Pick<
 export async function loadSegmentationMask(
   entry: SegmentationEntry,
   binding: SegmentationBinding,
+  signal?: AbortSignal,
 ): Promise<ArrayBuffer> {
   const identifier = /^[A-Za-z0-9_-]{1,100}$/;
   if (
@@ -37,7 +42,10 @@ export async function loadSegmentationMask(
     throw new Error(
       "Segmentation identity or route does not match this image.",
     );
-  const response = await fetch(entry.mask_url, { cache: "no-store" });
+  const response = await fetch(entry.mask_url, {
+    cache: "no-store",
+    ...(signal ? { signal } : {}),
+  });
   const cap = 16 * 1024 ** 2;
   if (!response.ok || Number(response.headers.get("Content-Length")) > cap)
     throw new Error("Segmentation mask unavailable.");

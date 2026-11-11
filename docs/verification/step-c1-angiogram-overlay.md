@@ -84,6 +84,16 @@ The backend ancestor-swap finding was reproduced with matching synthetic manifes
 
 The studio now holds an editing lock during sliced computation, releases captured request owners on identity change/unmount, and binds the review tick to the exact displayed outcome. Parsers reject unknown owned DTO fields, contradictory bindings and nonfinite display scalars. A synchronous binary-mask scan now yields between bounded chunks. The alleged NMS row-wrap defect was declined: its loop visits only x=1 through width-2 and y=1 through height-2, and its neighbor offsets are at most one pixel, so neither neighbor can wrap a row. The alleged live-input save mismatch was also declined: the displayed proposal is already gated by an exact input scope and is dropped when those inputs change.
 
+### Request deadlines and CI regression
+
+All overlay requests now carry an abort signal with a 30-second operation deadline. Source changes and unmount abort their owned requests; timeout releases the captured busy owner even if a transport does not settle. Late timed-out responses are ignored. A timed-out save is treated as an unknown acknowledgement, not a rollback: further overlay actions require an explicit saved-state read. Tests cover a noncooperative late read, a committed-but-unacknowledged stand-in save, recovery without a second write, and signals on every exercised request. Eight additional single-site deadline/signal mutants were killed, with green baseline and restored runs.
+
+In a real Chrome session, a labeled local fault injector withheld one acknowledgement after the real registration GET returned 200 and revision 3. The production deadline fired, source controls unlocked, the timeout notice and Reload action appeared, and explicit reload recovered revision 3 and redrew its overlay. This was a read-only negative-path check with zero PUTs, not a server outage or a new registration experiment.
+
+The first review-fix CI run timed out in the large-mask yielding test's 5-second budget. The test compared two million typed-array elements through a generic structural matcher. A local comparison-only benchmark measured about 1.77 seconds for that matcher versus 0.14 milliseconds for the native byte comparison. The assertion now uses native byte-for-byte comparison, preserving its exactness without raising the timeout or changing production computation.
+
+The proposed empty-crest finding was declined for the current admitted path: the foreground-size guard runs before the distance transform, the padded nonempty field has a positive maximum, and at least that maximum is retained by the crest test. The claimed zero-length set is therefore unreachable for supported inputs. Empty/small masks are already refused with their own message; no fictitious empty-crest fixture or unrelated source change was added.
+
 ## ffmpeg install
 
 With ffmpeg hidden from PATH, `ensure_ffmpeg` downloaded the pinned `imageio-ffmpeg` 0.8.1 wheel for this machine, matched its SHA-256 and size, installed the binary into a scratch directory, ran `-version` and reused the installed copy on the second call. The five pinned wheel names, digests and sizes (macOS arm64 and x86_64, Linux x86_64 and aarch64, Windows AMD64) matched the PyPI release record on 2026-11-11. The wheel packages a third-party static ffmpeg build under that build's own license. The repository contains neither the wheel nor the binary.
@@ -151,7 +161,7 @@ Run on 2026-11-11 on macOS, on the branch head.
 | `uv run pytest -q` | 1219 passed, 127 skipped |
 | Ingest runtime, `tests/ingest_runtime` | 165 passed |
 | Physics runtime, the workflow's 15 files | 239 passed |
-| `npm test` | 84 files, 878 tests passed |
+| `npm test` | 84 files, 880 tests passed |
 | `npm run build`, `npm audit --omit=dev --audit-level=high` | built, 0 vulnerabilities |
 | Real-browser smoke on one public frame | ran end to end, see the finding above |
 

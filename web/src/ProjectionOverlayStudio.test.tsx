@@ -32,7 +32,9 @@ import {
   volume,
 } from "./__fixtures__/overlayCase";
 import type { Vec3 } from "./obliqueSlice";
-import ProjectionOverlayStudio from "./ProjectionOverlayStudio";
+import ProjectionOverlayStudio, {
+  OVERLAY_REQUEST_TIMEOUT_MS,
+} from "./ProjectionOverlayStudio";
 import { projectRegistered } from "./projectionRegistration";
 import * as overlayJobs from "./projectionOverlayJob";
 
@@ -60,11 +62,15 @@ type Routes = {
 };
 /** A stand-in server. Every request is recorded as "METHOD path". */
 function server(routes: Routes = {}) {
-  const calls: { key: string; body: unknown }[] = [];
+  const calls: {
+    key: string;
+    body: unknown;
+    signal: AbortSignal | null | undefined;
+  }[] = [];
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET",
       body = init?.body ? JSON.parse(init.body as string) : undefined;
-    calls.push({ key: `${method} ${url}`, body });
+    calls.push({ key: `${method} ${url}`, body, signal: init?.signal });
     const base = `/api/cases/${identity.case_id}`;
     if (url === `${base}/projection-registration`)
       return method === "PUT"
@@ -215,6 +221,10 @@ test("proposes, confirms and saves exactly what the operator reviewed", async ()
   click("Save confirmed proposal");
   await screen.findByText(
     /Saved operator-confirmed proposal, revision 1, not a validated registration/,
+  );
+  expect(api.calls.length).toBeGreaterThan(5);
+  expect(api.calls.every((call) => call.signal instanceof AbortSignal)).toBe(
+    true,
   );
   const body = saved as any;
   expect(body).toMatchObject({
@@ -380,6 +390,125 @@ test("computation locks sibling actions and its inputs until complete or cancele
     expect(status("Overlay status").textContent).toBe("");
   } finally {
     create.mockRestore();
+  }
+}, 60000);
+
+test("a stalled read aborts at its deadline, releases the workspace and can be explicitly reloaded", async () => {
+  server();
+  const originalFetch = globalThis.fetch;
+  let stalled = true;
+  let signal: AbortSignal | null | undefined;
+  let lateAnswer!: (response: Response) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (!stalled || !url.endsWith("/projection-registration"))
+        return originalFetch(url, init);
+      signal = init?.signal;
+      // Deliberately ignore abort: even a noncooperative transport cannot
+      // retain the lock or publish a late snapshot after explicit recovery.
+      return new Promise<Response>((resolve) => {
+        lateAnswer = resolve;
+      });
+    }),
+  );
+  const timers = vi.spyOn(globalThis, "setTimeout");
+  render(<Harness />);
+  try {
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Other workspace action" }),
+      ).toBeDisabled(),
+    );
+    const deadline = timers.mock.calls.find(
+      ([, ms]) => ms === OVERLAY_REQUEST_TIMEOUT_MS,
+    )?.[0];
+    expect(deadline).toBeTypeOf("function");
+    await act(async () => {
+      (deadline as () => void)();
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Other workspace action" }),
+      ).not.toBeDisabled(),
+    );
+    expect(signal?.aborted).toBe(true);
+    expect(screen.getByRole("alert").textContent).toMatch(/request timed out/);
+    stalled = false;
+    click("Reload saved proposal");
+    await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+    await act(async () => {
+      lateAnswer(json(currentAnswer()));
+    });
+    expect(
+      screen.getByText(/No confirmed 2D-to-3D proposal is saved/),
+    ).toBeTruthy();
+  } finally {
+    timers.mockRestore();
+  }
+});
+
+test("a timed-out save requires a saved-state read before retrying and never duplicates the write", async () => {
+  let committed: any = null,
+    writes = 0;
+  server({
+    registration: () =>
+      json(committed ? currentAnswer(committed) : registrationAnswer()),
+  });
+  const originalFetch = globalThis.fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (init?.method !== "PUT") return originalFetch(url, init);
+      writes++;
+      committed = JSON.parse(String(init.body)).inputs;
+      return new Promise<Response>((_, reject) => {
+        init.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    }),
+  );
+  const timers = vi.spyOn(globalThis, "setTimeout");
+  render(<Harness />);
+  try {
+    await openFrames();
+    enterGeometry();
+    click("Propose overlay");
+    await proposed();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /I reviewed the overlay/ }),
+    );
+    click("Save confirmed proposal");
+    await waitFor(() => expect(writes).toBe(1));
+    const deadline = timers.mock.calls
+      .filter(([, ms]) => ms === OVERLAY_REQUEST_TIMEOUT_MS)
+      .at(-1)![0];
+    await act(async () => {
+      (deadline as () => void)();
+    });
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /may have been stored/,
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Save confirmed proposal" })
+        .closest("fieldset"),
+    ).toBeDisabled();
+    click("Save confirmed proposal");
+    expect(writes).toBe(1);
+    click("Reload saved proposal");
+    await screen.findByText(/Saved operator-confirmed proposal, revision 1/);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Other workspace action" }),
+      ).not.toBeDisabled(),
+    );
+    expect(writes).toBe(1);
+  } finally {
+    timers.mockRestore();
   }
 }, 60000);
 

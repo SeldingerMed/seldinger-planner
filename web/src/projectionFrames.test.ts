@@ -1,4 +1,5 @@
 import { gzipSync } from "node:zlib";
+import { Buffer } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   bundleAnswer,
@@ -409,7 +410,9 @@ describe("vessel mask decoding", () => {
       phantom.affine,
     );
     expect(yields).toBeGreaterThan(0);
-    expect(out).toEqual(voxels);
+    // Compare every byte natively. A generic structural matcher spends
+    // seconds enumerating two million typed-array elements on CI.
+    expect(Buffer.compare(out, voxels)).toBe(0);
   });
 
   it("rejects a bad voxel late in a large mask", async () => {

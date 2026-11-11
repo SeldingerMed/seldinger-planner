@@ -85,6 +85,7 @@ const DEFAULT_EDITOR: Editor = {
 };
 const SLICE_MS = 12,
   HIDDEN_SLICE_MS = 800;
+export const OVERLAY_REQUEST_TIMEOUT_MS = 30_000;
 const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
 
 export default function ProjectionOverlayStudio({
@@ -142,16 +143,40 @@ export default function ProjectionOverlayStudio({
     } | null>(null),
     [outcome, setOutcome] = useState<Outcome | null>(null),
     [reviewedOutcome, setReviewedOutcome] = useState<Outcome | null>(null),
-    [localBusy, setLocalBusy] = useState(false);
+    [localBusy, setLocalBusy] = useState(false),
+    [requestFailed, setRequestFailed] = useState(false);
   // Each request releases the same callback it acquired, even after a case
   // switch. Cleanup is idempotent so late acknowledgements cannot relock it.
   const pending = useRef(
-    new Map<() => void, { key: string; owner: Props["onBusy"] }>(),
+    new Map<
+      () => void,
+      { key: string; owner: Props["onBusy"]; controller: AbortController }
+    >(),
   );
-  const begin = () => {
+  const begin = (write = false) => {
     const owner = callbacks.current.onBusy;
+    const owned = key;
+    const controller = new AbortController();
+    const deadline = setTimeout(
+      () => controller.abort(),
+      OVERLAY_REQUEST_TIMEOUT_MS,
+    );
+    const aborted = () => {
+      if (live.current === owned) {
+        setRequestFailed(true);
+        setNotice(
+          write
+            ? "Save acknowledgement timed out. The proposal may have been stored. Reload saved proposal before continuing."
+            : "The overlay request timed out. Reload saved proposal before continuing.",
+        );
+      }
+      release();
+    };
     const release = () => {
       if (!pending.current.delete(release)) return;
+      clearTimeout(deadline);
+      controller.signal.removeEventListener("abort", aborted);
+      controller.abort();
       setLocalBusy(pending.current.size > 0);
       owner?.(
         [...pending.current.values()].some(
@@ -159,18 +184,20 @@ export default function ProjectionOverlayStudio({
         ),
       );
     };
-    pending.current.set(release, { key, owner });
+    pending.current.set(release, { key, owner, controller });
+    controller.signal.addEventListener("abort", aborted, { once: true });
     setLocalBusy(true);
     owner?.(true);
-    return release;
+    return { release, signal: controller.signal };
   };
 
   const load = useCallback(async () => {
     if (!key) return;
     const owned = key,
-      release = begin();
+      { release, signal } = begin();
     setLoaded(null);
     setLoadError("");
+    setRequestFailed(false);
     setBundle(null);
     setSelection(null);
     setFrame(null);
@@ -179,19 +206,27 @@ export default function ProjectionOverlayStudio({
     setNotice("");
     try {
       const [registration, masks] = await Promise.all([
-        api(`/cases/${identity.case_id}/projection-registration`),
+        api(
+          `/cases/${identity.case_id}/projection-registration`,
+          undefined,
+          "GET",
+          signal,
+        ),
         api<{ current: { vessel: SegmentationEntry | null } }>(
           `/cases/${identity.case_id}/segmentations`,
+          undefined,
+          "GET",
+          signal,
         ),
       ]);
-      if (live.current !== owned) return;
+      if (signal.aborted || live.current !== owned) return;
       setLoaded({
         key: owned,
         saved: parseSavedRegistration(registration, identity),
         mask: masks?.current?.vessel ?? null,
       });
     } catch {
-      if (live.current === owned)
+      if (!signal.aborted && live.current === owned)
         setLoadError(
           "The saved 2D-to-3D proposal could not be loaded. Reload before continuing.",
         );
@@ -205,7 +240,10 @@ export default function ProjectionOverlayStudio({
     return () => {
       live.current = "";
       for (const [release, request] of pending.current)
-        if (request.key === key) release();
+        if (request.key === key) {
+          request.controller.abort();
+          release();
+        }
     };
   }, [load]);
 
@@ -221,7 +259,8 @@ export default function ProjectionOverlayStudio({
       frame.index === selection?.index
         ? frame
         : null;
-  const editable = !!current && !disabled && !localBusy && !run;
+  const editable =
+    !!current && !disabled && !localBusy && !run && !requestFailed;
   const grid = useMemo(() => {
     try {
       return volume
@@ -363,14 +402,14 @@ export default function ProjectionOverlayStudio({
       return;
     }
     const owned = key,
-      release = begin();
+      { release, signal } = begin();
     setNotice("");
     setBundle(null);
     setSelection(null);
     setFrame(null);
     try {
-      const next = await loadFrameBundle(sourceId);
-      if (live.current !== owned) return;
+      const next = await loadFrameBundle(sourceId, signal);
+      if (signal.aborted || live.current !== owned) return;
       setBundle({ ...next, key: owned });
       setEntered(false);
       await openFrame(
@@ -379,7 +418,7 @@ export default function ProjectionOverlayStudio({
         next.planes[0].frames[0].index,
       );
     } catch {
-      if (live.current === owned)
+      if (!signal.aborted && live.current === owned)
         setNotice(
           "These frames are not installed or failed their integrity checks.",
         );
@@ -393,15 +432,15 @@ export default function ProjectionOverlayStudio({
     index: number,
   ) {
     const owned = key,
-      release = begin();
+      { release, signal } = begin();
     setSelection({ plane: label, index });
     setFrame(null);
     setNotice("");
     try {
-      const next = await loadVerifiedFrame(from, label, index);
-      if (live.current === owned) setFrame(next);
+      const next = await loadVerifiedFrame(from, label, index, signal);
+      if (!signal.aborted && live.current === owned) setFrame(next);
     } catch {
-      if (live.current === owned)
+      if (!signal.aborted && live.current === owned)
         setNotice(
           "This frame failed its integrity check and is not displayed.",
         );
@@ -409,10 +448,10 @@ export default function ProjectionOverlayStudio({
       release();
     }
   }
-  async function maskVoxels(entry: SegmentationEntry) {
+  async function maskVoxels(entry: SegmentationEntry, signal: AbortSignal) {
     if (!grid) throw new Error("The verified source volume is not loaded");
     return decodeVesselMask(
-      await loadSegmentationMask(entry, binding),
+      await loadSegmentationMask(entry, binding, signal),
       grid.shape,
       grid.affine,
     );
@@ -421,24 +460,26 @@ export default function ProjectionOverlayStudio({
     if (!editable || !shownFrame || !mask || !view || !grid || !scope) return;
     const owned = key,
       started = scope,
-      release = begin();
+      { release, signal } = begin();
     setOutcome(null);
     setNotice("");
     let voxels: Uint8Array | null = null,
-      failure = "";
+      failure = "",
+      canceled = false;
     try {
-      voxels = await maskVoxels(mask);
+      voxels = await maskVoxels(mask, signal);
     } catch (error) {
       failure =
         error instanceof Error
           ? error.message
           : "The vessel mask could not be read";
     } finally {
+      canceled = signal.aborted;
       // The sliced computation takes over the workspace editing lock below,
       // rather than feeding the request-busy flag back into its own identity.
       release();
     }
-    if (live.current !== owned) return;
+    if (canceled || live.current !== owned) return;
     if (!voxels) {
       setOutcome({ scope: started, kind: "proposal", failure });
       return;
@@ -461,7 +502,7 @@ export default function ProjectionOverlayStudio({
   async function showSaved() {
     if (!editable || !savedInputs || !grid || !mask) return;
     const owned = key,
-      release = begin();
+      { release, signal } = begin();
     setOutcome(null);
     setNotice("");
     try {
@@ -470,18 +511,19 @@ export default function ProjectionOverlayStudio({
         mask.mask_sha256 !== savedInputs.mask_sha256
       )
         throw new Error("mask");
-      const next = await loadFrameBundle(savedInputs.frame_source_id);
+      const next = await loadFrameBundle(savedInputs.frame_source_id, signal);
       if (next.manifest_revision !== savedInputs.frame_manifest_revision)
         throw new Error("revision");
       const verified = await loadVerifiedFrame(
         next,
         savedInputs.plane,
         savedInputs.frame_index,
+        signal,
       );
       if (verified.sha256 !== savedInputs.frame_sha256)
         throw new Error("frame");
-      const voxels = await maskVoxels(mask);
-      if (live.current !== owned) return;
+      const voxels = await maskVoxels(mask, signal);
+      if (signal.aborted || live.current !== owned) return;
       setSourceText(next.source_id);
       setBundle({ ...next, key: owned });
       setSelection({ plane: verified.plane, index: verified.index });
@@ -502,7 +544,7 @@ export default function ProjectionOverlayStudio({
         }),
       });
     } catch {
-      if (live.current === owned)
+      if (!signal.aborted && live.current === owned)
         setNotice(
           "The saved proposal's frame or vessel mask is no longer available unchanged, so its overlay is not shown.",
         );
@@ -516,7 +558,7 @@ export default function ProjectionOverlayStudio({
     const result = shown?.result;
     if (!result) return;
     const owned = key,
-      release = begin();
+      { release, signal } = begin(true);
     const inputs: RegistrationInputs = {
       confirmed: true,
       frame_source_id: shownFrame.source_id,
@@ -549,10 +591,11 @@ export default function ProjectionOverlayStudio({
             inputs,
           },
           "PUT",
+          signal,
         ),
         identity,
       );
-      if (live.current !== owned) return;
+      if (signal.aborted || live.current !== owned) return;
       setLoaded({ ...current, saved });
       setOutcome({
         scope: stable({ key, saved: saved.registration_revision }),
@@ -563,7 +606,7 @@ export default function ProjectionOverlayStudio({
       });
       setNotice("");
     } catch (error) {
-      if (live.current === owned)
+      if (!signal.aborted && live.current === owned)
         setNotice(
           error instanceof RevisionConflictError
             ? "The case or the saved proposal changed. Reload before saving."
@@ -646,6 +689,16 @@ export default function ProjectionOverlayStudio({
         for live guidance.
       </p>
       {loadError && <p role="alert">{loadError}</p>}
+      {notice && <p role="alert">{notice}</p>}
+      {(loadError || requestFailed) && (
+        <button
+          type="button"
+          disabled={localBusy || disabled}
+          onClick={() => void load()}
+        >
+          Reload saved proposal
+        </button>
+      )}
       {current && (
         <>
           <p role="status" aria-label="Saved overlay proposal">
@@ -937,7 +990,6 @@ export default function ProjectionOverlayStudio({
           {shown?.failure && (
             <p role="alert">Overlay computation failed: {shown.failure}.</p>
           )}
-          {notice && <p role="alert">{notice}</p>}
           {shownFrame && (
             <figure
               className={`native-render-figure angio-overlay-figure${enlarged ? " enlarged" : ""}`}
