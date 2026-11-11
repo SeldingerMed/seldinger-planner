@@ -181,3 +181,25 @@
   image-rendering: pixelated;
   background: #000;
 }
+.angio-overlay-figure canvas {
+  image-rendering: auto;
+}
+.angio-overlay-figure .native-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.angio-overlay-figure.enlarged {
+  position: fixed;
+  inset: 3vh 3vw;
+  z-index: 60;
+  overflow: auto;
+  box-shadow: 0 0 0 100vmax rgba(2, 6, 9, 0.82);
+}
+.angio-overlay-figure.enlarged canvas {
+  width: auto;
+  max-width: 100%;
+  height: min(78vh, 1024px);
+  margin: 0 auto;
+}

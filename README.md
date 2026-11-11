@@ -35,6 +35,12 @@ The planner now models a C-arm in the patient frame of an admitted volume. An op
 
 This is the geometry layer for later 2D/3D fusion. Nothing is registered to an acquired angiogram, no angiogram is displayed, and the angle convention is declared from DICOM rather than verified against a vendor system. See [C-arm views and projection geometry](docs/carm-projection.md).
 
+## Fusion Step C1: angiogram overlay and 2D-to-3D registration proposal
+
+A separate local command admits a small, bounded set of angiographic frames (at most two planes and eight frames per plane, from PNG or uncompressed DICOM XA), each bound by SHA-256, with the deidentification basis recorded per plane. The overlay studio shows one verified frame, proposes a rigid pose that lays the accepted vessel mask's projected points on the frame's extracted centerlines, and saves the proposal only after the operator reviews the overlay and confirms it. Frames from a video are extracted outside the app by `scripts/extract_angio_frames.py`, which installs a pinned, hash-checked ffmpeg when none is on PATH.
+
+Everything is retrospective. No live video is read, a saved proposal is not a validated registration, and no registration accuracy is claimed. See [Angiogram overlay and 2D-to-3D registration proposal](docs/angiogram-overlay.md) and its [verification note](docs/verification/step-c1-angiogram-overlay.md).
+
 ## Historical hackathon source and original work
 
 The source checkout includes the planning workspace. Images and trained artifacts are installed separately under the source/model contracts below. Public source does not mean a hosted deployment.

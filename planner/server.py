@@ -72,6 +72,7 @@ def build_app(
     geometry_runner=None,
     anatomy_runner=None,
     projection_series_store=None,
+    projection_frame_store=None,
 ):
     app = create_app(db_path, planning_context_provider=lambda case: planning_for_brief(case))
     allowed_origins = {
@@ -290,12 +291,22 @@ def build_app(
 
     read_scene = register_reformat_routes(app, db_path, image_sources, read_case)
     from planner.projection_server import (
+        register_projection_frame_routes,
+        register_projection_registration_routes,
         register_projection_routes,
         register_projection_series_routes,
     )
 
     read_projection = register_projection_routes(app, db_path, image_sources, read_case)
     register_projection_series_routes(app, projection_series_store)
+    register_projection_registration_routes(
+        app,
+        db_path,
+        image_sources,
+        read_case,
+        register_projection_frame_routes(app, projection_frame_store),
+        lambda case_id: segmentations.current(case_id, role="vessel"),
+    )
 
     from planner.device_db import (
         CATEGORIES,

@@ -35,11 +35,13 @@ export async function api<T>(
   path: string,
   body?: unknown,
   method = body ? "POST" : "GET",
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch("/api" + path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
     body: body ? JSON.stringify(body) : undefined,
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
     if (response.status === 409) throw new RevisionConflictError();

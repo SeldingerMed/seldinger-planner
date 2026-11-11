@@ -13,6 +13,7 @@ import MorphometryInputs from "./MorphometryInputs";
 import TerritoryStudio from "./TerritoryStudio";
 import ReformatStudio from "./ReformatStudio";
 import CArmStudio from "./CArmStudio";
+import ProjectionOverlayStudio from "./ProjectionOverlayStudio";
 import {
   findNativeCaseSource,
   type NativeCaseSource,
@@ -61,6 +62,11 @@ export default function App() {
     owner: symbol | null;
     busy: boolean;
   }>({ owner: null, busy: false });
+  const [overlayDirty, setOverlayDirty] = useState(false);
+  const [overlayActivity, setOverlayActivity] = useState<{
+    owner: symbol | null;
+    busy: boolean;
+  }>({ owner: null, busy: false });
   const [file, setFile] = useState<File | null>(null);
   const [nativeVolume, setNativeVolume] = useState<NativeVolume | null>(null);
   const [digest, setDigest] = useState("");
@@ -89,8 +95,10 @@ export default function App() {
     deviceDirty ||
     territoryDirty ||
     reformatDirty ||
-    carmDirty;
-  const draftDirty = geometryDirty || planDirty || (!!caseState && notes !== caseState.notes);
+    carmDirty ||
+    overlayDirty;
+  const draftDirty =
+    geometryDirty || planDirty || (!!caseState && notes !== caseState.notes);
   const [geometryEpoch, setGeometryEpoch] = useState(0);
   const [source, setSource] = useState("");
   const [confirmed, setConfirmed] = useState(false);
@@ -105,7 +113,8 @@ export default function App() {
     deviceCalculationBusy ||
     territoryBusy ||
     reformatActivity.busy ||
-    carmActivity.busy;
+    carmActivity.busy ||
+    overlayActivity.busy;
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const workflowLocked = busy || draftDirty || conflict;
@@ -119,11 +128,16 @@ export default function App() {
     useState<CaseImageSource | null>(null);
   // All server-admitted calibrated sources share the native workflow. The
   // original case006 shortcut is a source chooser, not an anatomy-tool gate.
-  const planningSource = caseState?.spatial_units === "mm"
-    ? [calibratedSource, nativeSource].find((source) => source !== null &&
-        source.case_id === caseState.case_id && source.image_sha256 === caseState.image_sha256 &&
-        source.image_sha256 === digest) ?? null
-    : null;
+  const planningSource =
+    caseState?.spatial_units === "mm"
+      ? ([calibratedSource, nativeSource].find(
+          (source) =>
+            source !== null &&
+            source.case_id === caseState.case_id &&
+            source.image_sha256 === caseState.image_sha256 &&
+            source.image_sha256 === digest,
+        ) ?? null)
+      : null;
   const [showReference, setShowReference] = useState(true);
   const [referenceStatus, setReferenceStatus] = useState<
     "off" | "loading" | "ready" | "error"
@@ -202,11 +216,29 @@ export default function App() {
     nativeSource?.reference_revision,
     reloadEpoch,
   ]);
+  const overlayBusyChanged = useMemo(() => {
+    const owner = Symbol("overlay-request-owner");
+    return (busy: boolean) =>
+      setOverlayActivity((prior) =>
+        busy
+          ? { owner, busy: true }
+          : prior.owner === owner
+            ? { owner, busy: false }
+            : prior,
+      );
+  }, [
+    caseState?.case_id,
+    caseState?.image_sha256,
+    caseState?.artifact_version,
+    nativeSource?.reference_revision,
+    reloadEpoch,
+  ]);
   function failVolume(message: string) {
     setNativeVolume(null);
     setTerritoryDirty(false);
     setReformatDirty(false);
     setCarmDirty(false);
+    setOverlayDirty(false);
     setSegmentation(null);
     setReference(null);
     setRequestedReference(null);
@@ -248,6 +280,7 @@ export default function App() {
     setTerritoryDirty(false);
     setReformatDirty(false);
     setCarmDirty(false);
+    setOverlayDirty(false);
     setNativeVolume(null);
     setSegmentation(null);
     setA(null);
@@ -429,6 +462,7 @@ export default function App() {
       setTerritoryDirty(false);
       setReformatDirty(false);
       setCarmDirty(false);
+      setOverlayDirty(false);
       setReloadEpoch((value) => value + 1);
       setA(null);
       setB(null);
@@ -902,10 +936,16 @@ export default function App() {
           <h2>Procedure planning.</h2>
           <WorkflowGuide
             exportOnly={territoryWorkspace}
-            identity={caseState && planningSource ? {
-              case_id: caseState.case_id, image_sha256: caseState.image_sha256,
-              artifact_version: caseState.artifact_version, reference_revision: planningSource.reference_revision,
-            } : null}
+            identity={
+              caseState && planningSource
+                ? {
+                    case_id: caseState.case_id,
+                    image_sha256: caseState.image_sha256,
+                    artifact_version: caseState.artifact_version,
+                    reference_revision: planningSource.reference_revision,
+                  }
+                : null
+            }
             imported={!!file}
             dirty={draftDirty}
             busy={busy}
@@ -959,6 +999,7 @@ export default function App() {
               <a href="#native-reformats">Reformats and fusion</a>
             )}
             {nativeSource && <a href="#carm-views">C-arm views</a>}
+            {nativeSource && <a href="#angio-overlay">Angiogram overlay</a>}
             <a href="#manual-evidence">Evidence</a>
             <a href="#muse-discussion">Muse ↗</a>
           </nav>
@@ -980,6 +1021,7 @@ export default function App() {
                 deviceDirty ||
                 territoryDirty ||
                 carmDirty ||
+                overlayDirty ||
                 planDirty ||
                 notes !== caseState.notes
               }
@@ -1005,11 +1047,37 @@ export default function App() {
                 deviceDirty ||
                 territoryDirty ||
                 reformatDirty ||
+                overlayDirty ||
                 planDirty ||
                 notes !== caseState.notes
               }
               onDirtyChange={setCarmDirty}
               onBusy={carmBusyChanged}
+            />
+          )}
+          {caseState && nativeSource && (
+            <ProjectionOverlayStudio
+              caseState={caseState}
+              binding={nativeSource}
+              volume={
+                nativeVolume?.file === file && digest === caseState.image_sha256
+                  ? nativeVolume.image
+                  : null
+              }
+              cursor={location}
+              disabled={
+                busy ||
+                conflict ||
+                geometryInputsDirty ||
+                deviceDirty ||
+                territoryDirty ||
+                reformatDirty ||
+                carmDirty ||
+                planDirty ||
+                notes !== caseState.notes
+              }
+              onDirtyChange={setOverlayDirty}
+              onBusy={overlayBusyChanged}
             />
           )}
           {territoryWorkspace && caseState && nativeSource && (
@@ -1027,6 +1095,7 @@ export default function App() {
                 conflict ||
                 geometryInputsDirty ||
                 deviceDirty ||
+                overlayDirty ||
                 planDirty ||
                 notes !== caseState.notes
               }
