@@ -412,6 +412,9 @@ export default function ProjectionOverlayStudio({
       if (signal.aborted || live.current !== owned) return;
       setBundle({ ...next, key: owned });
       setEntered(false);
+      // The parsed manifest no longer owns a deadline. The frame fetch below
+      // acquires its own lock and full deadline; release is idempotent.
+      release();
       await openFrame(
         next,
         next.planes[0].plane,

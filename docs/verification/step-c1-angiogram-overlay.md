@@ -106,9 +106,17 @@ The reader's original regular-file rejection was already inside the stream conte
 
 The extraction regression now requests an early valid frame followed by an index past the end of a real synthetic video, and verifies that no partial output remains. Separate tests preserve existing artifacts and operator notes and inject a second-publication collision, verifying no overwrite and withdrawal of the first new output. All 29 helper tests pass. Four scratch mutants were rejected: overwriting publication, omitted rollback, omitted prior-output refusal, and selecting only the first requested index. Baseline and restored scratch suites passed. The previously installed, pinned ffmpeg 9.0 binary also extracted the existing public frames 500 and 1700 through the new single-pass path; both were 720 by 480, 8-bit grayscale, with the incomplete template and hash record present.
 
-The descriptor sweep also found the same FIFO-open and constructor-ownership issue in the converter's streaming container hasher. It now opens non-blocking, checks for a regular file and retains descriptor ownership through the wrapper. Three additional regressions cover FIFO/directory refusal and constructor failure; all three analogous scratch mutants were rejected, with baseline and restoration passing. The full ingest suite is now 168 tests. A direct read of the retained public frame through the final store returned the original 182,928 verified bytes.
+The descriptor sweep also found the same FIFO-open and constructor-ownership issue in the converter's streaming container hasher. It now opens non-blocking, checks for a regular file and retains descriptor ownership through the wrapper. Three additional regressions cover FIFO/directory refusal and constructor failure; all three analogous scratch mutants were rejected, with baseline and restoration passing. These checks run in the full native ingest suite. A direct read of the retained public frame through the final store returned the original 182,928 verified bytes.
+
+A subsequent call-graph audit traced request, PNG and DICOM bytes to the imported `projection_ingest._read_input`. This shared reader now uses the same non-blocking open, regular-only refusal and descriptor ownership, while preserving its regular-file size bounds. Bounded admission probes cover a FIFO request and FIFO PNG frame; a third regression checks constructor-failure closure. The parent reran all 171 native ingest tests and independently rejected the three corresponding scratch mutants. Each FIFO probe has its own five-second deadline.
 
 The converter's ancestry check is explicitly a local-operator preflight, not a race-free ancestry guarantee. Its input and output ancestry must remain operator-controlled during conversion; installed reads independently traverse held directory descriptors.
+
+### Sequential request deadlines
+
+The bundle-open flow previously retained its manifest deadline while awaiting a separately owned first-frame fetch. Its completed manifest request can no longer produce a stale timeout during that frame fetch: the manifest scope is released before the frame scope begins. Two regressions verify that an old bundle deadline neither locks recovery nor aborts the frame, and that the frame's own deadline still aborts and refuses its late response. Restoring the missing early release in a scratch copy made both tests fail; baseline and restoration passed.
+
+A real Chrome fault injection held genuine manifest acknowledgement for 25 seconds and genuine frame acknowledgement for another 10 seconds, without modifying either payload. At 31 seconds the workspace was correctly busy with no timeout notice. At 35.27 seconds the verified frame was displayed, the studio was editable, and no timeout notice appeared. There were zero PUTs; the owned tab and listeners were closed afterward. The frontend suite passed all 884 tests, typecheck/build passed, and the production dependency audit reported zero vulnerabilities.
 
 ## ffmpeg install
 
@@ -175,9 +183,9 @@ Run on 2026-11-11 on macOS, on the branch head.
 | --- | --- |
 | `uv run ruff check .`, `uv run ruff format --check .` | clean |
 | `uv run pytest -q` | 1226 passed, 127 skipped |
-| Ingest runtime, `tests/ingest_runtime` | 168 passed |
+| Ingest runtime, `tests/ingest_runtime` | 171 passed |
 | Physics runtime, the workflow's 15 files | 239 passed |
-| `npm test` | 84 files, 882 tests passed |
+| `npm test` | 84 files, 884 tests passed |
 | `npm run build`, `npm audit --omit=dev --audit-level=high` | built, 0 vulnerabilities |
 | Real-browser smoke on one public frame | ran end to end, see the finding above |
 

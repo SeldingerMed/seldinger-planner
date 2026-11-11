@@ -396,6 +396,79 @@ test("computation locks sibling actions and its inputs until complete or cancele
   }
 }, 60000);
 
+test.each(["completes", "times out"])(
+  "the frame request %s independently after the bundle request has finished",
+  async (outcome) => {
+    server();
+    const originalFetch = globalThis.fetch;
+    let signal: AbortSignal | null | undefined;
+    let finish!: () => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init?: RequestInit) => {
+        if (!url.includes("/planes/")) return originalFetch(url, init);
+        signal = init?.signal;
+        return new Promise<Response>((resolve) => {
+          finish = () => resolve(originalFetch(url, init));
+        });
+      }),
+    );
+    render(<Harness />);
+    await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    try {
+      type("Frame bundle identifier", "phantom-run");
+      click("Open admitted frames");
+      await waitFor(() => expect(signal).toBeTruthy());
+      const deadlines = timers.mock.calls
+        .filter(([, ms]) => ms === OVERLAY_REQUEST_TIMEOUT_MS)
+        .map(([callback]) => callback as () => void);
+      expect(deadlines).toHaveLength(2);
+      await act(async () => deadlines[0]());
+      // The manifest is already parsed. Its old deadline cannot time out a
+      // still-valid frame fetch or force authoritative-state recovery.
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(signal?.aborted).toBe(false);
+      expect(
+        screen.getByRole("button", { name: "Other workspace action" }),
+      ).toBeDisabled();
+      if (outcome === "times out") {
+        await act(async () => deadlines[1]());
+        expect(screen.getByRole("alert").textContent).toMatch(
+          /request timed out/,
+        );
+        expect(signal?.aborted).toBe(true);
+      }
+      await act(async () => finish());
+      if (outcome === "completes") {
+        await screen.findByRole("img", {
+          name: "Admitted frame 12, plane single",
+        });
+        expect(screen.queryByRole("alert")).toBeNull();
+        expect(
+          screen
+            .getByRole("button", { name: "Open admitted frames" })
+            .closest("fieldset"),
+        ).not.toBeDisabled();
+      } else {
+        expect(screen.queryByRole("img")).toBeNull();
+        expect(
+          screen
+            .getByRole("button", { name: "Open admitted frames" })
+            .closest("fieldset"),
+        ).toBeDisabled();
+      }
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Other workspace action" }),
+        ).not.toBeDisabled(),
+      );
+    } finally {
+      timers.mockRestore();
+    }
+  },
+);
+
 test("a stalled read aborts at its deadline, releases the workspace and can be explicitly reloaded", async () => {
   server();
   const originalFetch = globalThis.fetch;

@@ -87,16 +87,21 @@ def _read_input(path: Path) -> bytes:
     path = Path(path).absolute()
     fd = _open_directory(path.parent)
     try:
-        file_fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+        file_fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
     except OSError:
         _fail("Select a regular projection file, without links")
     finally:
         os.close(fd)
-    with os.fdopen(file_fd, "rb") as stream:
-        info = os.fstat(stream.fileno())
-        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= MAX_INPUT_FILE_BYTES:
+    try:
+        info = os.fstat(file_fd)
+        if not stat.S_ISREG(info.st_mode):
+            _fail("Select a regular projection file, without links")
+        if not 0 < info.st_size <= MAX_INPUT_FILE_BYTES:
             _fail("Input file byte bound exceeded")
-        data = stream.read(MAX_INPUT_FILE_BYTES + 1)
+        with os.fdopen(file_fd, "rb", closefd=False) as stream:
+            data = stream.read(MAX_INPUT_FILE_BYTES + 1)
+    finally:
+        os.close(file_fd)
     if not 0 < len(data) <= MAX_INPUT_FILE_BYTES:
         _fail("Input file byte bound exceeded")
     return data

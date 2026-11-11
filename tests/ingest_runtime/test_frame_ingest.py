@@ -84,6 +84,78 @@ def test_container_hash_closes_a_descriptor_when_stream_construction_fails(tmp_p
     assert error.value.errno == errno.EBADF
 
 
+_PROBE_FIFO = """
+import sys
+from pathlib import Path
+from planner.dicom_ingest import IngestError
+from planner.frame_ingest import admit_frames
+try:
+    admit_frames(Path(sys.argv[1]), Path(sys.argv[2]), "tair-fifo")
+except IngestError as error:
+    assert 'Select a regular projection file, without links' in str(error), str(error)
+else:
+    raise AssertionError('FIFO input was accepted')
+"""
+
+
+def _run_fifo_probe(request_path, output_root):
+    return subprocess.run(
+        [sys.executable, "-c", _PROBE_FIFO, str(request_path), str(output_root)],
+        timeout=5,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_admit_frames_refuses_a_fifo_request_within_a_deadline(tmp_path):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("POSIX FIFO required")
+    request = tmp_path / "request.json"
+    os.mkfifo(request)
+    result = _run_fifo_probe(request, tmp_path / "installed")
+    assert result.returncode == 0, result.stderr
+
+
+def test_admit_frames_refuses_a_fifo_png_frame_within_a_deadline(tmp_path):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("POSIX FIFO required")
+    os.mkfifo(tmp_path / "frame-000007.png")
+    plane = {
+        "plane": "single",
+        "kind": "png",
+        "crop": [0, 0, COLUMNS, ROWS],
+        "redactions": [],
+        "identifiers_removed": True,
+        "frames": [{"path": "frame-000007.png", "index": 7}],
+    }
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps({"scope": "synthetic", "planes": [plane]}))
+    result = _run_fifo_probe(request, tmp_path / "installed")
+    assert result.returncode == 0, result.stderr
+
+
+def test_projection_read_input_closes_a_descriptor_when_stream_construction_fails(
+    tmp_path, monkeypatch
+):
+    from planner import projection_ingest
+
+    target = tmp_path / "plane.dcm"
+    target.write_bytes(b"synthetic-projection")
+    captured = {}
+
+    def fails(fd, *_, **__):
+        captured["fd"] = fd
+        raise RuntimeError("synthetic stream-construction failure")
+
+    monkeypatch.setattr(projection_ingest.os, "fdopen", fails)
+    with pytest.raises(RuntimeError, match="synthetic stream-construction failure"):
+        projection_ingest._read_input(target)
+    with pytest.raises(OSError) as error:
+        os.fstat(captured["fd"])
+    assert error.value.errno == errno.EBADF
+
+
 def image(seed, rows=ROWS, columns=COLUMNS):
     rng = np.random.default_rng(seed)
     return rng.integers(0, 256, size=(rows, columns), dtype=np.uint8)
