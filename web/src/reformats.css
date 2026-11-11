@@ -178,5 +178,6 @@
 .registration-preview canvas {
   width: 192px;
   height: 192px;
+  image-rendering: pixelated;
   background: #000;
 }

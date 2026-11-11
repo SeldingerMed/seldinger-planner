@@ -182,6 +182,7 @@ function invert(m: number[]): number[] {
   return out;
 }
 const flat = (m: number[][]) => [...m[0], ...m[1], ...m[2]];
+const NONFINITE = "Nonfinite source sample; refusing registration";
 
 /** Block-averaged copy of a validated native volume near `target` mm,
  * coarsened further until it holds at most `cap` voxels. Yields between
@@ -230,14 +231,30 @@ function* coarsen(
             for (let i = x * f[0]; i < (x + 1) * f[0]; i++) sum += raw[row + i];
           }
         const value = sum * weight + source.inter;
-        if (value - value !== 0)
-          throw new Error("Nonfinite source sample; refusing registration");
+        if (value - value !== 0) throw new Error(NONFINITE);
         if (value < least) least = value;
         if (value > greatest) greatest = value;
         data[at++] = value;
       }
     if ((z + 1) % slab === 0) yield;
   }
+  // Whole blocks leave up to f − 1 voxels an axis outside every average.
+  // The search never reads them, but the fusion view draws them, so a
+  // nonfinite one refuses the source like any other.
+  const covered = shape.map((n, j) => n * f[j]);
+  for (let k = 0, seen = 0; k < source.shape[2]; k++)
+    for (let j = 0; j < ny; j++) {
+      const row = nx * (j + ny * k),
+        from = k < covered[2] && j < covered[1] ? covered[0] : 0;
+      for (let i = from; i < nx; i++) {
+        const value = raw[row + i] * source.slope + source.inter;
+        if (value - value !== 0) throw new Error(NONFINITE);
+      }
+      if ((seen += nx - from) >= STEP_VOXELS) {
+        seen = 0;
+        yield;
+      }
+    }
   if (!(greatest > least))
     throw new Error("Source has no usable intensity variation");
   // Coarse voxel j covers native voxels f·j … f·j + f − 1.
@@ -390,6 +407,9 @@ function similarity(level: Level, pose: number[]) {
  * of the given extent (mm): twice the coarsest block where that fits within
  * `REGISTRATION_LIMITS.max_scan_positions`, wider where it does not. */
 export function scanGrid(extent: number[]): { step: number; counts: number[] } {
+  // A nonfinite extent would never fit, and the widening below never end.
+  if (!extent.every(Number.isFinite))
+    throw new Error("Nonfinite primary extent; refusing registration");
   let step = Math.max(
     2 * LEVELS[0].target,
     Math.cbrt(
@@ -464,6 +484,7 @@ function finish(m: number[]): number[][] {
       x[2] * y[0] - x[0] * y[2],
       x[0] * y[1] - x[1] * y[0],
     ];
+  // Adding zero turns the −0 that a tiny negative entry rounds to into 0.
   const round = (value: number, digits: number) =>
     Number(value.toFixed(digits)) + 0;
   return validateRigid([

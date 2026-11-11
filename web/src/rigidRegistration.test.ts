@@ -124,29 +124,42 @@ test("a left-handed, anisotropic secondary grid is registered alike", () => {
   expect(result.sample_mm).toBeCloseTo(2, 9);
 });
 
-test("a turn the coarser levels misjudge is settled at the finest level", () => {
-  // The scene is nearly round about the anterior axis, so its turn there
-  // shows only in small detail. From the unturned start alone this pair
-  // ends 7 mm out, at a middle-level optimum that outscores the truth.
-  const truth = rigidAbout([1, 2, -1], 10, [0, 0, 0], [10, -15, 22]);
-  const cube = (mm: number, origin: number) => [
-    [mm, 0, 0, origin],
-    [0, mm, 0, origin],
-    [0, 0, mm, origin],
-    [0, 0, 0, 1],
-  ];
-  const affine = cube(1.2, -47.4);
-  const result = proposeRigidRegistration(
-    makeVolume(96, cube(1.5, -71.25), scene),
-    makeVolume(80, affine, (q) => 1500 - 0.8 * scene(transform(truth, q))),
-    identity,
-  );
-  const corners = Array.from({ length: 8 }, (_, c) =>
-    transform(affine, [(c & 1) * 79, ((c >> 1) & 1) * 79, ((c >> 2) & 1) * 79]),
-  );
-  expect(worst(result.matrix, truth, corners)).toBeLessThan(1.5);
-  expect(result.sample_mm).toBeCloseTo(1.2, 9);
-});
+// The largest search in this file: 512,000 secondary samples at the finest
+// level, close to its 600,000 cap, and about 10,000 evaluations. The cost is
+// bounded by REGISTRATION_LIMITS, not by the clock: 4.5 s on a workstation
+// and 7.5 s on a CI runner, so the default 5 s is a matter of the machine.
+const LARGEST_SEARCH_TIMEOUT_MS = 30_000;
+test(
+  "a turn the coarser levels misjudge is settled at the finest level",
+  () => {
+    // The scene is nearly round about the anterior axis, so its turn there
+    // shows only in small detail. From the unturned start alone this pair
+    // ends 7 mm out, at a middle-level optimum that outscores the truth.
+    const truth = rigidAbout([1, 2, -1], 10, [0, 0, 0], [10, -15, 22]);
+    const cube = (mm: number, origin: number) => [
+      [mm, 0, 0, origin],
+      [0, mm, 0, origin],
+      [0, 0, mm, origin],
+      [0, 0, 0, 1],
+    ];
+    const affine = cube(1.2, -47.4);
+    const result = proposeRigidRegistration(
+      makeVolume(96, cube(1.5, -71.25), scene),
+      makeVolume(80, affine, (q) => 1500 - 0.8 * scene(transform(truth, q))),
+      identity,
+    );
+    const corners = Array.from({ length: 8 }, (_, c) =>
+      transform(affine, [
+        (c & 1) * 79,
+        ((c >> 1) & 1) * 79,
+        ((c >> 2) & 1) * 79,
+      ]),
+    );
+    expect(worst(result.matrix, truth, corners)).toBeLessThan(1.5);
+    expect(result.sample_mm).toBeCloseTo(1.2, 9);
+  },
+  LARGEST_SEARCH_TIMEOUT_MS,
+);
 
 /** A block from inside the phantom, without the shell: mostly even tissue
  * with parts of the tubes and the blob, so there is little to register on.
@@ -264,6 +277,35 @@ test("the translation scan never visits more positions than its limit", () => {
   }
 });
 
+test("the translation scan refuses an extent that is not finite", () => {
+  // Without the refusal the widening loop never ends.
+  for (const bad of [Number.NaN, Infinity, -Infinity])
+    for (let axis = 0; axis < 3; axis++) {
+      const extent = [100, 100, 100];
+      extent[axis] = bad;
+      expect(() => scanGrid(extent)).toThrow("Nonfinite primary extent");
+    }
+});
+
+test("a primary whose extent overflows is refused rather than scanned", () => {
+  // Nonfinite affine entries are refused when the volume is read. These are
+  // all finite and the affine is not singular, but the far corners lie past
+  // the largest double, so the extent of the box is infinite.
+  const vast = makeVolume(
+    16,
+    [
+      [2e307, 0, 0, -1.5e308],
+      [0, 0.5, 0, -4],
+      [0, 0, 0.5, -4],
+      [0, 0, 0, 1],
+    ],
+    (_p, index) => index % 7,
+  );
+  const job = createRegistrationJob(vast, pair.secondary, identity);
+  expect(() => job.advance(() => false)).toThrow("Nonfinite primary extent");
+  expect(() => job.advance(() => false)).toThrow("Nonfinite primary extent");
+});
+
 test("a small body in a primary too wide to scan at the base step is found", () => {
   // 300 mm across: 12 mm steps would visit 26³ positions, far past the limit.
   // The phantom is under 2% of the voxels, the rest air, so an intensity
@@ -347,6 +389,65 @@ test.each([
   expect(() => job.advance(() => false)).toThrow(message);
   expect(() => job.advance(() => false)).toThrow(message);
   expect(() => job.result()).toThrow("Registration is not complete");
+});
+
+test.each([
+  ["the last column", [18, 0, 0]],
+  ["the last row", [0, 18, 0]],
+  ["the last slice", [0, 0, 18]],
+  ["the far corner", [18, 18, 18]],
+])(
+  "a nonfinite sample in %s, outside every averaged block, is refused",
+  (_name, at) => {
+    // 19 voxels an axis at 1 mm: the blocks are 4, 3 and 2 voxels wide at
+    // the three levels, and none of them reaches index 18.
+    const n = 19,
+      bad = at[0] + n * (at[1] + n * at[2]);
+    const holed = (value: number) =>
+      makeVolume(
+        n,
+        [
+          [1, 0, 0, 0],
+          [0, 1, 0, 0],
+          [0, 0, 1, 0],
+          [0, 0, 0, 1],
+        ],
+        (p, index) => (index === bad ? value : p[0] + 2 * p[1] + 3 * p[2]),
+      );
+    for (const value of [Number.NaN, Infinity]) {
+      expect(() =>
+        proposeRigidRegistration(holed(value), pair.secondary, identity),
+      ).toThrow("Nonfinite source sample");
+      expect(() =>
+        proposeRigidRegistration(pair.primary, holed(value), identity),
+      ).toThrow("Nonfinite source sample");
+    }
+  },
+);
+
+test("a turned start whose tiny negative entries round away leaves no negative zero", () => {
+  // cos 270° is −1.8e−16 in floating point, which rounds to −0. A matrix
+  // that compares unequal to its own plain form is not short to read.
+  const g = [
+    [3, 0, 0, -34.5],
+    [0, 3, 0, -34.5],
+    [0, 0, 3, -34.5],
+    [0, 0, 0, 1],
+  ];
+  const start = rigidAbout([0, 0, 1], 270, [0, 0, 0], [0, 0, 0]);
+  expect(start[0][0]).toBeLessThan(0);
+  const result = proposeRigidRegistration(
+    makeVolume(24, g, scene),
+    makeVolume(24, g, (q) => 1500 - 0.8 * scene(transform(start, q))),
+    start,
+  );
+  expect(result.matrix.flat().filter((v) => Object.is(v, -0))).toEqual([]);
+  expect(result.matrix).toEqual([
+    [0, 1, 0, 0],
+    [-1, 0, 0, 0],
+    [0, 0, 1, 0],
+    [0, 0, 0, 1],
+  ]);
 });
 
 test("a start that is not a rigid matrix is refused", () => {
