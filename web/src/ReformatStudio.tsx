@@ -406,7 +406,9 @@ export default function ReformatStudio({
   );
   // The draft preview is how an unsaved matrix is reviewed, and it is drawn
   // with the secondary window and opacity. Those controls stay usable while
-  // the preview is shown, though the draft keeps the saved view closed.
+  // the preview is shown. Unlike `eligible`, this asks neither for a clean
+  // draft nor for a current saved scene: the preview draws the draft, and
+  // both of those close only the saved view.
   const previewing =
     !!current &&
     !current.locked &&
