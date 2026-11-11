@@ -170,6 +170,15 @@ describe("frame loading", () => {
       vi.stubGlobal("fetch", fetch);
       await expect(loadVerifiedFrame(bundle, "single", 12)).rejects.toThrow();
     }
+    // A manifest that records the digest of a short buffer: the bytes match
+    // their digest and still do not fill the frame.
+    const short = gray.subarray(0, gray.length - SIDE),
+      answer = bundleAnswer();
+    answer.manifest.planes[0].frames[0].sha256 = hex(short);
+    vi.stubGlobal("fetch", serve(short));
+    await expect(
+      loadVerifiedFrame(parseFrameBundle(answer, "phantom-run"), "single", 12),
+    ).rejects.toThrow("integrity");
     // Frame 30's recorded digest is not that of these pixels.
     vi.stubGlobal("fetch", serve(gray));
     await expect(loadVerifiedFrame(bundle, "single", 30)).rejects.toThrow(

@@ -80,7 +80,7 @@ env -u PYTHONPATH -u PYTHONHOME .runtime/ingest-runtime/bin/python \
     -m planner.frame_ingest .runtime/installed-frames REQUEST.json --source-id my-run
 ```
 
-The command writes to a private staging directory, reads every staged frame back through the installed-store reader, and publishes with one rename that fails if the source ID already exists. A bundle is never modified in place.
+The command writes to a private staging directory, claims the destination by creating it (which fails if the source ID already exists), moves the frames in and renames the manifest last. Nothing is readable before the manifest is in place. It then reads every published frame back through the installed-store reader and withdraws the whole bundle if any read fails. A bundle is never modified in place.
 
 ## Server interface
 
