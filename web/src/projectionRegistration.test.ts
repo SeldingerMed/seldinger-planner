@@ -362,6 +362,36 @@ describe("projection registration proposal", () => {
     expect(errors(right, same).projected_mm).toBeLessThan(1);
   });
 
+  it("reports coarse coverage separately from the physical match fraction", () => {
+    // Analytic target: one crest sample is about 4 mm from a central ray.
+    // It is outside the physical 2 mm match radius but in the coarse cell
+    // neighborhood. This metric is not a second physical distance test.
+    const frame = { width: 300, height: 300 };
+    const distance = new Float32Array(300 * 300);
+    for (let y = 0; y < 300; y++)
+      for (let x = 0; x < 300; x++)
+        distance[y * 300 + x] = Math.min(96, Math.hypot(x - 160, y - 150));
+    const points = new Float32Array(30 * 3);
+    const p = proposeProjectionRegistration({
+      points,
+      view: AP,
+      isocenter: [0, 0, 0],
+      start: identity,
+      frame,
+      fit_detector_scale: false,
+      target: {
+        width: 300,
+        height: 300,
+        scale: 1,
+        distance,
+        centerline: new Int32Array([150 * 300 + 160]),
+      },
+    });
+    expect(p.start_score.mean_distance_mm).toBeGreaterThan(4);
+    expect(p.start_score.matched_fraction).toBe(0);
+    expect(p.start_score.uncovered_fraction).toBe(0);
+  });
+
   it("uses the fitted field for the physical two-millimeter match threshold", () => {
     // A coarse, noisy frame puts at least one projected point between the
     // entered-field and fitted-field thresholds. A good clean fit does not.

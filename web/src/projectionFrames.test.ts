@@ -354,6 +354,7 @@ describe("vessel mask decoding", () => {
     ["another bit depth", (v: DataView) => v.setInt16(72, 16, true)],
     ["a big-endian header", (v: DataView) => v.setInt32(0, 348, false)],
     ["another magic", (v: DataView) => v.setUint8(344, 0x6f)],
+    ["missing magic terminator", (v: DataView) => v.setUint8(347, 1)],
     [
       "a data offset past the header",
       (v: DataView) => v.setFloat32(108, 360, true),

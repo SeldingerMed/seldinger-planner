@@ -326,7 +326,9 @@ function* solve(
         distance[at + w + 1] * fx * fy;
       sum += d < cap ? d : cap;
       if (d <= near) matched++;
-      // Stamp the 3 x 3 block of coverage cells around the point.
+      // Coarse reverse-coverage heuristic for the objective. This 3 x 3
+      // cell neighborhood is intentionally not the physical `near` test;
+      // the UI and docs name it separately from matched_fraction.
       const cx = Math.floor((sx + 0.5) / cell),
         cy = Math.floor((sy + 0.5) / cell);
       for (let j = cy > 0 ? cy - 1 : 0; j <= cy + 1 && j < gh; j++)

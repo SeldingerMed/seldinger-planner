@@ -94,6 +94,12 @@ The first review-fix CI run timed out in the large-mask yielding test's 5-second
 
 The proposed empty-crest finding was declined for the current admitted path: the foreground-size guard runs before the distance transform, the padded nonempty field has a positive maximum, and at least that maximum is retained by the crest test. The claimed zero-length set is therefore unreachable for supported inputs. Empty/small masks are already refused with their own message; no fictitious empty-crest fixture or unrelated source change was added.
 
+### Final score-label and format checks
+
+The reverse-coverage score is explicitly labeled as coarse 3-by-3-cell neighborhood coverage, not the physical 2 mm match test or vessel-presence evidence. An analytic synthetic fixture places a crest sample about 4 mm from a central projection and verifies that it is physically unmatched but coarse-covered. The search objective and previously measured poses are unchanged; this clarifies the score's meaning rather than claiming the wider heuristic is an exact reverse distance. A claimed causal contribution to the real-frame failure was not tested.
+
+The decoder now checks all four bytes of the single-file NIfTI-1 magic, including its NUL terminator. A digest-valid synthetic blob with a non-NUL fourth byte is refused. The optional ffmpeg speed suggestion was deferred after measuring eight exact-index extractions on the existing public clip at 1.18 seconds locally; the current eight-frame and per-call time bounds remain unchanged. A later full-suite run also exposed an existing morphometry test that asserted the dirty callback immediately after the revision callback. The test now waits for the actual busy/dirty completion callbacks; the morphometry component and its behavior were not changed. The final public-frame browser run verified the new coarse-coverage wording, recomputed the unchanged RAO 90 proposal and discarded it without a write.
+
 ## ffmpeg install
 
 With ffmpeg hidden from PATH, `ensure_ffmpeg` downloaded the pinned `imageio-ffmpeg` 0.8.1 wheel for this machine, matched its SHA-256 and size, installed the binary into a scratch directory, ran `-version` and reused the installed copy on the second call. The five pinned wheel names, digests and sizes (macOS arm64 and x86_64, Linux x86_64 and aarch64, Windows AMD64) matched the PyPI release record on 2026-11-11. The wheel packages a third-party static ffmpeg build under that build's own license. The repository contains neither the wheel nor the binary.
@@ -130,7 +136,7 @@ In the browser, against the local server: the bundle opened and the frame was dr
 
 The same inputs were run from four starting angles. These values include the fitted-field unit correction. The RAO 90 row is the proposal saved as revisions 2 and 3 in the repeated browser smokes, and an offline replay of the same job code on the same installed bytes reproduced its saved numbers. The earlier revision 1 retains the scores reported by the earlier implementation; it is not rewritten.
 
-| Starting primary angle | Mean distance, start to end (mm) | Matched, start to end | 2D centerline left uncovered at end | Rotation applied (deg) | Isocenter shift (mm) | Fitted field scale |
+| Starting primary angle | Mean distance, start to end (mm) | Matched, start to end | 2D coarse-neighborhood samples uncovered at end | Rotation applied (deg) | Isocenter shift (mm) | Fitted field scale |
 | --- | --- | --- | --- | --- | --- | --- |
 | RAO 44 (the on-screen text) | 3.94 to 1.86 | 31% to 64% | 50% | 4.0 | 24.9 | 0.905 |
 | RAO 90 (saved) | 3.68 to 1.69 | 35% to 66% | 45% | 8.7 | 20.1 | 0.944 |
@@ -161,7 +167,7 @@ Run on 2026-11-11 on macOS, on the branch head.
 | `uv run pytest -q` | 1219 passed, 127 skipped |
 | Ingest runtime, `tests/ingest_runtime` | 165 passed |
 | Physics runtime, the workflow's 15 files | 239 passed |
-| `npm test` | 84 files, 880 tests passed |
+| `npm test` | 84 files, 882 tests passed |
 | `npm run build`, `npm audit --omit=dev --audit-level=high` | built, 0 vulnerabilities |
 | Real-browser smoke on one public frame | ran end to end, see the finding above |
 

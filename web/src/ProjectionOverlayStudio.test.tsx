@@ -187,6 +187,9 @@ test("proposes, confirms and saves exactly what the operator reviewed", async ()
   await proposed();
   const text = status("Overlay status").textContent!;
   expect(text).toMatch(/They are not a registration accuracy/);
+  expect(text).toMatch(
+    /coarse 3.by.3.cell neighborhood \(not a 2 mm distance test\)/,
+  );
   expect(text).not.toMatch(/field size fitted/);
   expect(dirty).toHaveBeenLastCalledWith(true);
   expect(screen.getByRole("img").getAttribute("aria-label")).toBe(

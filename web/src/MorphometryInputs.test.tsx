@@ -369,8 +369,12 @@ describe("MorphometryInputs", () => {
       },
     });
     expect(props.onBusy).toHaveBeenCalledWith(true);
-    expect(props.onBusy).toHaveBeenLastCalledWith(false);
-    expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+    // onRevision fires before React commits the saved draft and runs its
+    // dirty-state effect. Wait for those actual completion signals too.
+    await waitFor(() => {
+      expect(props.onBusy).toHaveBeenLastCalledWith(false);
+      expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+    });
   });
 
   it("discards a stale envelope from an old scope and never installs old values", async () => {

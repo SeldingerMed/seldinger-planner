@@ -404,7 +404,7 @@ export async function decodeVesselMask(
     offset = view.getFloat32(108, true);
   if (
     view.getInt32(0, true) !== 348 ||
-    String.fromCharCode(...bytes.subarray(344, 347)) !== "n+1" ||
+    String.fromCharCode(...bytes.subarray(344, 348)) !== "n+1\0" ||
     view.getInt16(40, true) !== 3 ||
     [0, 1, 2].some((k) => view.getInt16(42 + 2 * k, true) !== shape[k]) ||
     view.getInt16(70, true) !== 2 ||
