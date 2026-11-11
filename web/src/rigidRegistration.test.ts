@@ -450,6 +450,26 @@ test("a turned start whose tiny negative entries round away leaves no negative z
   ]);
 });
 
+test("a result under the overlap floor at the finest level is refused", () => {
+  // The secondary is the primary's grid carried five voxels further along
+  // each axis. Block averages of 4 and 2 voxels put 10 of 11 and 20 of 22
+  // samples an axis inside the primary, 75.1% in all. Single voxels put 40
+  // of 45 inside, 70.2%, wherever the secondary is moved.
+  const g = [
+    [1.5, 0, 0, -30],
+    [0, 1.5, 0, -30],
+    [0, 0, 1.5, -30],
+    [0, 0, 0, 1],
+  ];
+  expect(() =>
+    proposeRigidRegistration(
+      makeVolume(40, g, scene),
+      makeVolume(45, g, (q) => 1500 - 0.8 * scene(q)),
+      identity,
+    ),
+  ).toThrow("The best position found leaves too little of the secondary");
+});
+
 test("a start that is not a rigid matrix is refused", () => {
   const skewed = identity.map((r) => [...r]);
   skewed[0][1] = 0.2;

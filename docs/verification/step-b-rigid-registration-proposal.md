@@ -16,13 +16,13 @@ Every input used here was synthetic, except one approved public CTA region of in
 - The score is normalized mutual information over the secondary samples that land inside the primary. A position with less than 75% of them inside is not scored.
 - A translation scan covers the primary's bounding box at 12 mm, or wider so that it visits at most 6,000 positions. The best four positions are refined at the coarsest level in translation only.
 - The middle level runs a compass search over all six parameters from 27 starting rotations (0 and ±8° per axis), at the scan's position and at the starting matrix. The finest level scores the best three distinct results and refines the winner.
-- Rotation stays within ±20° per axis of the starting matrix. The result is orthonormalized and passes the same `validateRigid` check the fusion view applies.
+- The turn about each primary RAS axis stays within 20° of the starting matrix. The three combine, so the whole turn can reach about 36°. A final position under the overlap floor is refused. The result is orthonormalized and passes the same `validateRigid` check the fusion view applies.
 
 The search runs as a generator. `RegistrationProposal.tsx` advances it in 12 ms slices between timers (800 ms while the tab is hidden) and drops the run when the matrix, either volume or the disabled state changes.
 
 ## Unit evidence
 
-The three Step B test files hold 34 tests. `rigidRegistration.test.ts` (19) recovers known rigid offsets on synthetic phantoms across inverted contrast, a left-handed anisotropic grid, a secondary in an unrelated frame, a primary away from the RAS origin and a small body in a 300 mm field of air. It also checks that rotation beyond the declared range is not recovered, that single-stepping equals the one-shot result, and that constant, nonfinite, non-millimeter, too-small and non-overlapping inputs are refused. `RegistrationProposal.test.tsx` (14) covers slicing, the hidden-tab slice, cancellation and every way a run is dropped, failure text, invalid draft matrices and the preview. `ReformatStudio.registration.test.tsx` (1) covers the studio wiring.
+The three Step B test files hold 42 tests. `rigidRegistration.test.ts` (27) recovers known rigid offsets on synthetic phantoms across inverted contrast, a left-handed anisotropic grid, a secondary in an unrelated frame, a primary away from the RAS origin and a small body in a 300 mm field of air. It also checks that rotation beyond the declared range is not recovered, that single-stepping equals the one-shot result, and that constant, nonfinite, non-millimeter, too-small and non-overlapping inputs are refused. Refusals also cover a nonfinite sample in the voxels block averaging leaves out, a primary whose extent overflows, and a final position under the overlap floor. `RegistrationProposal.test.tsx` (14) covers slicing, the hidden-tab slice, cancellation and every way a run is dropped, failure text, invalid draft matrices and the preview. `ReformatStudio.registration.test.tsx` (1) covers the studio wiring.
 
 Mutation check in a scratch copy: 28 single-site mutants of the three source files, with the unmodified baseline green before and after. 26 were killed. Two survive:
 
@@ -57,13 +57,13 @@ A synthetic pair was written as DICOM, admitted through the local ingest path wi
 
 - Checked on synthetic phantoms and one public CTA against itself. Not checked on separately acquired 3D angiography, across modalities, with different contrast phases, or with anatomy that moved or deformed between acquisitions.
 - The score is not an accuracy measure. The search can settle on a wrong alignment, and it cannot tell that two sources show different anatomy. The operator's review of the preview is the control.
-- A secondary that extends well beyond the primary is refused. A turn of more than 20° per axis from the starting matrix is not searched.
+- A secondary that extends well beyond the primary is refused. A turn of more than 20° about any primary RAS axis from the starting matrix is not searched.
 - Step timing was measured on one machine. A background tab pauses the run.
 
 ## Observed checks
 
 - `uv run ruff check .` and `uv run ruff format --check .`: clean.
 - `uv run pytest -q`: 1071 passed, 125 skipped (optional runtimes).
-- `npm test`: 77 files, 686 tests passed. `npm run build`: passed. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
+- `npm test`: 77 files, 694 tests passed. `npm run build`: passed. `npm audit --omit=dev --audit-level=high`: 0 vulnerabilities.
 - `npx tsc --noEmit` and Prettier on the Step B files: clean.
-- Ten consecutive full `npm test` runs on this branch and ten on `main` each had nine clean runs and one single-test failure, in different tests outside Step B (`aneurysm-integration` on the branch, the C-arm projection preview on `main`). Two earlier branch runs each failed one `DeviceScenarioSync` test. Each passed when rerun. They are timing-sensitive tests under full-suite load and are not changed here.
+- Ten consecutive full `npm test` runs on this branch and ten on `main` each had nine clean runs and one single-test failure, in different tests outside Step B (`aneurysm-integration` on the branch, the C-arm projection preview on `main`). Two earlier branch runs each failed one `DeviceScenarioSync` test. Each passed when rerun. They are timing-sensitive tests under full-suite load and are not changed here, with one exception: `App.native-anatomy` failed on the CI runner when its default one-second wait ran out, which a 1.2 s delay on its mocked requests reproduces, and it now states its waits explicitly.

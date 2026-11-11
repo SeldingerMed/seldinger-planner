@@ -193,13 +193,13 @@ export default function RegistrationProposal({
         {active ? "Cancel registration proposal" : "Propose rigid registration"}
       </button>
       <p className="registration-note">
-        Searches translation across the primary volume and rotation within ±
-        {REGISTRATION_LIMITS.rotation_deg}° per axis of the matrix above, by
-        image intensity alone. At least{" "}
-        {Math.round(REGISTRATION_LIMITS.min_overlap * 100)}% of the secondary
-        must lie inside the primary. It is a proposal to check and correct, not
-        a validated registration, and it cannot tell that two sources show
-        different anatomy.
+        Searches translation across the primary volume and turns of up to{" "}
+        {REGISTRATION_LIMITS.rotation_deg}° about each primary RAS axis from the
+        matrix above, which can combine into a larger turn, by image intensity
+        alone. At least {Math.round(REGISTRATION_LIMITS.min_overlap * 100)}% of
+        the secondary must lie inside the primary. It is a proposal to check and
+        correct, not a validated registration, and it cannot tell that two
+        sources show different anatomy.
       </p>
       <p role="status">
         {active

@@ -14,7 +14,8 @@ import { validateRigid } from "./rigidFusion";
 
 export const REGISTRATION_METHOD = "nmi_pyramid_compass_v1";
 export const REGISTRATION_LIMITS = {
-  /** Largest rotation, per axis, searched away from the starting matrix. */
+  /** Largest turn about each primary RAS axis searched away from the starting
+   * matrix. The three combine, so the whole turn can reach about 36°. */
   rotation_deg: 20,
   /** Smallest share of secondary samples that must land inside the primary.
    * Mutual information has spurious optima where little of the secondary
@@ -484,9 +485,12 @@ function finish(m: number[]): number[][] {
       x[2] * y[0] - x[0] * y[2],
       x[0] * y[1] - x[1] * y[0],
     ];
-  // Adding zero turns the −0 that a tiny negative entry rounds to into 0.
-  const round = (value: number, digits: number) =>
-    Number(value.toFixed(digits)) + 0;
+  // A tiny negative entry rounds to −0, which does not compare equal to 0
+  // when matrices are compared, so it is written as 0.
+  const round = (value: number, digits: number) => {
+    const rounded = Number(value.toFixed(digits));
+    return rounded === 0 ? 0 : rounded;
+  };
   return validateRigid([
     ...[0, 1, 2].map((k) => [
       round(x[k], 9),
@@ -665,6 +669,13 @@ function* solve(
       -1,
       Math.min(1, (turned[0] + turned[5] + turned[10] - 1) / 2),
     );
+  // The searches only move toward a higher score, but positions that pass
+  // the overlap floor on a coarser level can all fall under it here, where
+  // the samples reach nearer the edges. Such a result has no score to show.
+  if (final.overlap < REGISTRATION_LIMITS.min_overlap)
+    throw new Error(
+      "The best position found leaves too little of the secondary inside the primary to register",
+    );
   return {
     method: REGISTRATION_METHOD,
     matrix,
@@ -683,8 +694,9 @@ function* solve(
 }
 
 /** Resumable registration. `start` is the rigid matrix the search begins
- * from; rotation stays within `REGISTRATION_LIMITS.rotation_deg` of it per
- * axis, translation is searched across the whole primary volume. */
+ * from; the turn about each primary RAS axis stays within
+ * `REGISTRATION_LIMITS.rotation_deg` of it, translation is searched across
+ * the whole primary volume. */
 export function createRegistrationJob(
   primary: NVImage,
   secondary: NVImage,
