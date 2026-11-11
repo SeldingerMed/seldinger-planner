@@ -252,12 +252,27 @@ class InstalledFrameStore:
 
     @staticmethod
     def _read(path, bound):
+        directory_fd = None
         try:
-            fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+            path = Path(path).absolute()
+            # O_NOFOLLOW on the file alone does not protect its ancestry.
+            # Walk using held directory descriptors, so a checked ancestor
+            # cannot be replaced with a symlink before the file is opened.
+            directory_fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY)
+            for part in path.parent.parts[1:]:
+                next_fd = os.open(
+                    part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd
+                )
+                os.close(directory_fd)
+                directory_fd = next_fd
+            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
         except FileNotFoundError:
             raise
         except OSError:
             _fail("installed file is not a regular file")
+        finally:
+            if directory_fd is not None:
+                os.close(directory_fd)
         with os.fdopen(fd, "rb") as stream:
             if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
                 _fail("installed file is not a regular file")

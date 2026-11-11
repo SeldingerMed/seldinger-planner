@@ -1095,6 +1095,7 @@ export default function App() {
                 conflict ||
                 geometryInputsDirty ||
                 deviceDirty ||
+                overlayDirty ||
                 planDirty ||
                 notes !== caseState.notes
               }

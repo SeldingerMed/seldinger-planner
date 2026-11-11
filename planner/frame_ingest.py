@@ -165,7 +165,10 @@ def _dicom_frames(data: bytes, indexes):
     step = allocated // 8
     size = rows * columns * step
     pixels = ds.get_item("PixelData").value
-    if not isinstance(pixels, bytes) or not count * size <= len(pixels) <= count * size + 1:
+    # DICOM pads an odd-length value with one trailing byte (PS3.5, 7.1.1), so
+    # exactly that byte is allowed and only when the pixel bytes are odd.
+    expected = count * size
+    if not isinstance(pixels, bytes) or len(pixels) not in (expected, expected + expected % 2):
         _fail("Pixel data length contradicts the frame dimensions")
     frames = []
     for index in indexes:

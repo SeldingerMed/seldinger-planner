@@ -100,6 +100,23 @@ export const maskEntry = {
   provenance: {},
 };
 export const REVISION = "a".repeat(64);
+export const CONTAINER = "e".repeat(64);
+/** The server's own summary of confirmed inputs, mirroring `summarize`. */
+export function savedResult(inputs: Record<string, any> = savedInputs()) {
+  return {
+    version: "step-c1-projection-registration-v1",
+    convention: "dicom_xa_patient_longitude_latitude_ras_v1",
+    method: "centerline_distance_compass_v1",
+    status: "operator_confirmed_proposal",
+    validated: false,
+    geometry_source: inputs.geometry_source,
+    rotation_deg: 4,
+    isocenter_shift_mm: 6.4,
+    score_source: "browser_reported_not_recomputed",
+    reported_score: inputs.reported_score,
+    reported_start_score: inputs.reported_start_score,
+  };
+}
 export function bundleAnswer(change: Record<string, unknown> = {}) {
   return {
     source_id: "phantom-run",
@@ -148,7 +165,14 @@ export function registrationAnswer(
   current: Record<string, unknown> = { status: "not_confirmed" },
   revision = 0,
 ) {
-  return { ...identity, registration_revision: revision, current };
+  return {
+    ...identity,
+    registration_revision: revision,
+    current:
+      current.status === "stale"
+        ? { inputs: null, result: null, ...current }
+        : current,
+  };
 }
 export function savedInputs(change: Record<string, unknown> = {}) {
   return {
@@ -184,14 +208,13 @@ export function currentAnswer(
       status: "current",
       registration_id: "registration-1",
       evidence: "verified",
-      inputs,
-      result: {
+      dependencies: {
+        ...identity,
         version: "step-c1-projection-registration-v1",
-        status: "operator_confirmed_proposal",
-        validated: false,
-        rotation_deg: 4,
-        isocenter_shift_mm: 6.4,
       },
+      input_sha256: "f".repeat(64),
+      inputs,
+      result: savedResult((inputs ?? savedInputs()) as Record<string, any>),
       ...change,
     },
     revision,

@@ -2,6 +2,7 @@ import { gzipSync } from "node:zlib";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -33,6 +34,7 @@ import {
 import type { Vec3 } from "./obliqueSlice";
 import ProjectionOverlayStudio from "./ProjectionOverlayStudio";
 import { projectRegistered } from "./projectionRegistration";
+import * as overlayJobs from "./projectionOverlayJob";
 
 afterEach(() => {
   cleanup();
@@ -102,16 +104,23 @@ function Harness({
   withVolume?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const [dirty, setDirty] = useState(false);
   return (
-    <ProjectionOverlayStudio
-      caseState={caseState}
-      binding={binding}
-      volume={withVolume ? volume : null}
-      cursor={cursor}
-      disabled={busy || locked}
-      onBusy={setBusy}
-      onDirtyChange={onDirty}
-    />
+    <>
+      <button disabled={busy || dirty}>Other workspace action</button>
+      <ProjectionOverlayStudio
+        caseState={caseState}
+        binding={binding}
+        volume={withVolume ? volume : null}
+        cursor={cursor}
+        disabled={busy || locked}
+        onBusy={setBusy}
+        onDirtyChange={(value) => {
+          setDirty(value);
+          onDirty?.(value);
+        }}
+      />
+    </>
   );
 }
 const click = (name: string | RegExp) =>
@@ -135,8 +144,14 @@ function enterGeometry() {
 }
 const proposed = () =>
   waitFor(
-    () =>
-      expect(status("Overlay status").textContent).toMatch(/^Unsaved proposal/),
+    () => {
+      expect(status("Overlay status").textContent).toMatch(/^Unsaved proposal/);
+      expect(
+        screen
+          .getByRole("checkbox", { name: /I reviewed the overlay/ })
+          .closest("fieldset"),
+      ).not.toBeDisabled();
+    },
     { timeout: 30000 },
   );
 
@@ -178,6 +193,9 @@ test("proposes, confirms and saves exactly what the operator reviewed", async ()
   );
   click("Hide projected 3D vessels");
   expect(screen.getByRole("figure").textContent).not.toMatch(/Cyan/);
+  expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+    "Admitted frame 12, plane single",
+  );
   click("Show projected 3D vessels");
   click("Larger view");
   expect(screen.getByRole("figure").className).toMatch(/enlarged/);
@@ -245,7 +263,7 @@ test("proposes, confirms and saves exactly what the operator reviewed", async ()
   expect(((sum / (got.length / 2)) * ((180 / SIDE) * 800)) / 1200).toBeLessThan(
     1,
   );
-  expect(dirty).toHaveBeenLastCalledWith(false);
+  await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(false));
   expect(status("Overlay status").textContent).toMatch(
     /Showing the saved operator-confirmed proposal. It is not a validated registration/,
   );
@@ -307,6 +325,122 @@ test("its own pending request locks the controls without help from the owner", a
   answer(json(bundleAnswer()));
   await screen.findByRole("img", { name: "Admitted frame 12, plane single" });
   expect(controls()).toHaveProperty("disabled", false);
+});
+
+test("computation locks sibling actions and its inputs until complete or canceled", async () => {
+  const api = server();
+  const original = overlayJobs.createOverlayJob;
+  let finish = false;
+  const create = vi
+    .spyOn(overlayJobs, "createOverlayJob")
+    .mockImplementation((input) => {
+      const job = original(input);
+      return { ...job, advance: (expired) => finish && job.advance(expired) };
+    });
+  const rendered = render(<Harness />);
+  try {
+    await openFrames();
+    enterGeometry();
+    click("Propose overlay");
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Other workspace action" }),
+      ).toBeDisabled(),
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "Open admitted frames" })
+        .closest("fieldset"),
+    ).toBeDisabled();
+    const count = api.calls.length;
+    click("Open admitted frames");
+    expect(api.calls).toHaveLength(count);
+    finish = true;
+    await proposed();
+    expect(
+      screen.getByRole("button", { name: "Other workspace action" }),
+    ).toBeDisabled();
+    click("Discard proposal");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Other workspace action" }),
+      ).not.toBeDisabled(),
+    );
+    finish = false;
+    click("Propose overlay");
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(2));
+    rendered.rerender(<Harness locked />);
+    rendered.rerender(<Harness />);
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Other workspace action" }),
+      ).not.toBeDisabled(),
+    );
+    expect(status("Overlay status").textContent).toBe("");
+  } finally {
+    create.mockRestore();
+  }
+}, 60000);
+
+test("identity changes and unmount release the captured request owner exactly once", async () => {
+  let oldAnswer!: (value: Response) => void;
+  const api = server();
+  const original = globalThis.fetch;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) =>
+      url.endsWith("/projection-registration") &&
+      (!init?.method || init.method === "GET")
+        ? new Promise<Response>((resolve) => {
+            oldAnswer = resolve;
+          })
+        : original(url, init),
+    ),
+  );
+  const oldOwner = vi.fn(),
+    nextOwner = vi.fn();
+  const props = { caseState, binding, volume, cursor: null };
+  const rendered = render(
+    <ProjectionOverlayStudio {...props} onBusy={oldOwner} />,
+  );
+  await waitFor(() => expect(oldOwner).toHaveBeenLastCalledWith(true));
+  const finishOld = oldAnswer;
+  rendered.rerender(
+    <ProjectionOverlayStudio
+      {...props}
+      caseState={{ ...caseState, artifact_version: "8" }}
+      onBusy={nextOwner}
+    />,
+  );
+  expect(oldOwner).toHaveBeenLastCalledWith(false);
+  const finishNew = oldAnswer;
+  finishNew(json({ ...registrationAnswer(), artifact_version: "8" }));
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  expect(nextOwner).toHaveBeenLastCalledWith(false);
+  await act(async () => {
+    finishOld(json(registrationAnswer()));
+  });
+  rendered.rerender(
+    <ProjectionOverlayStudio
+      {...props}
+      caseState={{ ...caseState, artifact_version: "9" }}
+      onBusy={nextOwner}
+    />,
+  );
+  expect(nextOwner).toHaveBeenLastCalledWith(true);
+  const finishUnmounted = oldAnswer;
+  rendered.unmount();
+  await act(async () => {
+    finishUnmounted(json({ ...registrationAnswer(), artifact_version: "9" }));
+  });
+  expect(oldOwner.mock.calls.filter(([busy]) => busy === false)).toHaveLength(
+    1,
+  );
+  expect(nextOwner.mock.calls.filter(([busy]) => busy === false)).toHaveLength(
+    2,
+  );
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toHaveLength(0);
 });
 
 test("a changed input drops the proposal before it can be saved", async () => {
@@ -453,6 +587,11 @@ test("admitted DICOM geometry is used unless the operator overrides it", async (
   const answer = bundleAnswer({ method: "admitted_dicom_xa_frames" });
   const plane = (answer.manifest.planes as any[])[0];
   plane.geometry = VIEW;
+  plane.container_sha256 = "e".repeat(64);
+  plane.container_bytes = 1024;
+  plane.frames.forEach((frame: any) => {
+    frame.input_sha256 = plane.container_sha256;
+  });
   plane.deidentification = {
     ...plane.deidentification,
     basis: "dicom_declared_no_burned_in_annotation",

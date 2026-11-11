@@ -7,6 +7,7 @@ import json
 import shutil
 import struct
 import subprocess
+import urllib.error
 import zipfile
 from pathlib import Path
 
@@ -134,6 +135,33 @@ def test_download_can_be_refused_and_unknown_platforms_are_named(tmp_path, monke
         [str(video), str(tmp_path / "o"), "--frames", "1", "--no-download", "--tools-dir", "t"]
     )
     assert code == 1 and "Frame extraction failed" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        zipfile.BadZipFile("File is not a zip file"),
+        NotADirectoryError(20, "Not a directory"),
+        urllib.error.URLError("no route"),
+        subprocess.TimeoutExpired("ffmpeg", 600),
+    ],
+)
+def test_the_command_reports_anticipated_failures_without_a_traceback(
+    tmp_path, monkeypatch, capsys, error
+):
+    def fails(*_, **__):
+        raise error
+
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"x")
+    arguments = [str(video), str(tmp_path / "o"), "--frames", "1"]
+    monkeypatch.setattr(tool, "ensure_ffmpeg", fails)
+    assert tool.main(arguments) == 1
+    assert capsys.readouterr().err.startswith("Frame extraction failed: ")
+    monkeypatch.setattr(tool, "ensure_ffmpeg", lambda *_, **__: "ffmpeg")
+    monkeypatch.setattr(tool, "extract", fails)
+    assert tool.main(arguments) == 1
+    assert capsys.readouterr().err.startswith("Frame extraction failed: ")
 
 
 def test_an_oversized_download_is_abandoned_at_its_recorded_size(tmp_path, monkeypatch):

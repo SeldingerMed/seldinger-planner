@@ -340,10 +340,78 @@ describe("projection registration proposal", () => {
     // so the 7 mm of depth in the true pose stays as depth error.
     expect(errors(free, fit).depth_mm).toBeCloseTo(7, 3);
 
+    // Reported millimeters belong to the fitted field, not the entered one:
+    // the same pose scored in the fitted view, with nothing fitted, reads
+    // the same. The two runs cap at slightly different pixel distances.
+    const again = proposeProjectionRegistration({
+      ...free.input,
+      view: fit.view,
+      start: fit.matrix,
+      fit_detector_scale: false,
+    }).start_score;
+    expect(
+      Math.abs(again.mean_distance_mm / fit.score.mean_distance_mm - 1),
+    ).toBeLessThan(0.05);
+    expect(
+      Math.abs(again.matched_fraction - fit.score.matched_fraction),
+    ).toBeLessThan(0.03);
+
     const right = setup(AP, [4, -5, 7], [6, -7, 4], { fit: true }),
       same = proposeProjectionRegistration(right.input);
     expect(Math.abs(same.detector_scale - 1)).toBeLessThan(0.03);
     expect(errors(right, same).projected_mm).toBeLessThan(1);
+  });
+
+  it("uses the fitted field for the physical two-millimeter match threshold", () => {
+    // A coarse, noisy frame puts at least one projected point between the
+    // entered-field and fitted-field thresholds. A good clean fit does not.
+    const s = setup(WRONG, [4, -5, 7], [6, -7, 4], {
+      trueView: AP,
+      fit: true,
+      px: 150,
+      noise: 24,
+    });
+    const p = proposeProjectionRegistration(s.input);
+    const pixels = projectRegistered(
+      p.view,
+      s.isocenter,
+      p.matrix,
+      s.points,
+      s.frame,
+    );
+    const target = s.input.target;
+    const mmPerWorkingPixel =
+      (((p.view.detector_width_mm / s.frame.width) *
+        p.view.source_isocenter_mm) /
+        p.view.source_detector_mm) *
+      target.scale;
+    let matched = 0,
+      enteredMatched = 0;
+    for (let k = 0; k < pixels.length; k += 2) {
+      const x = pixels[k],
+        y = pixels[k + 1];
+      if (!(x >= 0 && x <= s.frame.width && y >= 0 && y <= s.frame.height))
+        continue;
+      const u = Math.max(0, Math.min(target.width - 1, x / target.scale - 0.5));
+      const v = Math.max(
+        0,
+        Math.min(target.height - 1, y / target.scale - 0.5),
+      );
+      const left = Math.min(target.width - 2, Math.floor(u));
+      const top = Math.min(target.height - 2, Math.floor(v));
+      const a = u - left,
+        b = v - top,
+        i = top * target.width + left;
+      const d =
+        (1 - b) * ((1 - a) * target.distance[i] + a * target.distance[i + 1]) +
+        b *
+          ((1 - a) * target.distance[i + target.width] +
+            a * target.distance[i + target.width + 1]);
+      if (d * mmPerWorkingPixel <= 2) matched++;
+      if ((d * mmPerWorkingPixel) / p.detector_scale <= 2) enteredMatched++;
+    }
+    expect(matched).not.toBe(enteredMatched);
+    expect(p.score.matched_fraction).toBe(matched / (s.points.length / 3));
   });
 
   it("stays inside its search range and shows a poor score beyond it", () => {
@@ -426,6 +494,40 @@ describe("projection registration proposal", () => {
     expect(() => job.result()).toThrow("Registration is not complete");
   });
 
+  it("counts the frame edge to edge, including a trailing partial block", () => {
+    // 401 pixels in blocks of 2: the working grid stops half a block short.
+    const s = setup(AP, [0, 0, 0], [0, 0, 0], { px: 401 });
+    expect(s.input.target.scale).toBe(2);
+    const o = s.isocenter,
+      at = (p: number[]) =>
+        projectRegistered(AP, o, identity, new Float32Array(p), s.frame),
+      base = at([...o]),
+      slope = [0, 1, 2].map((axis) => {
+        const moved = at(o.map((value, i) => value + (i === axis ? 1 : 0)));
+        return [moved[0] - base[0], moved[1] - base[1]];
+      }),
+      across = slope.findIndex((d) => Math.abs(d[0]) > 0.5),
+      down = slope.findIndex((d) => Math.abs(d[1]) > 0.5);
+    expect(across).not.toBe(down);
+    /** Forty points in a column at continuous frame coordinate x. */
+    const column = (x: number) =>
+      Array.from({ length: 40 }, (_, k) => {
+        const p = [...o];
+        p[across] += (x - base[0]) / slope[across][0];
+        p[down] += (100 + 5 * k - base[1]) / slope[down][1];
+        return p;
+      }).flat();
+    const share = (...columns: number[]) =>
+      proposeProjectionRegistration({
+        ...s.input,
+        points: new Float32Array(columns.flatMap(column)),
+      }).start_score.in_field_fraction;
+    // The frame spans 0 to 401 in continuous pixel coordinates.
+    expect(share(0.2, 400.8)).toBe(1);
+    expect(share(0.2, 400.8, -0.2, 401.2)).toBe(0.5);
+    expect(share(200, 400.8, 401.2, 401.2)).toBe(0.5);
+  });
+
   it("rejects input it cannot register", () => {
     const s = setup(AP, [4, -5, 7], [6, -7, 4]),
       run = (change: Partial<ProjectionRegistrationInput>) => () =>
@@ -456,6 +558,16 @@ describe("projection registration proposal", () => {
       "Detector pixels must be square",
     );
     expect(run({ view: { ...AP, source_isocenter_mm: 1300 } })).toThrow();
+    // 50 mm over 300 pixels at half magnification is 0.083 mm per pixel at
+    // the isocenter, the smallest field whose 8 mm cap the distance map
+    // still covers. A slightly smaller one is refused.
+    const small = { ...AP, detector_width_mm: 50, detector_height_mm: 50 };
+    expect(run({ view: { ...small, source_isocenter_mm: 590 } })).toThrow(
+      "Field too small for this frame",
+    );
+    expect(run({ view: { ...small, source_isocenter_mm: 610 } })).not.toThrow(
+      "Field too small for this frame",
+    );
     expect(run({ frame: { width: 300.5, height: 300 } })).toThrow(
       "Invalid frame size",
     );

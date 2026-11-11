@@ -2,6 +2,7 @@ import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   bundleAnswer,
+  CONTAINER,
   currentAnswer,
   gray,
   hex,
@@ -12,6 +13,7 @@ import {
   registrationAnswer,
   REVISION,
   savedInputs,
+  savedResult,
   SCORE,
   SIDE,
   VIEW,
@@ -60,16 +62,34 @@ describe("frame bundle parsing", () => {
         },
       ],
     });
-    const dicom = plane((p) => {
+    const dicom = dicomPlane((p) => {
       p.geometry = VIEW;
-      p.deidentification.crop = null;
-      p.deidentification.basis = "dicom_declared_no_burned_in_annotation";
     });
-    dicom.manifest.method = "admitted_dicom_xa_frames";
     expect(parseFrameBundle(dicom, "phantom-run").planes[0].geometry).toEqual(
       VIEW,
     );
   });
+
+  // A real admitted DICOM plane names its container file, and every frame
+  // it admits comes from that file.
+  function dicomPlane(change: (plane: Record<string, any>) => void) {
+    const answer = plane((p) => {
+      p.container_sha256 = CONTAINER;
+      p.container_bytes = 1024;
+      p.frames.forEach((frame: Record<string, any>) => {
+        frame.input_sha256 = CONTAINER;
+      });
+      p.deidentification.crop = null;
+      p.deidentification.source_rows = SIDE;
+      p.deidentification.source_columns = SIDE;
+      p.deidentification.burned_in_annotation = "no";
+      p.deidentification.basis = "dicom_declared_no_burned_in_annotation";
+      p.geometry = VIEW;
+      change(p);
+    });
+    answer.manifest.method = "admitted_dicom_xa_frames";
+    return answer;
+  }
 
   it.each([
     ["another source", { ...bundleAnswer(), source_id: "other" }],
@@ -101,17 +121,20 @@ describe("frame bundle parsing", () => {
   });
 
   it("keeps geometry for an uncropped DICOM plane and refuses it on a cropped one", () => {
-    const dicom = (crop: number[] | null) => {
-      const answer = plane((p) => {
-        p.geometry = VIEW;
+    const dicom = (crop: number[] | null) =>
+      dicomPlane((p) => {
         p.deidentification.crop = crop;
+        if (crop)
+          p.deidentification.basis = "operator_attested_crop_and_redaction";
         if (!crop)
           p.deidentification.source_rows = p.deidentification.source_columns =
             SIDE;
+        else {
+          p.deidentification.burned_in_annotation = "yes";
+          p.deidentification.source_rows = 480;
+          p.deidentification.source_columns = 720;
+        }
       });
-      answer.manifest.method = "admitted_dicom_xa_frames";
-      return answer;
-    };
     const kept = parseFrameBundle(dicom(null), "phantom-run").planes[0];
     expect(kept.geometry).toEqual(VIEW);
     expect(kept.cropped).toBe(false);
@@ -122,13 +145,109 @@ describe("frame bundle parsing", () => {
   });
 
   it("rejects out-of-range geometry on a DICOM plane", () => {
-    const dicom = plane((p) => {
-      p.geometry = { ...VIEW, source_isocenter_mm: 1300 };
-      p.deidentification.crop = null;
-    });
-    dicom.manifest.method = "admitted_dicom_xa_frames";
-    expect(() => parseFrameBundle(dicom, "phantom-run")).toThrow();
+    expect(() =>
+      parseFrameBundle(
+        dicomPlane((p) => {
+          p.geometry = { ...VIEW, source_isocenter_mm: 1300 };
+        }),
+        "phantom-run",
+      ),
+    ).toThrow();
   });
+
+  it("accepts a two-plane biplane bundle and keeps the linkage consistent", () => {
+    const biplane = (linkage: string) => {
+      const answer = bundleAnswer();
+      answer.manifest.biplane_linkage = linkage;
+      const second = JSON.parse(JSON.stringify(answer.manifest.planes[0]));
+      answer.manifest.planes[0].plane = "a";
+      second.plane = "b";
+      second.frames[0].index = 13;
+      answer.manifest.planes = [answer.manifest.planes[0], second];
+      return answer;
+    };
+    const kept = parseFrameBundle(biplane("operator_declared"), "phantom-run");
+    expect(kept.planes.map((p) => p.plane)).toEqual(["a", "b"]);
+  });
+
+  it.each([
+    ["an envelope with an extra field", { ...bundleAnswer(), extra: true }],
+    ["a manifest with an extra field", bundleAnswer({ notes: "x" })],
+    [
+      "a single-plane bundle claiming biplane linkage",
+      bundleAnswer({ biplane_linkage: "operator_declared" }),
+    ],
+    ["a biplane bundle without linkage", biplaneBundle("not_applicable")],
+    [
+      "a container digest without its byte count",
+      plane((p) => (p.container_sha256 = CONTAINER)),
+    ],
+    [
+      "a DICOM plane without its container",
+      dicomPlane((p) => (p.container_sha256 = null)),
+    ],
+    [
+      "a frame from another file",
+      dicomPlane((p) => (p.frames[0].input_sha256 = "d".repeat(64))),
+    ],
+    ["a frame with an extra field", plane((p) => (p.frames[0].notes = "x"))],
+    [
+      "a frame with a bad input digest",
+      plane((p) => (p.frames[0].input_sha256 = "z".repeat(64))),
+    ],
+    [
+      "a deidentification with an extra field",
+      plane((p) => (p.deidentification.operator = "someone")),
+    ],
+    [
+      "a crop off the stored frame",
+      plane((p) => (p.deidentification.crop = [100, 50, 200, 200])),
+    ],
+    [
+      "a crop past the source",
+      plane((p) => (p.deidentification.crop = [600, 400, 300, 300])),
+    ],
+    [
+      "a redaction past the source",
+      plane((p) => (p.deidentification.redactions = [[0, 0, 10000, 10]])),
+    ],
+    [
+      "too many redactions",
+      plane(
+        (p) => (p.deidentification.redactions = Array(17).fill([0, 0, 10, 10])),
+      ),
+    ],
+    [
+      "a PNG plane declared without a crop",
+      plane((p) => (p.deidentification.crop = null)),
+    ],
+    [
+      "a declared basis without a DICOM declaration",
+      dicomPlane((p) => {
+        p.deidentification.burned_in_annotation = "not_declared";
+      }),
+    ],
+    [
+      "an attested basis without crop or redaction",
+      dicomPlane((p) => {
+        p.deidentification.burned_in_annotation = "unknown";
+        p.deidentification.basis = "operator_attested_crop_and_redaction";
+      }),
+    ],
+  ])("rejects %s", (_, answer) => {
+    expect(() => parseFrameBundle(answer, "phantom-run")).toThrow();
+  });
+
+  function biplaneBundle(linkage: string) {
+    const answer = bundleAnswer();
+    answer.manifest.biplane_linkage = linkage;
+    const second = JSON.parse(JSON.stringify(answer.manifest.planes[0]));
+    answer.manifest.planes[0].plane = "a";
+    second.plane = "b";
+    second.frames[0].index = 13;
+    answer.manifest.planes = [answer.manifest.planes[0], second];
+    return answer;
+  }
 });
 
 describe("frame loading", () => {
@@ -272,9 +391,172 @@ describe("vessel mask decoding", () => {
       decodeVesselMask(buffer(maskBlob), [0, 1, 1], affine),
     ).rejects.toThrow();
   });
+  it("yields between scan chunks so a large mask cannot block the page", async () => {
+    const shape = [1300, 1631, 1] as const;
+    const count = shape[0] * shape[1] * shape[2];
+    const voxels = new Uint8Array(count);
+    voxels[0] = 1;
+    voxels[count - 1] = 1;
+    let yields = 0;
+    const original = globalThis.setTimeout;
+    vi.stubGlobal("setTimeout", (fn: () => void, ms?: number) => {
+      yields++;
+      return original(fn, ms ?? 0);
+    });
+    const out = await decodeVesselMask(
+      buffer(new Uint8Array(gzipSync(nifti(voxels, shape, phantom.affine)))),
+      shape,
+      phantom.affine,
+    );
+    expect(yields).toBeGreaterThan(0);
+    expect(out).toEqual(voxels);
+  });
+
+  it("rejects a bad voxel late in a large mask", async () => {
+    const shape = [1300, 1631, 1] as const;
+    const count = shape[0] * shape[1] * shape[2];
+    const voxels = new Uint8Array(count);
+    voxels[count - 1] = 2;
+    await expect(
+      decodeVesselMask(
+        buffer(new Uint8Array(gzipSync(nifti(voxels, shape, phantom.affine)))),
+        shape,
+        phantom.affine,
+      ),
+    ).rejects.toThrow("binary");
+  });
 });
 
 describe("saved registration parsing", () => {
+  it.each([
+    [
+      "envelope extra",
+      (a: any) => {
+        a.extra = true;
+      },
+    ],
+    [
+      "input extra",
+      (a: any) => {
+        a.current.inputs.extra = true;
+      },
+    ],
+    [
+      "current extra",
+      (a: any) => {
+        a.current.extra = true;
+      },
+    ],
+    [
+      "result extra",
+      (a: any) => {
+        a.current.result.extra = true;
+      },
+    ],
+    [
+      "result missing convention",
+      (a: any) => {
+        delete a.current.result.convention;
+      },
+    ],
+    [
+      "result missing score source",
+      (a: any) => {
+        delete a.current.result.score_source;
+      },
+    ],
+    [
+      "result geometry contradiction",
+      (a: any) => {
+        a.current.result.geometry_source = "frame_manifest";
+      },
+    ],
+    [
+      "result score contradiction",
+      (a: any) => {
+        a.current.result.reported_score = { ...SCORE, matched_fraction: 0 };
+      },
+    ],
+    ...[NaN, Infinity, -1, 181].map(
+      (v) =>
+        [
+          `rotation ${v}`,
+          (a: any) => {
+            a.current.result.rotation_deg = v;
+          },
+        ] as const,
+    ),
+    ...[NaN, Infinity, -0.1].map(
+      (v) =>
+        [
+          `shift ${v}`,
+          (a: any) => {
+            a.current.result.isocenter_shift_mm = v;
+          },
+        ] as const,
+    ),
+    ...[1.5, -1, 2 ** 53].map(
+      (v) =>
+        [
+          `revision ${v}`,
+          (a: any) => {
+            a.registration_revision = v;
+          },
+        ] as const,
+    ),
+    [
+      "empty registration id",
+      (a: any) => {
+        a.current.registration_id = "";
+      },
+    ],
+    [
+      "dependencies mismatch",
+      (a: any) => {
+        a.current.dependencies.image_sha256 = "0".repeat(64);
+      },
+    ],
+    [
+      "bad input digest",
+      (a: any) => {
+        a.current.input_sha256 = "not-a-digest";
+      },
+    ],
+  ] as readonly (readonly [string, (a: any) => void])[])(
+    "refuses contradictory or extended saved response: %s",
+    (_, change) => {
+      const answer = clone(currentAnswer());
+      expect(() => parseSavedRegistration(answer, identity)).not.toThrow();
+      change(answer);
+      expect(() => parseSavedRegistration(answer, identity)).toThrow();
+    },
+  );
+  it("retains safe response revisions independently of the write-request cap", () => {
+    // The ledger increments its stored revision; the request DTO's bound
+    // is not a maximum on values returned by the read endpoint.
+    const answer = currentAnswer(undefined, {}, 1_000_000_001);
+    expect(parseSavedRegistration(answer, identity).registration_revision).toBe(
+      1_000_000_001,
+    );
+  });
+  it("rejects extra fields in empty and stale states", () => {
+    for (const answer of [
+      registrationAnswer(),
+      registrationAnswer(
+        { status: "stale", registration_id: "registration-1" },
+        2,
+      ),
+    ]) {
+      expect(() => parseSavedRegistration(answer, identity)).not.toThrow();
+      expect(() =>
+        parseSavedRegistration(
+          { ...answer, current: { ...answer.current, extra: 1 } },
+          identity,
+        ),
+      ).toThrow();
+    }
+  });
+
   it("parses the three states", () => {
     expect(
       parseSavedRegistration(registrationAnswer(), identity).current,

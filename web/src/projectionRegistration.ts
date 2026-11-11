@@ -26,7 +26,9 @@ export const PROJECTION_REGISTRATION_LIMITS = {
   in_plane_mm: 60,
   depth_mm: 60,
   rotation_deg: 15,
-  /** Distances are capped here, in millimeters at the isocenter plane. */
+  /** Distances are capped here, in millimeters at the isocenter plane of the
+   * entered geometry. The cap is held as a fixed number of working pixels,
+   * so a fitted field size cannot buy a lower score by changing it. */
   truncation_mm: 8,
   /** A point this close to a 2D centerline counts as matched. */
   match_mm: 2,
@@ -63,7 +65,9 @@ export type ProjectionRegistrationProposal = {
   detector_scale: number;
   score: RegistrationScore;
   start_score: RegistrationScore;
-  /** How far the proposal moved the point-set centroid from the start. */
+  /** How far the proposal moved the point-set centroid from the start, and
+   * the angle it turned from the start. Both describe the search's change,
+   * not `matrix` as a whole. */
   translation_mm: number;
   rotation_deg: number;
   point_count: number;
@@ -243,10 +247,11 @@ function* solve(
   if (Math.abs(view.detector_height_mm / frame.height / pitch - 1) > 0.02)
     throw new Error("Detector pixels must be square");
   const mm_per_px = (pitch * target.scale * sod) / sid;
-  const cap = Math.min(
-    L.truncation_mm / mm_per_px,
-    VESSEL_TARGET_LIMITS.max_distance_px,
-  );
+  // The 2D distance map is only known out to its own limit. A field so small
+  // that the millimeter cap lies beyond it cannot be scored in millimeters.
+  const cap = L.truncation_mm / mm_per_px;
+  if (cap > VESSEL_TARGET_LIMITS.max_distance_px)
+    throw new Error("Field too small for this frame");
   // The working grid starts at the frame origin and may stop short of its
   // far edges, so pixel coordinates use the frame's own extent.
   const fw = frame.width / target.scale,
@@ -280,7 +285,8 @@ function* solve(
     let sum = 0,
       inside = 0,
       matched = 0;
-    const near = L.match_mm / mm_per_px;
+    // Millimeters per working pixel follow the field size being tried.
+    const near = L.match_mm / (mm_per_px * scale);
     for (let k = 0; k < set.count; k++) {
       const x = set.cam[3 * k],
         y = set.cam[3 * k + 1],
@@ -298,15 +304,20 @@ function* solve(
           fh / 2 -
           ((r[3] * x + r[4] * y + r[5] * z + p[1] + offset[1]) / depth) * ky -
           0.5;
-      if (!(px >= 0 && py >= 0 && px <= w - 1 && py <= h - 1)) {
+      // Inside means inside the frame itself, edge to edge. The distance map
+      // is sampled at the nearest place it is defined, which differs only in
+      // the half pixel at each edge and in a trailing partial block.
+      if (!(px >= -0.5 && py >= -0.5 && px <= fw - 0.5 && py <= fh - 0.5)) {
         sum += cap;
         continue;
       }
       inside++;
-      const x0 = Math.min(w - 2, Math.floor(px)),
-        y0 = Math.min(h - 2, Math.floor(py)),
-        fx = px - x0,
-        fy = py - y0,
+      const sx = px < 0 ? 0 : px > w - 1 ? w - 1 : px,
+        sy = py < 0 ? 0 : py > h - 1 ? h - 1 : py,
+        x0 = Math.min(w - 2, Math.floor(sx)),
+        y0 = Math.min(h - 2, Math.floor(sy)),
+        fx = sx - x0,
+        fy = sy - y0,
         at = y0 * w + x0;
       const d =
         distance[at] * (1 - fx) * (1 - fy) +
@@ -316,8 +327,8 @@ function* solve(
       sum += d < cap ? d : cap;
       if (d <= near) matched++;
       // Stamp the 3 x 3 block of coverage cells around the point.
-      const cx = Math.floor((px + 0.5) / cell),
-        cy = Math.floor((py + 0.5) / cell);
+      const cx = Math.floor((sx + 0.5) / cell),
+        cy = Math.floor((sy + 0.5) / cell);
       for (let j = cy > 0 ? cy - 1 : 0; j <= cy + 1 && j < gh; j++)
         for (let i = cx > 0 ? cx - 1 : 0; i <= cx + 1 && i < gw; i++)
           grid[j * gw + i] = stamp;
@@ -351,7 +362,7 @@ function* solve(
   const report = (p: number[]): RegistrationScore => {
     const m = measure(fine, p);
     return {
-      mean_distance_mm: m.forward * cap * mm_per_px,
+      mean_distance_mm: m.forward * cap * mm_per_px * Math.exp(p[6]),
       matched_fraction: m.matched,
       in_field_fraction: m.inside,
       uncovered_fraction: m.uncovered,

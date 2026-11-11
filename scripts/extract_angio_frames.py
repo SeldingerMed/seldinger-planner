@@ -251,6 +251,11 @@ def main(argv=None):
     except ExtractError as error:
         print(f"Frame extraction failed: {error}", file=sys.stderr)
         return 1
+    except (zipfile.BadZipFile, OSError, subprocess.SubprocessError) as error:
+        # A corrupt download, an unwritable tools or output directory, a
+        # network failure, or an ffmpeg that cannot be started or times out.
+        print(f"Frame extraction failed: {type(error).__name__}: {error}", file=sys.stderr)
+        return 1
     print(
         "Frames written. Review them, then complete request.template.json "
         "(scope, crop, redactions, identifiers_removed) before admission."

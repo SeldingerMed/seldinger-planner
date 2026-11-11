@@ -56,10 +56,23 @@ export type FrameBundle = {
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+/** Closed DTO key sets are mirrored from the Python producers, not a UI fixture. */
+function exact(
+  value: unknown,
+  keys: readonly string[],
+): value is Record<string, unknown> {
+  return (
+    isObject(value) &&
+    Object.keys(value).length === keys.length &&
+    keys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+  );
+}
+const digest = (value: unknown): value is string =>
+  typeof value === "string" && SHA.test(value);
 const integer = (value: unknown, low: number, high: number): number => {
   if (
     typeof value !== "number" ||
-    !Number.isInteger(value) ||
+    !Number.isSafeInteger(value) ||
     value < low ||
     value > high
   )
@@ -90,7 +103,20 @@ export function parseFrameBundle(
   value: unknown,
   sourceId: string,
 ): FrameBundle {
-  if (!isObject(value) || !isObject(value.manifest)) fail();
+  if (
+    !exact(value, ["source_id", "manifest_revision", "manifest"]) ||
+    !exact(value.manifest, [
+      "version",
+      "kind",
+      "clinical_validation",
+      "scope",
+      "method",
+      "pixel_format",
+      "biplane_linkage",
+      "planes",
+    ])
+  )
+    fail();
   const manifest = value.manifest;
   if (
     value.source_id !== sourceId ||
@@ -110,8 +136,90 @@ export function parseFrameBundle(
   )
     fail();
   const planes = (manifest.planes as unknown[]).map((raw): FramePlane => {
-    if (!isObject(raw) || !isObject(raw.deidentification)) fail();
+    if (
+      !exact(raw, [
+        "plane",
+        "rows",
+        "columns",
+        "container_sha256",
+        "container_bytes",
+        "deidentification",
+        "geometry",
+        "frames",
+      ]) ||
+      !exact(raw.deidentification, [
+        "basis",
+        "burned_in_annotation",
+        "source_rows",
+        "source_columns",
+        "crop",
+        "redactions",
+      ])
+    )
+      fail();
     const deid = raw.deidentification;
+    const rows = integer(
+      raw.rows,
+      FRAME_LIMITS.min_side,
+      FRAME_LIMITS.max_side,
+    );
+    const columns = integer(
+      raw.columns,
+      FRAME_LIMITS.min_side,
+      FRAME_LIMITS.max_side,
+    );
+    const sourceRows = integer(deid.source_rows, 1, 4096);
+    const sourceColumns = integer(deid.source_columns, 1, 4096);
+    const rectangle = (value: unknown): number[] => {
+      if (!Array.isArray(value) || value.length !== 4) fail();
+      const [x, y, width, height] = Array.from(value, (n) =>
+        integer(n, 0, 4096),
+      );
+      if (
+        width < 1 ||
+        height < 1 ||
+        x + width > sourceColumns ||
+        y + height > sourceRows
+      )
+        fail();
+      return [x, y, width, height];
+    };
+    if (deid.crop === null) {
+      if (rows !== sourceRows || columns !== sourceColumns) fail();
+    } else {
+      const crop = rectangle(deid.crop);
+      if (rows !== crop[3] || columns !== crop[2]) fail();
+    }
+    if (!Array.isArray(deid.redactions) || deid.redactions.length > 16) fail();
+    for (const redaction of deid.redactions) rectangle(redaction);
+    if (manifest.method === "admitted_png_frames") {
+      if (
+        deid.burned_in_annotation !== "not_declared" ||
+        deid.crop === null ||
+        deid.basis !== "operator_attested_crop_and_redaction"
+      )
+        fail();
+    } else if (deid.burned_in_annotation === "no") {
+      if (deid.basis !== "dicom_declared_no_burned_in_annotation") fail();
+    } else if (
+      ["yes", "unknown"].includes(deid.burned_in_annotation as string)
+    ) {
+      if (
+        deid.basis !== "operator_attested_crop_and_redaction" ||
+        (deid.crop === null && deid.redactions.length === 0)
+      )
+        fail();
+    } else fail();
+    if (raw.container_sha256 === null) {
+      if (
+        raw.container_bytes !== null ||
+        manifest.method !== "admitted_png_frames"
+      )
+        fail();
+    } else {
+      if (!digest(raw.container_sha256)) fail();
+      integer(raw.container_bytes, 1, 2 ** 40);
+    }
     if (
       !["single", "a", "b"].includes(raw.plane as string) ||
       ![
@@ -135,9 +243,11 @@ export function parseFrameBundle(
     }
     const frames = (raw.frames as unknown[]).map((frame) => {
       if (
-        !isObject(frame) ||
-        typeof frame.sha256 !== "string" ||
-        !SHA.test(frame.sha256)
+        !exact(frame, ["index", "sha256", "input_sha256"]) ||
+        !digest(frame.sha256) ||
+        !digest(frame.input_sha256) ||
+        (manifest.method === "admitted_dicom_xa_frames" &&
+          frame.input_sha256 !== raw.container_sha256)
       )
         fail();
       return {
@@ -162,7 +272,12 @@ export function parseFrameBundle(
     };
   });
   const labels = planes.map((plane) => plane.plane).join(",");
-  if (labels !== "single" && labels !== "a,b") fail();
+  if (
+    (labels === "single" && manifest.biplane_linkage === "not_applicable") ||
+    (labels === "a,b" && manifest.biplane_linkage === "operator_declared")
+  ) {
+    // Linkage is a declaration, not a verified correspondence.
+  } else fail();
   return {
     source_id: sourceId,
     manifest_revision: value.manifest_revision,
@@ -307,8 +422,13 @@ export async function decodeVesselMask(
           throw new Error("Vessel mask does not match the loaded source");
       }
   const voxels = bytes.subarray(offset);
-  for (let i = 0; i < voxels.length; i++)
-    if (voxels[i] > 1) throw new Error("Vessel mask is not binary");
+  const chunk = 1_048_576;
+  for (let start = 0; start < voxels.length; start += chunk) {
+    for (let i = start; i < Math.min(start + chunk, voxels.length); i++)
+      if (voxels[i] > 1) throw new Error("Vessel mask is not binary");
+    if (start + chunk < voxels.length)
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
   return voxels;
 }
 
@@ -375,7 +495,30 @@ function parseScore(value: unknown): RegistrationScore {
 }
 
 function parseInputs(value: unknown): RegistrationInputs {
-  if (!isObject(value)) throw new Error("Invalid registration");
+  if (
+    !exact(value, [
+      "confirmed",
+      "frame_source_id",
+      "frame_manifest_revision",
+      "plane",
+      "frame_index",
+      "frame_sha256",
+      "mask_candidate_id",
+      "mask_sha256",
+      "geometry_source",
+      "view",
+      "fit_detector_scale",
+      "detector_scale",
+      "isocenter",
+      "volume_to_carm_ras",
+      "method",
+      "polarity",
+      "sensitivity",
+      "reported_score",
+      "reported_start_score",
+    ])
+  )
+    throw new Error("Invalid registration");
   const [low, high] = PROJECTION_REGISTRATION_LIMITS.detector_scale;
   if (
     value.confirmed !== true ||
@@ -400,7 +543,7 @@ function parseInputs(value: unknown): RegistrationInputs {
       value.geometry_source !== "operator_entered") ||
     !Array.isArray(value.isocenter) ||
     value.isocenter.length !== 3 ||
-    !value.isocenter.every(
+    !Array.from(value.isocenter).every(
       (x) => typeof x === "number" && Number.isFinite(x),
     ) ||
     value.method !== PROJECTION_REGISTRATION_METHOD ||
@@ -422,7 +565,17 @@ export function parseSavedRegistration(
   value: unknown,
   identity: Identity,
 ): SavedRegistration {
-  if (!isObject(value) || !isObject(value.current))
+  if (
+    !exact(value, [
+      "case_id",
+      "image_sha256",
+      "artifact_version",
+      "reference_revision",
+      "registration_revision",
+      "current",
+    ]) ||
+    !isObject(value.current)
+  )
     throw new Error("Invalid registration");
   const current = value.current,
     revision = value.registration_revision;
@@ -431,41 +584,114 @@ export function parseSavedRegistration(
       (key) => value[key] !== identity[key],
     ) ||
     typeof revision !== "number" ||
-    !Number.isInteger(revision) ||
+    !Number.isSafeInteger(revision) ||
     revision < 0
   )
     throw new Error("Registration belongs to another case revision");
   const base = { ...identity, registration_revision: revision };
   if (current.status === "not_confirmed") {
-    if (revision !== 0) throw new Error("Invalid registration");
+    if (revision !== 0 || !exact(current, ["status"]))
+      throw new Error("Invalid registration");
     return { ...base, current: { status: "not_confirmed" } };
   }
-  if (revision < 1 || typeof current.registration_id !== "string")
+  if (
+    revision < 1 ||
+    typeof current.registration_id !== "string" ||
+    !/^[A-Za-z0-9_-]{1,100}$/.test(current.registration_id)
+  )
     throw new Error("Invalid registration");
-  if (current.status === "stale")
+  if (current.status === "stale") {
+    if (
+      !exact(current, ["status", "registration_id", "inputs", "result"]) ||
+      current.inputs !== null ||
+      current.result !== null
+    )
+      throw new Error("Invalid registration");
     return {
       ...base,
       current: { status: "stale", registration_id: current.registration_id },
     };
+  }
+  if (
+    !exact(current, [
+      "status",
+      "registration_id",
+      "dependencies",
+      "input_sha256",
+      "inputs",
+      "result",
+      "evidence",
+    ]) ||
+    !exact(current.dependencies, [
+      "case_id",
+      "image_sha256",
+      "artifact_version",
+      "reference_revision",
+      "version",
+    ]) ||
+    current.dependencies.version !== REGISTRATION_VERSION ||
+    current.dependencies.case_id !== identity.case_id ||
+    current.dependencies.image_sha256 !== identity.image_sha256 ||
+    current.dependencies.artifact_version !== identity.artifact_version ||
+    current.dependencies.reference_revision !== identity.reference_revision ||
+    !digest(current.input_sha256)
+  )
+    throw new Error("Invalid registration");
+  const inputs = parseInputs(current.inputs);
   const result = current.result;
   if (
     current.status !== "current" ||
     !["verified", "unavailable"].includes(current.evidence as string) ||
-    !isObject(result) ||
+    !exact(result, [
+      "version",
+      "convention",
+      "method",
+      "status",
+      "validated",
+      "geometry_source",
+      "rotation_deg",
+      "isocenter_shift_mm",
+      "score_source",
+      "reported_score",
+      "reported_start_score",
+    ]) ||
+    result.convention !== "dicom_xa_patient_longitude_latitude_ras_v1" ||
+    result.method !== inputs.method ||
+    result.geometry_source !== inputs.geometry_source ||
+    result.score_source !== "browser_reported_not_recomputed" ||
     result.version !== REGISTRATION_VERSION ||
     result.status !== "operator_confirmed_proposal" ||
     result.validated !== false ||
     typeof result.rotation_deg !== "number" ||
-    typeof result.isocenter_shift_mm !== "number"
+    !Number.isFinite(result.rotation_deg) ||
+    result.rotation_deg < 0 ||
+    result.rotation_deg > 180 ||
+    typeof result.isocenter_shift_mm !== "number" ||
+    !Number.isFinite(result.isocenter_shift_mm) ||
+    result.isocenter_shift_mm < 0
   )
     throw new Error("Invalid registration");
+  for (const [reported, expected] of [
+    [result.reported_score, inputs.reported_score],
+    [result.reported_start_score, inputs.reported_start_score],
+  ] as const) {
+    const score = parseScore(reported);
+    if (
+      Object.keys(expected).some(
+        (key) =>
+          score[key as keyof RegistrationScore] !==
+          expected[key as keyof RegistrationScore],
+      )
+    )
+      throw new Error("Invalid registration");
+  }
   return {
     ...base,
     current: {
       status: "current",
       registration_id: current.registration_id,
       evidence: current.evidence as "verified" | "unavailable",
-      inputs: parseInputs(current.inputs),
+      inputs,
       result: {
         status: "operator_confirmed_proposal",
         validated: false,

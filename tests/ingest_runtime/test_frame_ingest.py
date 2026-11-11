@@ -14,6 +14,7 @@ if os.environ.get("SELDINGER_RUN_INGEST_TESTS") != "1":
     pytest.skip("Requires isolated ingest runtime", allow_module_level=True)
 
 import numpy as np
+import pydicom
 from pydicom.encaps import encapsulate
 from pydicom.uid import (
     ExplicitVRBigEndian,
@@ -525,6 +526,13 @@ RAW = "Uncompressed little-endian pixel data required"
         ({}, {"BitsStored": 9}, None, MONOCHROME),
         ({}, {"PixelData": bytes(72 * 64 * 3)}, None, LENGTH),
         ({}, {"PixelData": bytes(72 * 64 * 4 + 2)}, None, LENGTH),
+        # An odd total is padded to even on disk; two more bytes is not padding.
+        (
+            {"frame_indexes": [0]},
+            {"Rows": 65, "Columns": 65, "NumberOfFrames": 1, "PixelData": bytes(65 * 65 + 3)},
+            None,
+            LENGTH,
+        ),
         ({}, {"Modality": "CT"}, None, "Conflicting storage/modality identifiers"),
         ({}, {"PixelData": encapsulate([bytes(64)])}, JPEGLosslessSV1, RAW),
         ({}, {"PixelData": encapsulate([bytes(64)])}, JPEGBaseline8Bit, RAW),
@@ -540,6 +548,19 @@ def test_dicom_requests_are_rejected(tmp_path, request_change, dataset_change, s
     assert str(caught.value) == message
     assert SENTINEL not in str(caught.value) and "1.2.826" not in str(caught.value)
     assert not (tmp_path / "installed" / "xa-01").exists()
+
+
+def test_dicom_odd_length_pixel_data_carries_one_padding_byte(tmp_path):
+    stack = np.random.default_rng(5).integers(0, 256, size=(65, 65), dtype=np.uint8)
+    fields = {"Rows": 65, "Columns": 65, "NumberOfFrames": 1, "PixelData": stack.tobytes()}
+    path, _ = xa(tmp_path, **fields)
+    # The writer padded the 4,225 pixel bytes to an even length.
+    assert len(pydicom.dcmread(path).PixelData) == 65 * 65 + 1
+    bundle = admit_frames(
+        dicom_request(tmp_path, frame_indexes=[0]), tmp_path / "installed", "odd-01"
+    )
+    data = InstalledFrameStore(bundle.parent).frame(bundle.name, "single", 0)[0]
+    assert data == stack.tobytes()
 
 
 def test_dicom_implicit_little_endian_is_admitted(tmp_path):

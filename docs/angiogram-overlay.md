@@ -52,7 +52,7 @@ Frames of a video are extracted outside the app. The app has no video decoder.
 python3 scripts/extract_angio_frames.py RUN.mp4 OUT_DIR --frames 120 133
 ```
 
-This calls ffmpeg once per frame and writes 8-bit grayscale PNGs with container metadata stripped, a `request.template.json`, and an `extraction.json` with the video and frame hashes. If ffmpeg is not on `PATH`, the helper downloads the static build packaged in the `imageio-ffmpeg` 0.8.1 wheel for the current platform from PyPI, checks it against a SHA-256 pinned in the script, confirms it runs, and installs it under `.runtime/tools/`. `--no-download` refuses the download. Pinned builds exist for macOS (arm64, x86_64), Linux (x86_64, aarch64) and Windows (AMD64).
+This calls ffmpeg once per frame and writes 8-bit grayscale PNGs with container metadata stripped, a `request.template.json`, and an `extraction.json` with the video and frame hashes. If ffmpeg is not on `PATH`, the helper downloads the static build packaged in the `imageio-ffmpeg` 0.8.1 wheel for the current platform from PyPI, checks it against a SHA-256 pinned in the script, confirms it runs, and installs it under `.runtime/tools/`. `--no-download` refuses the download. An ffmpeg already on `PATH` is used as it is; the pin covers only the build the helper downloads. Pinned builds exist for macOS (arm64, x86_64), Linux (x86_64, aarch64) and Windows (AMD64).
 
 The template is deliberately incomplete. Its scope is a placeholder, it has no crop and `identifiers_removed` is false, so admission refuses it until an operator has looked at the frames and completed it.
 
@@ -80,7 +80,7 @@ env -u PYTHONPATH -u PYTHONHOME .runtime/ingest-runtime/bin/python \
     -m planner.frame_ingest .runtime/installed-frames REQUEST.json --source-id my-run
 ```
 
-The command writes to a private staging directory, claims the destination by creating it (which fails if the source ID already exists), moves the frames in and renames the manifest last. Nothing is readable before the manifest is in place. It then reads every published frame back through the installed-store reader and withdraws the whole bundle if any read fails. A bundle is never modified in place.
+The command writes to a private staging directory, claims the destination by creating it (which fails if the source ID already exists), moves the frames in and renames the manifest last. Nothing is readable before the manifest is in place. It then reads every published frame back through the installed-store reader and withdraws the whole bundle if any read fails. A bundle is never modified in place. An admission interrupted partway can leave a bundle directory with no `frames.json` and a `.frames-staging-*` directory beside it. Nothing reads either, and that source ID stays refused until both are removed by hand.
 
 ## Server interface
 
@@ -99,7 +99,7 @@ All computation runs in the browser (`web/src/projectionRegistration.ts`, method
 
 - **3D side.** `maskPoints.ts` takes the accepted vessel mask and keeps its medial voxels, found with an exact Euclidean distance transform, as points in RAS millimeters. It is an unordered point set, not a topological centerline. Masks whose vessel bounding box exceeds 8,000,000 voxels are coarsened by a whole factor of at most 8, and the studio says so.
 - **2D side.** `vesselness2d.ts` runs a multi-scale Hessian ridge filter of the declared polarity on a copy of the frame no longer than 384 pixels per side, keeps the crests of line-like structures, and builds a distance map from them. It is a matching target, not a vessel segmentation. It misses faint vessels and can mark catheters, sutures and bone edges.
-- **Score.** Projected 3D points are scored by their distance to the nearest 2D crest, and 2D crests by whether a projected point lies near them. Distances are capped at 8 mm at the isocenter plane, so a vessel present on one side only costs a bounded amount.
+- **Score.** Projected 3D points are scored by their distance to the nearest 2D crest, and 2D crests by whether a projected point lies near them. Distances are capped at 8 mm at the isocenter plane of the entered geometry, so a vessel present on one side only costs a bounded amount. The cap is held as a fixed number of pixels during the search, so a fitted field size cannot lower the score by changing it. A field so small that 8 mm is more than 96 working pixels is refused. A point counts as inside the frame anywhere from edge to edge.
 - **Search.** A compass search over the six rigid parameters from the starting pose: 60 mm in the image plane, 60 mm in depth and 15 degrees about each camera axis, within 30,000 score evaluations. It starts from the entered pose and from in-plane turns of 7 degrees either way, and refines the best three. It runs as a resumable job in 12 ms slices.
 - **Depth and out-of-plane turns.** One plane sees depth only as a small change of magnification, and a turn about an in-plane axis mostly as foreshortening. Both carry a weak pull toward the starting pose, so they stay near it unless the frame gives clear evidence. Neither should be read as determined. With entered geometry the operator can let the field size be fitted between 0.7 and 1.45 times the entered width. That replaces the depth search, because the two are one freedom.
 
@@ -107,7 +107,7 @@ Detector pixels must be square. A pose that leaves fewer than half the points in
 
 ### What the numbers mean
 
-The studio reports the mean capped distance from projected 3D points to 2D crests, the share of points within 2 mm of a crest, the share inside the frame, and the share of 2D crest samples with no projected point nearby. These compare two automatically extracted line sets. They are not a registration accuracy, and on the one real case tried they did not separate plausible from implausible poses (see the [verification record](verification/step-c1-projection-registration.md)).
+The studio reports the mean capped distance from projected 3D points to 2D crests, the share of points within 2 mm of a crest, the share inside the frame, and the share of 2D crest samples with no projected point nearby. Millimeters are at the isocenter plane of the proposed geometry, so they use the fitted field size when one was fitted. These compare two automatically extracted line sets. They are not a registration accuracy, and on the one real case tried they did not separate plausible from implausible poses (see the [verification record](verification/step-c1-angiogram-overlay.md)).
 
 ## The studio
 
@@ -119,7 +119,7 @@ The studio reports the mean capped distance from projected 3D points to 2D crest
 4. Set vessel polarity and sensitivity, and select **Propose overlay**. The projected mask is drawn in cyan and the extracted 2D lines in amber. **Larger view** enlarges the figure, and the projected vessels can be hidden to see the frame beneath.
 5. Tick the review box and select **Save confirmed proposal**, or discard.
 
-A proposal belongs to the exact frame, mask, geometry, isocenter and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal locks the other studios the same way their own unsaved edits do.
+A proposal belongs to the exact frame, mask, geometry, isocenter and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available.
 
 ## The saved record
 

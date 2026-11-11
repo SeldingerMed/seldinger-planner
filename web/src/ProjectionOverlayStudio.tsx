@@ -141,19 +141,28 @@ export default function ProjectionOverlayStudio({
       view: ViewNumbers;
     } | null>(null),
     [outcome, setOutcome] = useState<Outcome | null>(null),
-    [reviewed, setReviewed] = useState(false),
+    [reviewedOutcome, setReviewedOutcome] = useState<Outcome | null>(null),
     [localBusy, setLocalBusy] = useState(false);
-  const busyCount = useRef(0);
+  // Each request releases the same callback it acquired, even after a case
+  // switch. Cleanup is idempotent so late acknowledgements cannot relock it.
+  const pending = useRef(
+    new Map<() => void, { key: string; owner: Props["onBusy"] }>(),
+  );
   const begin = () => {
     const owner = callbacks.current.onBusy;
-    busyCount.current++;
+    const release = () => {
+      if (!pending.current.delete(release)) return;
+      setLocalBusy(pending.current.size > 0);
+      owner?.(
+        [...pending.current.values()].some(
+          (request) => request.owner === owner,
+        ),
+      );
+    };
+    pending.current.set(release, { key, owner });
     setLocalBusy(true);
     owner?.(true);
-    return () => {
-      busyCount.current--;
-      setLocalBusy(busyCount.current > 0);
-      owner?.(busyCount.current > 0);
-    };
+    return release;
   };
 
   const load = useCallback(async () => {
@@ -195,6 +204,8 @@ export default function ProjectionOverlayStudio({
     void load();
     return () => {
       live.current = "";
+      for (const [release, request] of pending.current)
+        if (request.key === key) release();
     };
   }, [load]);
 
@@ -210,7 +221,7 @@ export default function ProjectionOverlayStudio({
       frame.index === selection?.index
         ? frame
         : null;
-  const editable = !!current && !disabled && !localBusy;
+  const editable = !!current && !disabled && !localBusy && !run;
   const grid = useMemo(() => {
     try {
       return volume
@@ -327,7 +338,8 @@ export default function ProjectionOverlayStudio({
         ? outcome
         : null,
     proposal = shown?.kind === "proposal" ? shown.result?.proposal : null,
-    dirty = !!proposal;
+    dirty = !!proposal || !!active,
+    reviewed = !!shown && reviewedOutcome === shown;
   // Dropped for good: an outcome describes the exact inputs it was computed
   // from, and restoring them later must not bring it back unreviewed.
   useEffect(() => {
@@ -342,7 +354,6 @@ export default function ProjectionOverlayStudio({
     },
     [],
   );
-  useEffect(() => setReviewed(false), [shown]);
 
   async function openBundle() {
     const sourceId = sourceText.trim();
@@ -423,8 +434,8 @@ export default function ProjectionOverlayStudio({
           ? error.message
           : "The vessel mask could not be read";
     } finally {
-      // Released first: the computation itself holds no request, and a busy
-      // owner would drop it.
+      // The sliced computation takes over the workspace editing lock below,
+      // rather than feeding the request-busy flag back into its own identity.
       release();
     }
     if (live.current !== owned) return;
@@ -603,7 +614,7 @@ export default function ProjectionOverlayStudio({
       );
       context.fillStyle = color;
       for (let k = 0; k < pixels.length; k += 2)
-        if (Number.isFinite(pixels[k]))
+        if (Number.isFinite(pixels[k]) && Number.isFinite(pixels[k + 1]))
           context.fillRect(
             pixels[k] - size / 2,
             pixels[k + 1] - size / 2,
@@ -883,15 +894,17 @@ export default function ProjectionOverlayStudio({
                   Show extracted 2D centerlines
                 </label>
               </div>
-              <div className="native-actions">
-                <button
-                  type="button"
-                  disabled={!active && (!shownFrame || !mask || !view || !grid)}
-                  onClick={() => (active ? setRun(null) : void propose())}
-                >
-                  {active ? "Cancel overlay computation" : "Propose overlay"}
-                </button>
-              </div>
+              {!active && (
+                <div className="native-actions">
+                  <button
+                    type="button"
+                    disabled={!shownFrame || !mask || !view || !grid}
+                    onClick={() => void propose()}
+                  >
+                    Propose overlay
+                  </button>
+                </div>
+              )}
               <p className="carm-note">
                 Searches up to {LIMITS.in_plane_mm} mm in the image plane and{" "}
                 {LIMITS.rotation_deg}° about each axis from the entered
@@ -901,11 +914,16 @@ export default function ProjectionOverlayStudio({
               </p>
             </fieldset>
           )}
+          {active && (
+            <button type="button" onClick={() => setRun(null)}>
+              Cancel overlay computation
+            </button>
+          )}
           <p role="status" aria-label="Overlay status">
             {active
               ? "Computing… This waits while the tab is in the background."
               : proposal
-                ? `Unsaved proposal: moved the vessel points ${proposal.translation_mm.toFixed(1)} mm and ${proposal.rotation_deg.toFixed(1)}° from the starting pose${fit ? `, with the field size fitted at ${proposal.detector_scale.toFixed(2)} times the entered width` : ""}. Mean distance from projected 3D vessel points to extracted 2D centerlines ${proposal.score.mean_distance_mm.toFixed(1)} mm at the isocenter plane, capped at ${LIMITS.truncation_mm} mm per point (starting pose ${proposal.start_score.mean_distance_mm.toFixed(1)} mm). ${percent(proposal.score.matched_fraction)} of points lie within ${LIMITS.match_mm} mm of a 2D centerline, ${percent(proposal.score.in_field_fraction)} project inside the frame, and ${percent(proposal.score.uncovered_fraction)} of 2D centerline samples have no projected point nearby. These compare two automatically extracted line sets. They are not a registration accuracy. Review the overlay before confirming.`
+                ? `Unsaved proposal: moved the vessel points ${proposal.translation_mm.toFixed(1)} mm and ${proposal.rotation_deg.toFixed(1)}° from the starting pose${fit ? `, with the field size fitted at ${proposal.detector_scale.toFixed(2)} times the entered width` : ""}. Mean distance from projected 3D vessel points to extracted 2D centerlines ${proposal.score.mean_distance_mm.toFixed(1)} mm at the isocenter plane, capped at ${(LIMITS.truncation_mm * proposal.detector_scale).toFixed(1)} mm per point (starting pose ${proposal.start_score.mean_distance_mm.toFixed(1)} mm). ${percent(proposal.score.matched_fraction)} of points lie within ${LIMITS.match_mm} mm of a 2D centerline, ${percent(proposal.score.in_field_fraction)} project inside the frame, and ${percent(proposal.score.uncovered_fraction)} of 2D centerline samples have no projected point nearby. These compare two automatically extracted line sets. They are not a registration accuracy. Review the overlay before confirming.`
                 : shown?.kind === "saved" && shown.result
                   ? "Showing the saved operator-confirmed proposal. It is not a validated registration."
                   : ""}
@@ -929,7 +947,7 @@ export default function ProjectionOverlayStudio({
                 width={shownFrame.width}
                 height={shownFrame.height}
                 role="img"
-                aria-label={`Admitted frame ${shownFrame.index}, plane ${shownFrame.plane}${shown?.result ? ", with projected 3D vessels" : ""}`}
+                aria-label={`Admitted frame ${shownFrame.index}, plane ${shownFrame.plane}${shown?.result && showPoints ? ", with projected 3D vessels" : ""}`}
               />
               <figcaption>
                 Retrospective admitted frame, verified against its recorded
@@ -971,7 +989,9 @@ export default function ProjectionOverlayStudio({
                 <input
                   type="checkbox"
                   checked={reviewed}
-                  onChange={(e) => setReviewed(e.target.checked)}
+                  onChange={(e) =>
+                    setReviewedOutcome(e.target.checked ? shown : null)
+                  }
                 />{" "}
                 I reviewed the overlay and confirm this pose as an unvalidated
                 working proposal

@@ -331,6 +331,28 @@ def test_store_fails_closed_on_changed_missing_or_linked_files(tmp_path):
         store.load("empty")
 
 
+def test_store_refuses_an_ancestor_swapped_after_preflight(tmp_path, monkeypatch):
+    root = tmp_path / "installed"
+    root.mkdir()
+    other = tmp_path / "outside"
+    other.mkdir()
+    # Matching hashes outside the store must not make a link acceptable.
+    install(root, "run-01", manifest())
+    install(other, "run-01", manifest())
+    store = InstalledFrameStore(root)
+    directory = store._directory
+
+    def swapped(source_id):
+        path = directory(source_id)
+        root.rename(tmp_path / "held")
+        root.symlink_to(other, target_is_directory=True)
+        return path
+
+    monkeypatch.setattr(store, "_directory", swapped)
+    with pytest.raises(ValueError, match="installed file is not a regular file"):
+        store.load("run-01")
+
+
 def test_routes_serve_verified_frames_read_only(tmp_path):
     value = manifest([png_plane("a"), png_plane("b")])
     directory = install(tmp_path, "run-01", value)

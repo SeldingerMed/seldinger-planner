@@ -46,7 +46,7 @@ Measured on 2026-11-11 with the committed test file:
 | 0.5 mm mask, 1024 pixel frame | 0.15 | 0.12 | 0.8 | 6.5 | 5.03 to 0.18 | 3547 |
 | 14 mm and 14 degrees off | 0.36 | 0.11 | 1.2 | 12.5 | 6.31 to 0.48 | 5880 |
 
-All eleven cases pass the gate. The rotation and depth columns show the single-plane ambiguity directly: a full 3D rotation error of up to 7.7 degrees and a depth error of up to 12.5 mm coexist with sub-millimeter agreement on the detector. A phantom with clean tubes and a matching vessel set is far easier than a clinical frame, so this table shows that the search and its geometry are correct, not how the method performs on patients.
+All eleven cases pass the gate. The rotation and depth columns show the single-plane ambiguity directly: a full 3D rotation error of up to 7.7 degrees and a depth error of up to 12.5 mm coexist with sub-millimeter agreement on the detector. A phantom with clean tubes and a matching vessel set is far easier than a clinical frame, so this table establishes the stated synthetic conformance checks, not how the method performs on patients.
 
 ## Independent fixture
 
@@ -54,7 +54,7 @@ All eleven cases pass the gate. The rotation and depth columns show the single-p
 
 ## Mutation checks
 
-Each mutant changes one guard in a throwaway copy of the tree, runs the tests that cover the file and is then restored. A mutant that the tests still pass is a survivor. The unmodified copy was run first and after the last mutant, and passed both times.
+The original mutation pass, completed before review fixes at `0731068`, changes one guard in a throwaway copy of the tree, runs the tests that cover the file and is then restored. A mutant that the tests still pass is a survivor. The unmodified copy was run first and after the last mutant, and passed both times.
 
 | Set | Mutants | Killed, first pass | Killed, final | Left |
 | --- | --- | --- | --- | --- |
@@ -69,6 +69,20 @@ Two TypeScript mutants remain and are recorded as equivalent, not killed:
 - `ProjectionOverlayStudio.tsx`, the `!reviewed` test inside `save()`: the save button is disabled until the review box is ticked, and that button is the only caller, so the inner test cannot be reached. The button's own gate is tested, and the server separately refuses a record that is not confirmed.
 
 Two TypeScript mutants in the distance transform were killed by the 400 s timeout, not by an assertion: with the buffer sized wrongly or the first breakpoint inverted, the transform does not terminate.
+
+### Review-fix mutation checks
+
+After review, 31 additional single-site mutants were exercised in throwaway copies. Thirty were killed by assertions; none required a timeout. These cover DICOM odd-length padding, anticipated extraction-command failures, ancestor replacement during an installed read, fitted-field distance and match units, frame-edge inclusion, workspace/input locks during computation, captured request-owner cleanup, proposal-bound review confirmation, hidden-overlay accessibility text, closed response schemas and bindings, finite result scalars, rectangle/redaction limits, and yielding during a large mask scan. All baseline and restored-copy runs passed.
+
+The one survivor removes the extra check that a projected point's y coordinate is finite before drawing. `projectRegistered` emits either two finite coordinates or two NaNs, so the existing x check already excludes the same points. The extra y check is defensive, not an independently exercised integrity boundary.
+
+The final fitted-match regression uses a noisy 150-pixel phantom and independently interpolates the 2D distance map at the returned projected points in the fitted view. It counts 0.959349593495935 of points within the physical 2 mm threshold. Removing the scale conversion reports 0.967479674796748 instead and fails the test. This is a synthetic units check, not an accuracy estimate.
+
+### Independent review dispositions
+
+The backend ancestor-swap finding was reproduced with matching synthetic manifests outside the store and repaired by opening ancestry through held directory descriptors. Interrupted admission remains fail-closed and documented; cached local ffmpeg executables and PATH remain within the operator's local trust boundary. A later evidence removal cannot be prevented atomically across the filesystem and ledger; reads recheck the retained identities and report unavailable evidence.
+
+The studio now holds an editing lock during sliced computation, releases captured request owners on identity change/unmount, and binds the review tick to the exact displayed outcome. Parsers reject unknown owned DTO fields, contradictory bindings and nonfinite display scalars. A synchronous binary-mask scan now yields between bounded chunks. The alleged NMS row-wrap defect was declined: its loop visits only x=1 through width-2 and y=1 through height-2, and its neighbor offsets are at most one pixel, so neither neighbor can wrap a row. The alleged live-input save mismatch was also declined: the displayed proposal is already gated by an exact input scope and is dropped when those inputs change.
 
 ## ffmpeg install
 
@@ -100,24 +114,24 @@ What was done, and the departures from a clean case:
 - The pooled vessel model did not finish on CPU within 420 s on this machine. The RSNA vessel model was used instead, and its candidate was accepted in the app: 9,269 voxels, 1,120 medial points, no coarsening. This is a limit of the smoke environment, not of the overlay feature.
 - Geometry was entered by hand and is assumed, not measured: source to detector 1200 mm, source to isocenter 750 mm, field width 244 mm, secondary angle 0, with the field-size fit on, dark vessels and sensitivity 0.8.
 
-In the browser, against the local server: the bundle opened and the frame was drawn after its digest check; a proposal ran; changing an input cleared the proposal and disabled saving; saving was unavailable until the review box was ticked; the confirmed proposal saved as revision 1; and after a full reload the saved overlay redrew from the installed frame and mask. The saved record reads "operator-confirmed proposal", `validated: false`, geometry "operator_entered" and scores "browser_reported_not_recomputed". The server log holds one `PUT` for the whole session. With the frame bundle moved aside, the read route kept the record and reported its evidence as `unavailable`. With the bundle restored it reported `verified` again.
+In the browser, against the local server: the bundle opened and the frame was drawn after its digest check; a proposal ran; changing an input cleared the proposal and disabled saving; saving was unavailable until the review box was ticked; the confirmed proposal saved as revision 1; after the fitted-scale unit correction, the browser smoke was repeated and saved revision 2; the final parser and lock changes were exercised in another browser session, saving revision 3; and after a full reload the saved overlay redrew from the installed frame and mask. The saved record reads "operator-confirmed proposal", `validated: false`, geometry "operator_entered" and scores "browser_reported_not_recomputed". Each of the three browser smoke sessions recorded one successful `PUT`. The final session also confirmed that source replacement and frame inputs were locked during computation, Cancel remained available, the workspace unlocked after saving, and hiding projected points removed them from the canvas accessibility label. The saved overlay was inspected at desktop and narrow viewport sizes. With the frame bundle moved aside, the read route kept the record and reported its evidence as `unavailable`. With the bundle restored it reported `verified` again.
 
 ### Finding: the score does not identify the view on this frame
 
-The same inputs were run from four starting angles. The RAO 90 row is the proposal that was saved in the browser, and an offline replay of the same job code on the same installed bytes reproduced its saved numbers.
+The same inputs were run from four starting angles. These values include the fitted-field unit correction. The RAO 90 row is the proposal saved as revisions 2 and 3 in the repeated browser smokes, and an offline replay of the same job code on the same installed bytes reproduced its saved numbers. The earlier revision 1 retains the scores reported by the earlier implementation; it is not rewritten.
 
 | Starting primary angle | Mean distance, start to end (mm) | Matched, start to end | 2D centerline left uncovered at end | Rotation applied (deg) | Isocenter shift (mm) | Fitted field scale |
 | --- | --- | --- | --- | --- | --- | --- |
-| RAO 44 (the on-screen text) | 3.94 to 2.06 | 31% to 59% | 50% | 4.0 | 24.9 | 0.905 |
-| RAO 90 (saved) | 3.68 to 1.79 | 35% to 64% | 45% | 8.7 | 20.1 | 0.944 |
-| LAO 90 | 4.32 to 1.99 | 26% to 58% | 61% | 11.6 | 55.3 | 1.167 |
-| AP | 3.94 to 1.90 | 31% to 66% | 46% | 13.2 | 25.9 | 0.805 |
+| RAO 44 (the on-screen text) | 3.94 to 1.86 | 31% to 64% | 50% | 4.0 | 24.9 | 0.905 |
+| RAO 90 (saved) | 3.68 to 1.69 | 35% to 66% | 45% | 8.7 | 20.1 | 0.944 |
+| LAO 90 | 4.32 to 2.32 | 26% to 54% | 61% | 11.6 | 55.3 | 1.167 |
+| AP | 3.94 to 1.53 | 31% to 75% | 46% | 13.2 | 25.9 | 0.805 |
 
-Starts 44 to 134 degrees apart all end between 1.8 and 2.1 mm with 58% to 66% of points matched. At most one of them can be right, so on this frame the score cannot tell a correct view from a wrong one, and a low mean distance is not evidence of a correct registration. On inspection of the overlays, the projected points lie along some branches in the RAO starts and are visibly misplaced in the LAO start. In none of them do the points follow the carotid trunk and siphon that dominate the frame, and about half of the extracted 2D centerline has no 3D partner.
+Starts 44 to 134 degrees apart all end between 1.5 and 2.3 mm with 54% to 75% of points matched. At most one of them can be right, so on this frame the score cannot tell a correct view from a wrong one, and a low mean distance is not evidence of a correct registration. On inspection of the overlays, the projected points lie along some branches in the RAO starts and are visibly misplaced in the LAO start. In none of them do the points follow the carotid trunk and siphon that dominate the frame, and about half of the extracted 2D centerline has no 3D partner.
 
 Likely contributors, none of them tested here: the frame is a selective injection of one territory while the mask covers both sides of the head; the mask is sparse; the angle, distances and field size are assumed; and one plane leaves depth and out-of-plane turns weakly determined. Saving this proposal exercised the confirm and save path. It does not mean the overlay was judged correct.
 
-This matches the expectation recorded in the plan that first results would be several millimeters off at best, and it is the reason Step C2 adds a vessel-presence report and joint refinement across two planes, and evaluates against data with a known pose before anything is said about accuracy.
+These scores are not external-reference errors and cannot establish whether the several-millimeter accuracy expectation in the plan was met. Step C2 adds a vessel-presence report and joint refinement across two planes, and evaluates against data with a known pose before anything is said about accuracy.
 
 ## Limits
 
@@ -134,10 +148,10 @@ Run on 2026-11-11 on macOS, on the branch head.
 | Check | Result |
 | --- | --- |
 | `uv run ruff check .`, `uv run ruff format --check .` | clean |
-| `uv run pytest -q` | 1214 passed, 127 skipped |
-| Ingest runtime, `tests/ingest_runtime` | 163 passed |
+| `uv run pytest -q` | 1219 passed, 127 skipped |
+| Ingest runtime, `tests/ingest_runtime` | 165 passed |
 | Physics runtime, the workflow's 15 files | 239 passed |
-| `npm test` | 84 files, 831 tests passed |
+| `npm test` | 84 files, 878 tests passed |
 | `npm run build`, `npm audit --omit=dev --audit-level=high` | built, 0 vulnerabilities |
 | Real-browser smoke on one public frame | ran end to end, see the finding above |
 
