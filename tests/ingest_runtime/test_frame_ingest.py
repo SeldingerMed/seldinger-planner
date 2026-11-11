@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
 import struct
+import subprocess
+import sys
 import zlib
 
 import pytest
@@ -32,6 +35,53 @@ from planner.frame_ingest import admit_frames, decode_png, main
 from planner.frame_source import InstalledFrameStore
 
 ROWS, COLUMNS = 96, 128
+
+
+@pytest.mark.parametrize("kind", ["fifo", "directory"])
+def test_container_hash_refuses_nonregular_inputs_within_a_deadline(tmp_path, kind):
+    target = tmp_path / "container"
+    if kind == "fifo":
+        if not hasattr(os, "mkfifo"):
+            pytest.skip("POSIX FIFO required")
+        os.mkfifo(target)
+    else:
+        target.mkdir()
+    probe = """
+import sys
+from pathlib import Path
+from planner.frame_ingest import _hash_file, IngestError
+try:
+    _hash_file(Path(sys.argv[1]))
+except IngestError as error:
+    assert 'Select a regular container file, without links' in str(error), str(error)
+else:
+    raise AssertionError('Non-regular container was accepted')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(target)],
+        timeout=5,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_container_hash_closes_a_descriptor_when_stream_construction_fails(tmp_path, monkeypatch):
+    target = tmp_path / "container"
+    target.write_bytes(b"synthetic-container")
+    captured = {}
+
+    def fails(fd, *_, **__):
+        captured["fd"] = fd
+        raise RuntimeError("synthetic stream-construction failure")
+
+    monkeypatch.setattr(frame_ingest.os, "fdopen", fails)
+    with pytest.raises(RuntimeError, match="synthetic stream-construction failure"):
+        frame_ingest._hash_file(target)
+    with pytest.raises(OSError) as error:
+        os.fstat(captured["fd"])
+    assert error.value.errno == errno.EBADF
 
 
 def image(seed, rows=ROWS, columns=COLUMNS):

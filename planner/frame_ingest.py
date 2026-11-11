@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import struct
 import sys
 import tempfile
@@ -341,18 +342,23 @@ def _hash_file(path: Path):
     path = Path(path).absolute()
     fd = _open_directory(path.parent)
     try:
-        file_fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
+        file_fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
     except OSError:
         _fail("Select a regular container file, without links")
     finally:
         os.close(fd)
     digest, size = hashlib.sha256(), 0
-    with os.fdopen(file_fd, "rb") as stream:
-        while chunk := stream.read(1 << 20):
-            digest.update(chunk)
-            size += len(chunk)
-            if size > 2**40:
-                _fail("Container byte bound exceeded")
+    try:
+        if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+            _fail("Select a regular container file, without links")
+        with os.fdopen(file_fd, "rb", closefd=False) as stream:
+            while chunk := stream.read(1 << 20):
+                digest.update(chunk)
+                size += len(chunk)
+                if size > 2**40:
+                    _fail("Container byte bound exceeded")
+    finally:
+        os.close(file_fd)
     if size < 1:
         _fail("Container is empty")
     return digest.hexdigest(), size
