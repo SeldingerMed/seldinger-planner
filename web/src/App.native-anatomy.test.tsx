@@ -55,6 +55,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+// The buttons are enabled after the file is read, hashed and checked against
+// three requests. Under full-suite load on a CI runner that has taken more
+// than the default second, so each wait is given its time explicitly.
+const SLOW_RUNNER_WAIT_MS = 5000;
 it("offers original-model anatomy and geometry editing for a verified installed CTA, not only the case006 demo", async () => {
   vi.stubGlobal("crypto", {
     subtle: {
@@ -91,22 +95,26 @@ it("offers original-model anatomy and geometry editing for a verified installed 
   fireEvent.change(screen.getByLabelText("Open CTA volume"), {
     target: { files: [file] },
   });
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Run RSNA vessel model" }),
-    ).toBeEnabled(),
+  await waitFor(
+    () =>
+      expect(
+        screen.getByRole("button", { name: "Run RSNA vessel model" }),
+      ).toBeEnabled(),
+    { timeout: SLOW_RUNNER_WAIT_MS },
   );
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", {
-        name: "Propose geometry from accepted anatomy",
-      }),
-    ).toBeEnabled(),
+  await waitFor(
+    () =>
+      expect(
+        screen.getByRole("button", {
+          name: "Propose geometry from accepted anatomy",
+        }),
+      ).toBeEnabled(),
+    { timeout: SLOW_RUNNER_WAIT_MS },
   );
   expect(
     read.mock.calls.some(([url]) => String(url).endsWith("/image-source")),
   ).toBe(true);
-});
+}, 3 * SLOW_RUNNER_WAIT_MS);
 
 it("integrates saved-state workflow guidance and makes the background inert while the studio is open", async () => {
   vi.mocked(restoreOrCreateCase).mockResolvedValueOnce(

@@ -11,6 +11,7 @@ import {
 import { parseAnatomyInputs } from "./anatomyProposal";
 import { buildPathFrames } from "./curvedPlanar";
 import { createNativeSampler } from "./nativeSampling";
+import RegistrationProposal from "./RegistrationProposal";
 import { validateRigid } from "./rigidFusion";
 import { loadSecondarySource, type SecondaryVolume } from "./secondarySource";
 import NativeReformatView, { type RenderReceipt } from "./NativeReformatView";
@@ -403,6 +404,19 @@ export default function ReformatStudio({
       opacity,
     ],
   );
+  // The draft preview is how an unsaved matrix is reviewed, and it is drawn
+  // with the secondary window and opacity. Those controls stay usable while
+  // the preview is shown. Unlike `eligible`, this asks neither for a clean
+  // draft nor for a current saved scene: the preview draws the draft, and
+  // both of those close only the saved view.
+  const previewing =
+    !!current &&
+    !current.locked &&
+    !disabled &&
+    !localBusy &&
+    !!volume &&
+    selected?.key === key &&
+    current.sourceText === selected.metadata.source_id;
   const eligible =
     !!current &&
     !current.dirty &&
@@ -648,6 +662,21 @@ export default function ReformatStudio({
         {selected?.key === key && (
           <p>Secondary image verified · {selected.metadata.source_id}</p>
         )}
+        {selected?.key === key &&
+          volume &&
+          current?.sourceText === selected.metadata.source_id && (
+            <RegistrationProposal
+              key={`${key}:${selected.metadata.image_sha256}`}
+              primary={volume}
+              secondary={selected.volume}
+              matrixText={current.matrixText}
+              primaryWindow={[windowRange[0], windowRange[1]]}
+              secondaryWindow={[secondaryLow, secondaryHigh]}
+              opacity={opacity}
+              disabled={!!disabled || localBusy || current.locked}
+              onPropose={(matrixText) => edit({ matrixText })}
+            />
+          )}
         {secondaryError && <p role="status">{secondaryError}</p>}
         <label className="native-confirm">
           <input
@@ -712,6 +741,7 @@ export default function ReformatStudio({
           },
           {
             label: "Secondary window low",
+            preview: true,
             value: secondaryLow,
             min: -1024,
             max: 4096,
@@ -720,6 +750,7 @@ export default function ReformatStudio({
           },
           {
             label: "Secondary window high",
+            preview: true,
             value: secondaryHigh,
             min: -1024,
             max: 4096,
@@ -728,6 +759,7 @@ export default function ReformatStudio({
           },
           {
             label: "Secondary opacity",
+            preview: true,
             value: opacity,
             min: 0,
             max: 1,
@@ -744,7 +776,7 @@ export default function ReformatStudio({
               max={item.max}
               step={item.step}
               value={item.value}
-              disabled={!eligible}
+              disabled={!(eligible || (item.preview && previewing))}
               onChange={(e) => item.set(Number(e.target.value))}
             />
           </label>
