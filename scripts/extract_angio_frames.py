@@ -2,8 +2,8 @@
 """Extract a few frames of an angiography video as 8-bit grayscale PNG.
 
 The planner admits PNG and DICOM XA frames only and carries no video decoder.
-This helper runs outside the app: it calls ffmpeg once per requested frame,
-strips container metadata, and writes a frame admission request template next
+This helper runs outside the app: one ffmpeg pass selects the requested frame
+indexes, strips container metadata, and writes an admission request template next
 to the PNGs. The template is deliberately incomplete. Admission is refused
 until an operator has looked at the frames, entered the crop and any redaction
 rectangles, and set ``identifiers_removed`` to true.
@@ -175,63 +175,88 @@ def extract(video, out_dir, frames, *, plane="single", ffmpeg=None):
         raise ExtractError(f"give one to {MAX_FRAMES} distinct frame indexes, counted from 0")
     ffmpeg = ffmpeg or ensure_ffmpeg()
     out_dir.mkdir(parents=True, exist_ok=True)
-    records = []
-    for index in sorted(frames):
-        png = out_dir / f"frame-{index:06d}.png"
+    if any(out_dir.glob("frame-*.png")) or any(
+        os.path.lexists(out_dir / name) for name in ("extraction.json", "request.template.json")
+    ):
+        raise ExtractError(
+            "output directory already contains extraction artifacts; choose a fresh directory"
+        )
+    with tempfile.TemporaryDirectory(prefix=".extract-staging-", dir=out_dir) as directory:
+        staging = Path(directory)
+        indexes = sorted(frames)
+        selection = "+".join(f"eq(n\\,{index})" for index in indexes)
         done = subprocess.run(
             [
                 str(ffmpeg), "-nostdin", "-v", "error", "-y",
                 "-i", str(video),
-                "-map", "0:v:0",
-                "-vf", f"select=eq(n\\,{index})",
-                "-frames:v", "1",
+                "-map", "0:v:0", "-vf", f"select={selection}",
+                "-frames:v", str(len(indexes)), "-fps_mode", "passthrough", "-start_number", "0",
                 "-pix_fmt", "gray",
                 # No container, stream or encoder text reaches the PNG.
                 "-map_metadata", "-1", "-map_chapters", "-1",
                 "-fflags", "+bitexact", "-flags:v", "+bitexact",
                 "-f", "image2", "-c:v", "png",
-                str(png),
+                str(staging / "selected-%06d.png"),
             ],
             capture_output=True,
             timeout=600,
             check=False,
         )  # fmt: skip
-        if done.returncode != 0 or not png.is_file() or png.stat().st_size == 0:
-            png.unlink(missing_ok=True)
-            raise ExtractError(f"frame {index} could not be extracted; is it past the end?")
-        records.append({"path": png.name, "index": index})
-    # The video is referenced by a relative link only when it sits beside the
-    # frames; otherwise its hash is recorded here and no container is named.
-    beside = video.resolve().parent == out_dir.resolve()
-    template = {
-        "scope": "REPLACE: synthetic, public or authorized",
-        "planes": [
-            {
-                "plane": plane,
-                "kind": "png",
-                **({"container": video.name} if beside else {}),
-                "frames": records,
-                "crop": None,
-                "redactions": [],
-                "identifiers_removed": False,
-            }
-        ],
-    }
-    (out_dir / "request.template.json").write_text(json.dumps(template, indent=2) + "\n")
-    (out_dir / "extraction.json").write_text(
-        json.dumps(
-            {
-                "video_sha256": _sha256(video),
-                "video_bytes": video.stat().st_size,
-                "frames": [
-                    {**record, "sha256": _sha256(out_dir / record["path"])} for record in records
-                ],
-            },
-            indent=2,
+        if done.returncode != 0:
+            raise ExtractError("requested frames could not be extracted")
+        records = []
+        for ordinal, index in enumerate(indexes):
+            selected = staging / f"selected-{ordinal:06d}.png"
+            if not selected.is_file() or selected.stat().st_size == 0:
+                raise ExtractError(f"frame {index} could not be extracted; is it past the end?")
+            png = staging / f"frame-{index:06d}.png"
+            selected.rename(png)
+            records.append({"path": png.name, "index": index})
+        # The video is referenced by a relative link only when it sits beside the
+        # frames; otherwise its hash is recorded here and no container is named.
+        beside = video.resolve().parent == out_dir.resolve()
+        template = {
+            "scope": "REPLACE: synthetic, public or authorized",
+            "planes": [
+                {
+                    "plane": plane,
+                    "kind": "png",
+                    **({"container": video.name} if beside else {}),
+                    "frames": records,
+                    "crop": None,
+                    "redactions": [],
+                    "identifiers_removed": False,
+                }
+            ],
+        }
+        (staging / "request.template.json").write_text(json.dumps(template, indent=2) + "\n")
+        (staging / "extraction.json").write_text(
+            json.dumps(
+                {
+                    "video_sha256": _sha256(video),
+                    "video_bytes": video.stat().st_size,
+                    "frames": [
+                        {**record, "sha256": _sha256(staging / record["path"])}
+                        for record in records
+                    ],
+                },
+                indent=2,
+            )
+            + "\n"
         )
-        + "\n"
-    )
-    return template
+        published = []
+        try:
+            for name in [r["path"] for r in records] + ["extraction.json", "request.template.json"]:
+                target = out_dir / name
+                # Same-filesystem hard links publish without overwriting a path
+                # created after preflight. The request template is visible last.
+                os.link(staging / name, target)
+                published.append(target)
+        except BaseException:
+            for target in reversed(published):
+                target.unlink(missing_ok=True)
+            raise
+        return template
 
 
 def main(argv=None):

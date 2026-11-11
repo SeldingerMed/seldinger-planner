@@ -265,7 +265,14 @@ class InstalledFrameStore:
                 )
                 os.close(directory_fd)
                 directory_fd = next_fd
-            fd = os.open(path.name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+            # O_NONBLOCK keeps a FIFO (or other slow device) from blocking the
+            # open until a writer appears; the regular-file check below
+            # rejects it. Regular files are unaffected.
+            fd = os.open(
+                path.name,
+                os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                dir_fd=directory_fd,
+            )
         except FileNotFoundError:
             raise
         except OSError:
@@ -273,10 +280,15 @@ class InstalledFrameStore:
         finally:
             if directory_fd is not None:
                 os.close(directory_fd)
-        with os.fdopen(fd, "rb") as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+        # Retain descriptor ownership through stat, wrapper construction, read,
+        # and wrapper close, including an exception from any of those steps.
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
                 _fail("installed file is not a regular file")
-            raw = stream.read(bound + 1)
+            with os.fdopen(fd, "rb", closefd=False) as stream:
+                raw = stream.read(bound + 1)
+        finally:
+            os.close(fd)
         if not 0 < len(raw) <= bound:
             _fail("installed file byte bound exceeded")
         return raw

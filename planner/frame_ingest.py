@@ -378,6 +378,10 @@ def _admit_frames(request_path: Path, output_root: Path, source_id: str) -> Path
     destination = root / source_id
     if destination.exists() or destination.is_symlink():
         _fail("destination already exists")
+    # Local operator preflight, not a race-free ancestry guarantee: ancestors
+    # remain operator-controlled while this standalone converter writes. The
+    # exclusive destination claim prevents overwrite; installed reads separately
+    # traverse held directory descriptors and reject links at read time.
     if any(p.is_symlink() for p in (root, *root.parents)):
         _fail("Output ancestry must not contain links")
     raw = _read_input(request_path)

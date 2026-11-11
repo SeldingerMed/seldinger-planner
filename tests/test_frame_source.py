@@ -1,9 +1,12 @@
 """Pixel-frame manifest contract, installed store and read-only routes. Synthetic bytes."""
 
 import copy
+import errno
 import hashlib
 import json
 import os
+import subprocess
+import sys
 
 import pytest
 from fastapi import FastAPI
@@ -351,6 +354,83 @@ def test_store_refuses_an_ancestor_swapped_after_preflight(tmp_path, monkeypatch
     monkeypatch.setattr(store, "_directory", swapped)
     with pytest.raises(ValueError, match="installed file is not a regular file"):
         store.load("run-01")
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="POSIX FIFO required")
+def test_read_rejects_a_fifo_without_blocking(tmp_path):
+    # Bound the regression too: removing O_NONBLOCK must fail this test rather
+    # than leave the test runner waiting indefinitely for a FIFO writer.
+    fifo = tmp_path / "fifo.gray"
+    os.mkfifo(fifo)
+    probe = """
+import sys
+from planner.frame_source import InstalledFrameStore
+try:
+    InstalledFrameStore._read(sys.argv[1], 1024)
+except ValueError as error:
+    assert str(error) == 'projection frames: installed file is not a regular file', str(error)
+else:
+    raise AssertionError('FIFO was accepted')
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(fifo)],
+        timeout=5,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_read_closes_the_fd_when_the_stream_fails_to_construct(tmp_path, monkeypatch):
+    import planner.frame_source as fs
+
+    target = tmp_path / "f.gray"
+    target.write_bytes(b"abc")
+    captured = {}
+
+    def exploding_fdopen(fd, *args, **kwargs):
+        captured["fd"] = fd
+        raise RuntimeError("fdopen failed")
+
+    monkeypatch.setattr(fs.os, "fdopen", exploding_fdopen)
+    with pytest.raises(RuntimeError):
+        InstalledFrameStore._read(target, 1024)
+    # The descriptor must not outlive the failed construction.
+    with pytest.raises(OSError):
+        os.fstat(captured["fd"])
+
+
+def test_read_closes_the_fd_even_when_the_stream_cannot_close(tmp_path, monkeypatch):
+    import planner.frame_source as fs
+
+    target = tmp_path / "f.gray"
+    target.write_bytes(b"abc")
+    captured = {}
+
+    class ClosingFails:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            self.close()
+
+        def read(self, _):
+            return b"abc"
+
+        def close(self):
+            raise RuntimeError("stream close failed")
+
+    def wrapping(fd, *_, **__):
+        captured["fd"] = fd
+        return ClosingFails()
+
+    monkeypatch.setattr(fs.os, "fdopen", wrapping)
+    with pytest.raises(RuntimeError, match="stream close failed"):
+        InstalledFrameStore._read(target, 1024)
+    with pytest.raises(OSError) as error:
+        os.fstat(captured["fd"])
+    assert error.value.errno == errno.EBADF
 
 
 def test_routes_serve_verified_frames_read_only(tmp_path):

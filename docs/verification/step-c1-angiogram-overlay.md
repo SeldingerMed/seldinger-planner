@@ -98,7 +98,15 @@ The proposed empty-crest finding was declined for the current admitted path: the
 
 The reverse-coverage score is explicitly labeled as coarse 3-by-3-cell neighborhood coverage, not the physical 2 mm match test or vessel-presence evidence. An analytic synthetic fixture places a crest sample about 4 mm from a central projection and verifies that it is physically unmatched but coarse-covered. The search objective and previously measured poses are unchanged; this clarifies the score's meaning rather than claiming the wider heuristic is an exact reverse distance. A claimed causal contribution to the real-frame failure was not tested.
 
-The decoder now checks all four bytes of the single-file NIfTI-1 magic, including its NUL terminator. A digest-valid synthetic blob with a non-NUL fourth byte is refused. The optional ffmpeg speed suggestion was deferred after measuring eight exact-index extractions on the existing public clip at 1.18 seconds locally; the current eight-frame and per-call time bounds remain unchanged. A later full-suite run also exposed an existing morphometry test that asserted the dirty callback immediately after the revision callback. The test now waits for the actual busy/dirty completion callbacks; the morphometry component and its behavior were not changed. The final public-frame browser run verified the new coarse-coverage wording, recomputed the unchanged RAO 90 proposal and discarded it without a write.
+The decoder now checks all four bytes of the single-file NIfTI-1 magic, including its NUL terminator. A digest-valid synthetic blob with a non-NUL fourth byte is refused. The first ffmpeg speed suggestion was initially deferred after an eight-frame measurement of 1.18 seconds. A later cleanup review prompted a single-pass extraction sweep instead: the final helper uses one decoder pass, keeps the eight-frame cap and applies one 600-second timeout. The same eight public TAIR outputs now extract in 0.31 seconds locally and every PNG is byte-identical to its previous exact-index output. A later full-suite run also exposed an existing morphometry test that asserted the dirty callback immediately after the revision callback. The test now waits for the actual busy/dirty completion callbacks; the morphometry component and its behavior were not changed. The final public-frame browser run verified the new coarse-coverage wording, recomputed the unchanged RAO 90 proposal and discarded it without a write.
+
+### Final resource and extraction checks
+
+The reader's original regular-file rejection was already inside the stream context, contrary to the review's stated mechanism. Separate probes confirmed that opening a FIFO could block before that check and that a failed stream constructor could leak the descriptor. The final reader opens non-blocking, rejects non-regular files before wrapping, and retains descriptor ownership in an outer `finally`, including constructor and wrapper-close failures. The FIFO regression runs in a subprocess with a five-second deadline so a future regression cannot strand the test runner. All 62 frame-source tests pass. Three scratch mutants were rejected: removing non-blocking open, explicit descriptor close, and the regular-file check. The non-blocking mutant fails through the bounded subprocess timeout, not an unbounded harness hang.
+
+The extraction regression now requests an early valid frame followed by an index past the end of a real synthetic video, and verifies that no partial output remains. Separate tests preserve existing artifacts and operator notes and inject a second-publication collision, verifying no overwrite and withdrawal of the first new output. All 29 helper tests pass. Four scratch mutants were rejected: overwriting publication, omitted rollback, omitted prior-output refusal, and selecting only the first requested index. Baseline and restored scratch suites passed. The previously installed, pinned ffmpeg 9.0 binary also extracted the existing public frames 500 and 1700 through the new single-pass path; both were 720 by 480, 8-bit grayscale, with the incomplete template and hash record present.
+
+The converter's ancestry check is explicitly a local-operator preflight, not a race-free ancestry guarantee. Its input and output ancestry must remain operator-controlled during conversion; installed reads independently traverse held directory descriptors.
 
 ## ffmpeg install
 
@@ -164,7 +172,7 @@ Run on 2026-11-11 on macOS, on the branch head.
 | Check | Result |
 | --- | --- |
 | `uv run ruff check .`, `uv run ruff format --check .` | clean |
-| `uv run pytest -q` | 1219 passed, 127 skipped |
+| `uv run pytest -q` | 1226 passed, 127 skipped |
 | Ingest runtime, `tests/ingest_runtime` | 165 passed |
 | Physics runtime, the workflow's 15 files | 239 passed |
 | `npm test` | 84 files, 882 tests passed |

@@ -210,6 +210,56 @@ def test_other_argument_rejections(tmp_path):
     assert not (tmp_path / "out").exists()
 
 
+@pytest.mark.parametrize("name", ["frame-999999.png", "extraction.json", "request.template.json"])
+def test_existing_extraction_artifacts_are_preserved(tmp_path, monkeypatch, name):
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"synthetic-video")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / name).write_bytes(b"prior-extraction")
+    (out / "notes.txt").write_bytes(b"unrelated-operator-note")
+    before = {p.name: p.read_bytes() for p in out.iterdir()}
+    calls = []
+
+    def writes(command, **_):
+        calls.append(command)
+        for ordinal in range(int(command[command.index("-frames:v") + 1])):
+            Path(command[-1] % ordinal).write_bytes(b"synthetic-frame")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(tool.subprocess, "run", writes)
+    with pytest.raises(tool.ExtractError, match="already contains extraction artifacts"):
+        tool.extract(video, out, [0], ffmpeg="fake-ffmpeg")
+    assert not calls
+    assert {p.name: p.read_bytes() for p in out.iterdir()} == before
+
+
+def test_a_publication_collision_preserves_existing_bytes_and_rolls_back_ours(
+    tmp_path, monkeypatch
+):
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"synthetic-video")
+    out = tmp_path / "out"
+    out.mkdir()
+    (out / "notes.txt").write_bytes(b"operator-note")
+
+    def writes(command, **_):
+        for ordinal in range(int(command[command.index("-frames:v") + 1])):
+            Path(command[-1] % ordinal).write_bytes(b"synthetic-frame")
+        # Arrives after preflight, so only non-overwriting publication can
+        # protect it. The earlier frame must also be withdrawn on failure.
+        (out / "frame-000001.png").write_bytes(b"concurrent-output")
+        return subprocess.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(tool.subprocess, "run", writes)
+    with pytest.raises(FileExistsError, match="File exists"):
+        tool.extract(video, out, [0, 1], ffmpeg="fake-ffmpeg")
+    assert {p.name: p.read_bytes() for p in out.iterdir()} == {
+        "notes.txt": b"operator-note",
+        "frame-000001.png": b"concurrent-output",
+    }
+
+
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg on PATH")
 def test_real_extraction_writes_gray_pngs_and_an_unattested_template(tmp_path, monkeypatch):
     ffmpeg = tool.ensure_ffmpeg(tmp_path / "tools", download=False)
@@ -238,7 +288,7 @@ def test_real_extraction_writes_gray_pngs_and_an_unattested_template(tmp_path, m
     monkeypatch.undo()
     # Some ffmpeg builds copy container text into a PNG unless told not to, so
     # the request itself is checked as well as the bytes this build wrote.
-    assert len(commands) == 2
+    assert len(commands) == 1  # All requested exact indexes share one decoder pass.
     for command in commands:
         text = " ".join(command)
         assert "-map_metadata -1" in text and "-map_chapters -1" in text
@@ -276,9 +326,11 @@ def test_real_extraction_writes_gray_pngs_and_an_unattested_template(tmp_path, m
     tool.extract(video, again, [3], ffmpeg=ffmpeg)
     assert (again / "frame-000003.png").read_bytes() == (out / "frame-000003.png").read_bytes()
     with pytest.raises(tool.ExtractError, match="past the end"):
-        tool.extract(video, tmp_path / "late", [500], ffmpeg=ffmpeg)
-    assert not list((tmp_path / "late").glob("*.png"))
+        tool.extract(video, tmp_path / "late", [3, 500], ffmpeg=ffmpeg)
+    assert not list((tmp_path / "late").iterdir())
     # A video beside its frames is named as the container to hash at admission.
-    shutil.copy(video, again / "clip.mp4")
-    beside = tool.extract(again / "clip.mp4", again, [3], ffmpeg=ffmpeg)
+    beside_dir = tmp_path / "beside"
+    beside_dir.mkdir()
+    shutil.copy(video, beside_dir / "clip.mp4")
+    beside = tool.extract(beside_dir / "clip.mp4", beside_dir, [3], ffmpeg=ffmpeg)
     assert beside["planes"][0]["container"] == "clip.mp4"
