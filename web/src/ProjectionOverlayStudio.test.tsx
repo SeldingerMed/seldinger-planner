@@ -167,6 +167,19 @@ test("proposes, confirms and saves exactly what the operator reviewed", async ()
   expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
     "Admitted frame 12, plane single, with projected 3D vessels",
   );
+  // The operator can hide the projected vessels to see the frame beneath,
+  // and enlarge the figure. Neither changes the proposal.
+  expect(screen.getByRole("figure").textContent).toMatch(
+    /Cyan: accepted 3D vessel mask projected under the unsaved proposal/,
+  );
+  click("Hide projected 3D vessels");
+  expect(screen.getByRole("figure").textContent).not.toMatch(/Cyan/);
+  click("Show projected 3D vessels");
+  click("Larger view");
+  expect(screen.getByRole("figure").className).toMatch(/enlarged/);
+  click("Close larger view");
+  expect(screen.getByRole("figure").className).not.toMatch(/enlarged/);
+  expect(status("Overlay status").textContent).toBe(text);
   // Saving needs the explicit review tick.
   const save = screen.getByRole("button", { name: "Save confirmed proposal" });
   expect(save).toHaveProperty("disabled", true);

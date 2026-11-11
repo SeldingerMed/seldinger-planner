@@ -131,6 +131,8 @@ export default function ProjectionOverlayStudio({
     [polarity, setPolarity] = useState<Polarity>("dark"),
     [sensitivity, setSensitivity] = useState(0.5),
     [showTarget, setShowTarget] = useState(true),
+    [showPoints, setShowPoints] = useState(true),
+    [enlarged, setEnlarged] = useState(false),
     [run, setRun] = useState<{
       scope: string;
       kind: Outcome["kind"];
@@ -589,7 +591,7 @@ export default function ProjectionOverlayStudio({
         image.data[o + 2] = 0;
       }
     context.putImageData(image, 0, 0);
-    if (!result || !shown?.matrix || !shown.view) return;
+    if (!result || !shown?.matrix || !shown.view || !showPoints) return;
     const size = Math.max(1, Math.round(width / 256));
     const draw = (matrix: number[][], drawn: ViewNumbers, color: string) => {
       const pixels = projectRegistered(
@@ -614,7 +616,7 @@ export default function ProjectionOverlayStudio({
     } catch (error) {
       console.warn("Overlay drawing failed", error);
     }
-  }, [shownFrame, shown, showTarget]);
+  }, [shownFrame, shown, showTarget, showPoints]);
 
   if (!allowed) return null;
   const saved = current?.saved.current;
@@ -919,25 +921,46 @@ export default function ProjectionOverlayStudio({
           )}
           {notice && <p role="alert">{notice}</p>}
           {shownFrame && (
-            <figure className="carm-figure">
+            <figure
+              className={`native-render-figure angio-overlay-figure${enlarged ? " enlarged" : ""}`}
+            >
               <canvas
                 ref={canvas}
                 width={shownFrame.width}
                 height={shownFrame.height}
-                style={{ maxWidth: "100%", height: "auto" }}
                 role="img"
                 aria-label={`Admitted frame ${shownFrame.index}, plane ${shownFrame.plane}${shown?.result ? ", with projected 3D vessels" : ""}`}
               />
               <figcaption>
                 Retrospective admitted frame, verified against its recorded
                 SHA-256.
-                {shown?.result
+                {shown?.result && showPoints
                   ? ` Cyan: accepted 3D vessel mask projected under the ${shown.kind === "saved" ? "saved operator-confirmed" : "unsaved"} proposal.`
                   : ""}
                 {shown?.result?.target && showTarget
                   ? " Amber: lines extracted from the frame, which can include catheters and bone edges."
                   : ""}{" "}
                 Not a validated registration.
+                <span className="native-actions">
+                  <button
+                    type="button"
+                    aria-pressed={enlarged}
+                    onClick={() => setEnlarged(!enlarged)}
+                  >
+                    {enlarged ? "Close larger view" : "Larger view"}
+                  </button>
+                  {shown?.result && (
+                    <button
+                      type="button"
+                      aria-pressed={showPoints}
+                      onClick={() => setShowPoints(!showPoints)}
+                    >
+                      {showPoints
+                        ? "Hide projected 3D vessels"
+                        : "Show projected 3D vessels"}
+                    </button>
+                  )}
+                </span>
               </figcaption>
             </figure>
           )}
