@@ -1,0 +1,443 @@
+"""Synthetic pixel-frame admission: PNG frames and uncompressed DICOM XA frames."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import struct
+import zlib
+
+import pytest
+
+if os.environ.get("SELDINGER_RUN_INGEST_TESTS") != "1":
+    pytest.skip("Requires isolated ingest runtime", allow_module_level=True)
+
+import numpy as np
+from pydicom.encaps import encapsulate
+from pydicom.uid import ExplicitVRBigEndian, ImplicitVRLittleEndian, JPEGLosslessSV1
+from test_projection_ingest import SENTINEL, classic, write
+
+from planner.dicom_ingest import IngestError
+from planner.frame_ingest import admit_frames, decode_png, main
+from planner.frame_source import InstalledFrameStore
+
+ROWS, COLUMNS = 96, 128
+
+
+def image(seed, rows=ROWS, columns=COLUMNS):
+    rng = np.random.default_rng(seed)
+    return rng.integers(0, 256, size=(rows, columns), dtype=np.uint8)
+
+
+def _chunk(kind, body):
+    return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body))
+
+
+def png(array, *, filters=(0,), depth=8, color=0, interlace=0, text=None, split=False):
+    """Stdlib PNG writer for 8-bit grayscale, with a chosen filter per row."""
+    rows, columns = array.shape
+    raw, previous = bytearray(), np.zeros(columns, dtype=np.int64)
+    for r in range(rows):
+        line = array[r].astype(np.int64)
+        kind = filters[r % len(filters)]
+        left = np.concatenate(([0], line[:-1]))
+        up_left = np.concatenate(([0], previous[:-1]))
+        if kind == 0:
+            out = line
+        elif kind == 1:
+            out = line - left
+        elif kind == 2:
+            out = line - previous
+        elif kind == 3:
+            out = line - ((left + previous) >> 1)
+        else:
+            p = left + previous - up_left
+            pa, pb, pc = abs(p - left), abs(p - previous), abs(p - up_left)
+            predictor = np.where(
+                (pa <= pb) & (pa <= pc), left, np.where(pb <= pc, previous, up_left)
+            )
+            out = line - predictor
+        raw.append(kind)
+        raw.extend((out & 255).astype(np.uint8).tobytes())
+        previous = line
+    data = zlib.compress(bytes(raw))
+    parts = [data[: len(data) // 2], data[len(data) // 2 :]] if split else [data]
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + _chunk(b"IHDR", struct.pack(">IIBBBBB", columns, rows, depth, color, 0, 0, interlace))
+        + (_chunk(b"tEXt", text) if text else b"")
+        + b"".join(_chunk(b"IDAT", part) for part in parts)
+        + _chunk(b"IEND", b"")
+    )
+
+
+def png_request(tmp_path, *, planes=None, scope="synthetic", **change):
+    frames = []
+    for index in (40, 7):
+        (tmp_path / f"frame-{index:06d}.png").write_bytes(png(image(index)))
+        frames.append({"path": f"frame-{index:06d}.png", "index": index})
+    (tmp_path / "run.mp4").write_bytes(b"not decoded, only hashed" * 10)
+    plane = {
+        "plane": "single",
+        "kind": "png",
+        "container": "run.mp4",
+        "crop": [8, 4, 100, 80],
+        "redactions": [[0, 0, COLUMNS, 10], [20, 30, 5, 6]],
+        "identifiers_removed": True,
+        "frames": frames,
+        **change,
+    }
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps({"scope": scope, "planes": [plane] if planes is None else planes}))
+    return path
+
+
+def expected(array, crop, redactions):
+    out = array.copy()
+    for x, y, width, height in redactions:
+        out[y : y + height, x : x + width] = 0
+    if crop:
+        x, y, width, height = crop
+        out = out[y : y + height, x : x + width]
+    return out.tobytes()
+
+
+@pytest.mark.parametrize("filters", [(0,), (1,), (2,), (3,), (4,), (0, 1, 2, 3, 4)])
+def test_png_decoder_matches_every_filter(filters):
+    array = image(3, 37, 53)
+    rows, columns, data = decode_png(png(array, filters=filters, split=True, text=b"k\0" + b"v"))
+    assert (rows, columns) == (37, 53)
+    assert data == array.tobytes()
+
+
+def test_png_decoder_rejects_what_it_does_not_admit():
+    array = image(1, 16, 16)
+    good = png(array)
+    bad = [
+        b"",
+        b"GIF89a" + good,
+        good[:-5],
+        good[:40],
+        png(array, depth=16),
+        png(array, color=2),
+        png(array, color=3),
+        png(array, interlace=1),
+        png(array, filters=(5,)),
+        good.replace(b"IDAT", b"IDAT", 1)[:-20] + b"\0" * 20,
+        # A flipped pixel byte breaks the chunk checksum.
+        good[:50] + bytes([good[50] ^ 1]) + good[51:],
+        # A row short.
+        png(array)[:33] + _chunk(b"IDAT", zlib.compress(bytes(17 * 15))) + _chunk(b"IEND", b""),
+        # More pixel data than the header declares.
+        png(array)[:33] + _chunk(b"IDAT", zlib.compress(bytes(17 * 17))) + _chunk(b"IEND", b""),
+        b"\x89PNG\r\n\x1a\n" + _chunk(b"IDAT", b"") + _chunk(b"IEND", b""),
+        b"\x89PNG\r\n\x1a\n"
+        + _chunk(b"IHDR", struct.pack(">IIBBBBB", 5000, 16, 8, 0, 0, 0, 0))
+        + _chunk(b"IDAT", zlib.compress(b""))
+        + _chunk(b"IEND", b""),
+    ]
+    for data in bad:
+        with pytest.raises(IngestError):
+            decode_png(data)
+
+
+def test_png_frames_are_redacted_cropped_and_bound(tmp_path):
+    request = png_request(tmp_path)
+    bundle = admit_frames(request, tmp_path / "installed", "tair-smoke")
+    store = InstalledFrameStore(bundle.parent)
+    manifest, _ = store.load("tair-smoke")
+    assert manifest["method"] == "admitted_png_frames" and manifest["scope"] == "synthetic"
+    assert manifest["clinical_validation"] is False
+    assert manifest["biplane_linkage"] == "not_applicable"
+    (plane,) = manifest["planes"]
+    container = (tmp_path / "run.mp4").read_bytes()
+    assert plane["container_sha256"] == hashlib.sha256(container).hexdigest()
+    assert plane["container_bytes"] == len(container)
+    assert (plane["rows"], plane["columns"]) == (80, 100) and plane["geometry"] is None
+    assert plane["deidentification"] == {
+        "basis": "operator_attested_crop_and_redaction",
+        "burned_in_annotation": "not_declared",
+        "source_rows": ROWS,
+        "source_columns": COLUMNS,
+        "crop": [8, 4, 100, 80],
+        "redactions": [[0, 0, COLUMNS, 10], [20, 30, 5, 6]],
+    }
+    assert [frame["index"] for frame in plane["frames"]] == [7, 40]
+    for frame in plane["frames"]:
+        source = (tmp_path / f"frame-{frame['index']:06d}.png").read_bytes()
+        assert frame["input_sha256"] == hashlib.sha256(source).hexdigest()
+        want = expected(
+            image(frame["index"]), [8, 4, 100, 80], [[0, 0, COLUMNS, 10], [20, 30, 5, 6]]
+        )
+        assert store.frame("tair-smoke", "single", frame["index"])[0] == want
+        assert frame["sha256"] == hashlib.sha256(want).hexdigest()
+    # Only the manifest and the processed frames are installed, privately.
+    assert sorted(path.name for path in bundle.iterdir()) == [
+        "frames.json",
+        "single-000007.gray",
+        "single-000040.gray",
+    ]
+    assert all(path.stat().st_mode & 0o077 == 0 for path in [bundle, *bundle.iterdir()])
+    assert not [p for p in (tmp_path / "installed").iterdir() if p.name.startswith(".")]
+
+
+def test_two_png_planes_and_cli(tmp_path, capsys):
+    base = png_request(tmp_path)
+    plane = json.loads(base.read_text())["planes"][0]
+    request = png_request(
+        tmp_path, planes=[{**plane, "plane": "a"}, {**plane, "plane": "b", "container": None}]
+    )
+    assert main([str(tmp_path / "out"), str(request), "--source-id", "bi-01"]) == 0
+    manifest, _ = InstalledFrameStore(tmp_path / "out").load("bi-01")
+    assert [p["plane"] for p in manifest["planes"]] == ["a", "b"]
+    assert manifest["biplane_linkage"] == "operator_declared"
+    assert manifest["planes"][1]["container_sha256"] is None
+    # The destination is never replaced.
+    assert main([str(tmp_path / "out"), str(request), "--source-id", "bi-01"]) == 1
+    assert "rejected" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"identifiers_removed": False},
+        {"identifiers_removed": "yes"},
+        {"crop": None},
+        {"crop": [8, 4, 200, 80]},
+        {"crop": [8, 4, 60, 80]},  # under 64 pixels wide
+        {"redactions": [[0, 0, 500, 10]]},
+        {"redactions": [[0, 0, 4, 4]] * 17},
+        {"frames": []},
+        {"frames": [{"path": "frame-000007.png", "index": 7}] * 2},
+        {"frames": [{"path": "frame-000007.png", "index": i} for i in range(9)]},
+        {"frames": [{"path": "frame-000007.png", "index": -1}]},
+        {"frames": [{"path": "frame-000007.png"}]},
+        {"frames": [{"path": "../frame-000007.png", "index": 7}]},
+        {"frames": [{"path": "absent.png", "index": 7}]},
+        {"frames": [{"path": "run.mp4", "index": 7}]},
+        {"container": "absent.mp4"},
+        {"plane": "c"},
+        {"kind": "mp4"},
+        {"path": "x.dcm"},  # a DICOM field on a PNG plane
+    ],
+)
+def test_png_requests_are_rejected_without_installing(tmp_path, change):
+    request = png_request(tmp_path, **change)
+    with pytest.raises(IngestError):
+        admit_frames(request, tmp_path / "installed", "run-01")
+    assert not (tmp_path / "installed" / "run-01").exists()
+    installed = tmp_path / "installed"
+    assert not installed.exists() or not list(installed.iterdir())
+
+
+def test_request_level_rejections(tmp_path):
+    base = png_request(tmp_path)
+    plane = json.loads(base.read_text())["planes"][0]
+    for body in (
+        {"scope": "private", "planes": [plane]},
+        {"scope": "synthetic", "planes": []},
+        {"scope": "synthetic", "planes": [plane, plane, plane]},
+        {"scope": "synthetic", "planes": [plane], "extra": 1},
+        {"scope": "synthetic", "planes": [plane, {**plane, "plane": "b"}]},  # single + b
+        {"scope": "synthetic", "planes": ["single"]},
+        [],
+    ):
+        base.write_text(json.dumps(body))
+        with pytest.raises(IngestError):
+            admit_frames(base, tmp_path / "installed", "run-01")
+    base.write_text(json.dumps({"scope": "synthetic", "planes": [plane]}))
+    for source_id in ("Run", "../x", "a", ""):
+        with pytest.raises(IngestError):
+            admit_frames(base, tmp_path / "installed", source_id)
+    # Frames of one plane share their size.
+    (tmp_path / "small.png").write_bytes(png(image(1, 90, 128)))
+    odd = {**plane, "frames": [*plane["frames"], {"path": "small.png", "index": 99}]}
+    base.write_text(json.dumps({"scope": "synthetic", "planes": [odd]}))
+    with pytest.raises(IngestError):
+        admit_frames(base, tmp_path / "installed", "run-01")
+    link = tmp_path / "link.json"
+    os.symlink(base, link)
+    with pytest.raises(IngestError):
+        admit_frames(link, tmp_path / "installed", "run-01")
+
+
+def xa(tmp_path, name="run.dcm", *, bits=8, frames=4, syntax=None, **change):
+    rows, columns = 72, 64
+    rng = np.random.default_rng(11)
+    if bits == 8:
+        stack = rng.integers(0, 256, size=(frames, rows, columns), dtype=np.uint8)
+    else:
+        stack = rng.integers(100, 3000, size=(frames, rows, columns), dtype=np.uint16)
+    fields = {
+        "Rows": rows,
+        "Columns": columns,
+        "NumberOfFrames": frames,
+        "BitsAllocated": bits,
+        "BitsStored": bits if bits == 8 else 12,
+        "HighBit": 7 if bits == 8 else 11,
+        "ImagerPixelSpacing": ["1.0", "1.0"],
+        "PixelData": stack.astype("<u2" if bits == 16 else "u1").tobytes(),
+        **change,
+    }
+    ds = classic(7, **fields)
+    path = write(tmp_path / name, ds, *([syntax] if syntax else []))
+    return path, stack
+
+
+def dicom_request(tmp_path, **change):
+    plane = {
+        "plane": "single",
+        "kind": "dicom",
+        "path": "run.dcm",
+        "frame_indexes": [2, 0],
+        "crop": None,
+        "redactions": [],
+        "identifiers_removed": False,
+        **change,
+    }
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps({"scope": "synthetic", "planes": [plane]}))
+    return path
+
+
+def test_dicom_frames_keep_calibrated_geometry_and_no_metadata(tmp_path):
+    path, stack = xa(tmp_path)
+    bundle = admit_frames(dicom_request(tmp_path), tmp_path / "installed", "xa-01")
+    store = InstalledFrameStore(bundle.parent)
+    manifest, _ = store.load("xa-01")
+    (plane,) = manifest["planes"]
+    assert manifest["method"] == "admitted_dicom_xa_frames"
+    assert plane["container_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert plane["deidentification"]["basis"] == "dicom_declared_no_burned_in_annotation"
+    assert plane["geometry"] == {
+        "primary_deg": -30.5,
+        "secondary_deg": 20.25,
+        "source_detector_mm": 1195.0,
+        "source_isocenter_mm": 765.0,
+        "detector_width_mm": 64.0,
+        "detector_height_mm": 72.0,
+    }
+    assert [frame["index"] for frame in plane["frames"]] == [0, 2]
+    # 8-bit data is rescaled over the selected frames' own range, here 0..255.
+    for index in (0, 2):
+        assert store.frame("xa-01", "single", index)[0] == stack[index].tobytes()
+    for item in bundle.iterdir():
+        assert SENTINEL.encode() not in item.read_bytes()
+        assert b"1.2.826" not in item.read_bytes()
+
+
+def test_dicom_sixteen_bit_and_inverted_photometric(tmp_path):
+    _, stack = xa(tmp_path, bits=16)
+    bundle = admit_frames(dicom_request(tmp_path), tmp_path / "installed", "xa-16")
+    chosen = stack[[0, 2]].astype(np.float64)
+    low, high = chosen.min(), chosen.max()
+    want = np.rint((stack[2] - low) * 255.0 / (high - low)).astype(np.uint8)
+    store = InstalledFrameStore(bundle.parent)
+    assert store.frame("xa-16", "single", 2)[0] == want.tobytes()
+
+    (tmp_path / "m1").mkdir()
+    _, stack = xa(tmp_path / "m1", PhotometricInterpretation="MONOCHROME1")
+    bundle = admit_frames(dicom_request(tmp_path / "m1"), tmp_path / "installed", "xa-m1")
+    assert (
+        InstalledFrameStore(bundle.parent).frame("xa-m1", "single", 0)[0]
+        == (255 - stack[0]).tobytes()
+    )
+
+
+def test_dicom_burned_in_annotation_needs_attested_redaction(tmp_path):
+    for value in ("YES", None):
+        directory = tmp_path / str(value)
+        directory.mkdir()
+        _, stack = xa(directory, BurnedInAnnotation=value)
+        for change in (
+            {},
+            {"identifiers_removed": True},  # attested, but nothing was removed
+            {"redactions": [[0, 0, 64, 8]]},  # removed, but not attested
+        ):
+            with pytest.raises(IngestError):
+                admit_frames(dicom_request(directory, **change), tmp_path / "installed", "burned")
+        request = dicom_request(directory, identifiers_removed=True, redactions=[[0, 0, 64, 8]])
+        bundle = admit_frames(request, tmp_path / "installed", f"burned-{str(value).lower()}")
+        manifest, _ = InstalledFrameStore(bundle.parent).load(bundle.name)
+        record = manifest["planes"][0]["deidentification"]
+        assert record["basis"] == "operator_attested_crop_and_redaction"
+        assert record["burned_in_annotation"] == ("yes" if value else "unknown")
+        data = InstalledFrameStore(bundle.parent).frame(bundle.name, "single", 0)[0]
+        assert data == expected(stack[0], None, [[0, 0, 64, 8]])
+        # Uncropped, so the calibrated geometry is kept.
+        assert manifest["planes"][0]["geometry"] is not None
+
+
+def test_dicom_crop_or_incomplete_geometry_is_uncalibrated(tmp_path):
+    xa(tmp_path)
+    cropped = admit_frames(
+        dicom_request(tmp_path, crop=[0, 4, 64, 64]), tmp_path / "installed", "cropped"
+    )
+    plane = InstalledFrameStore(cropped.parent).load("cropped")[0]["planes"][0]
+    assert plane["geometry"] is None and (plane["rows"], plane["columns"]) == (64, 64)
+    for name, change in (
+        ("no-angle", {"PositionerPrimaryAngle": None}),
+        ("moving", {"PositionerMotion": "DYNAMIC"}),
+        ("short-sid", {"DistanceSourceToDetector": "250.0", "DistanceSourceToPatient": "200.0"}),
+    ):
+        directory = tmp_path / name
+        directory.mkdir()
+        xa(directory, **change)
+        bundle = admit_frames(dicom_request(directory), tmp_path / "installed", name)
+        assert InstalledFrameStore(bundle.parent).load(name)[0]["planes"][0]["geometry"] is None
+
+
+@pytest.mark.parametrize(
+    "request_change,dataset_change,syntax",
+    [
+        ({"frame_indexes": [4]}, {}, None),
+        ({"frame_indexes": [-1]}, {}, None),
+        ({"frame_indexes": []}, {}, None),
+        ({"frame_indexes": [0, 0]}, {}, None),
+        ({"frame_indexes": [0.0]}, {}, None),
+        (
+            {"frame_indexes": list(range(9))},
+            {"NumberOfFrames": 9, "PixelData": bytes(72 * 64 * 9)},
+            None,
+        ),
+        ({"frames": []}, {}, None),  # a PNG field on a DICOM plane
+        ({}, {"SamplesPerPixel": 3}, None),
+        ({}, {"PhotometricInterpretation": "RGB"}, None),
+        ({}, {"PixelRepresentation": 1}, None),
+        ({}, {"BitsAllocated": 32}, None),
+        ({}, {"PixelData": bytes(72 * 64 * 3)}, None),
+        ({}, {"PixelData": bytes(72 * 64 * 4 + 2)}, None),
+        ({}, {"Modality": "CT"}, None),
+        ({}, {"PixelData": encapsulate([bytes(64)])}, JPEGLosslessSV1),
+        ({}, {}, ExplicitVRBigEndian),
+    ],
+)
+def test_dicom_requests_are_rejected(tmp_path, request_change, dataset_change, syntax):
+    xa(tmp_path, syntax=syntax, **dataset_change)
+    with pytest.raises(IngestError) as caught:
+        admit_frames(dicom_request(tmp_path, **request_change), tmp_path / "installed", "xa-01")
+    assert SENTINEL not in str(caught.value) and "1.2.826" not in str(caught.value)
+    assert not (tmp_path / "installed" / "xa-01").exists()
+
+
+def test_dicom_implicit_little_endian_is_admitted(tmp_path):
+    _, stack = xa(tmp_path, syntax=ImplicitVRLittleEndian)
+    bundle = admit_frames(dicom_request(tmp_path), tmp_path / "installed", "implicit")
+    assert (
+        InstalledFrameStore(bundle.parent).frame("implicit", "single", 2)[0] == stack[2].tobytes()
+    )
+
+
+def test_mixed_kinds_are_rejected(tmp_path):
+    xa(tmp_path)
+    base = png_request(tmp_path)
+    plane = json.loads(base.read_text())["planes"][0]
+    dicom = json.loads(dicom_request(tmp_path).read_text())["planes"][0]
+    base.write_text(
+        json.dumps(
+            {"scope": "synthetic", "planes": [{**plane, "plane": "a"}, {**dicom, "plane": "b"}]}
+        )
+    )
+    with pytest.raises(IngestError):
+        admit_frames(base, tmp_path / "installed", "mixed")

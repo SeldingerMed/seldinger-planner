@@ -37,8 +37,36 @@ CASES = [
     ("ap_identity", 0, 0, 1200, 800, 180, 180, [0, 0, 0], [0, 0, 1], 0, [0, 0, 0], 300, 300),
     ("ap_moved", 0, 0, 1200, 800, 180, 180, [3, -2, 5], [1, 2, -1], 11, [6, -7, 4], 512, 512),
     ("lao90", 90, 0, 1100, 700, 200, 150, [-4, 10, 20], [0, 1, 0], -8, [-5, 5, 5], 640, 480),
-    ("rao30_cau20", -30, -20, 1195.5, 765.25, 153.6, 153.6, [12.5, -40, 33], [2, -1, 3], 14, [9, 3, -6], 1024, 1024),
-    ("lao45_cra25", 45, 25, 990, 720, 150, 220, [-20, 15, -60], [-1, 0.5, 0.2], 6.5, [-3, 8, 2], 375, 550),
+    (
+        "rao30_cau20",
+        -30,
+        -20,
+        1195.5,
+        765.25,
+        153.6,
+        153.6,
+        [12.5, -40, 33],
+        [2, -1, 3],
+        14,
+        [9, 3, -6],
+        1024,
+        1024,
+    ),
+    (
+        "lao45_cra25",
+        45,
+        25,
+        990,
+        720,
+        150,
+        220,
+        [-20, 15, -60],
+        [-1, 0.5, 0.2],
+        6.5,
+        [-3, 8, 2],
+        375,
+        550,
+    ),
 ]
 
 
@@ -73,7 +101,9 @@ def _matrix(axis, degrees, translation, pivot):
 def build():
     cases = []
     for index, case in enumerate(CASES):
-        name, primary, secondary, sid, sod, width, height, iso, axis, degrees, shift, cols, rows = case
+        name, primary, secondary, sid, sod, width, height, iso, axis, degrees, shift, cols, rows = (
+            case
+        )
         iso = np.array(iso, float)
         rng = np.random.default_rng(500 + index)
         points = (iso + rng.normal(size=(6, 3)) * 25).round(3)
