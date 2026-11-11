@@ -154,3 +154,29 @@
 .carm-table-scroll .carm-table {
   min-width: 520px;
 }
+
+.registration-proposal {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+.registration-proposal .registration-note,
+.registration-proposal figcaption {
+  color: #acbec8;
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 78ch;
+}
+.registration-proposal figure {
+  margin: 0;
+}
+.registration-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.registration-preview canvas {
+  width: 192px;
+  height: 192px;
+  background: #000;
+}

@@ -45,6 +45,18 @@ Confirm and save the path before rendering. Scene revisions are independent of t
 - **Endoluminal flythrough:** first-person intensity-boundary raycasting with a threshold, physical station and roll. It is not a segmentation. A station outside the selected bright region suppresses this view without discarding valid CPR.
 - **Registered cross-section:** select and load an installed secondary source, then explicitly confirm a proper rigid 4×4 secondary-RAS-to-primary-RAS matrix. Dimensions or modality do not establish registration. Missing secondary coverage preserves the primary sample.
 
+### Propose a rigid registration
+
+Once a secondary source is loaded and verified, **Propose rigid registration** searches for the matrix from image intensity alone and enters the result in the matrix field. Below it, a draft preview shows axial, coronal and sagittal planes through the point where the matrix currently in the field puts the center of the secondary, with the secondary overlaid on the primary under that matrix.
+
+- The search starts from the matrix in the field. It scans translation across the primary's bounding box, then refines translation and rotation. Rotation is searched within ±20° per axis of the starting matrix, so a larger turn has to be entered by hand first.
+- At least 75% of the secondary must lie inside the primary at any position that is scored. Load the smaller field of view as the secondary. A secondary that extends well beyond the primary is refused.
+- The proposal changes the draft only. Nothing is saved, and the scene stays unconfirmed until the operator reviews the preview, corrects the matrix if needed and confirms it. The saved scene records an operator-confirmed matrix as before and does not record that a proposal was used.
+- The run is local to the browser, works in short slices so the page stays responsive, and can be cancelled. Changing the matrix, the secondary or the primary drops it. It waits while the tab is in the background.
+- The status line reports how far the proposal moved from the starting matrix, the normalized mutual information before and after, the share of the secondary inside the primary and the block size at which the secondary was compared. The score is not an accuracy measure.
+
+The method is normalized mutual information over three block-averaged levels (6, 3 and 1.5 mm targets, coarser where a level would exceed its sample cap). It has been checked on synthetic phantoms and on one public CTA resampled against itself; see [Step B verification](verification/step-b-rigid-registration-proposal.md). It has not been validated on separately acquired angiography or across modalities, it can settle on a wrong alignment, and it cannot tell that two sources show different anatomy.
+
 Windows, span, roll, station and secondary opacity control the local rendering. Changed source, path, registration or display settings hide mismatched rasters before recomputation. Out-of-grid samples are unavailable, not synthesized.
 
 ## Export

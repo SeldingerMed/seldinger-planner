@@ -11,6 +11,7 @@ import {
 import { parseAnatomyInputs } from "./anatomyProposal";
 import { buildPathFrames } from "./curvedPlanar";
 import { createNativeSampler } from "./nativeSampling";
+import RegistrationProposal from "./RegistrationProposal";
 import { validateRigid } from "./rigidFusion";
 import { loadSecondarySource, type SecondaryVolume } from "./secondarySource";
 import NativeReformatView, { type RenderReceipt } from "./NativeReformatView";
@@ -648,6 +649,21 @@ export default function ReformatStudio({
         {selected?.key === key && (
           <p>Secondary image verified · {selected.metadata.source_id}</p>
         )}
+        {selected?.key === key &&
+          volume &&
+          current?.sourceText === selected.metadata.source_id && (
+            <RegistrationProposal
+              key={`${key}:${selected.metadata.image_sha256}`}
+              primary={volume}
+              secondary={selected.volume}
+              matrixText={current.matrixText}
+              primaryWindow={[windowRange[0], windowRange[1]]}
+              secondaryWindow={[secondaryLow, secondaryHigh]}
+              opacity={opacity}
+              disabled={!!disabled || localBusy || current.locked}
+              onPropose={(matrixText) => edit({ matrixText })}
+            />
+          )}
         {secondaryError && <p role="status">{secondaryError}</p>}
         <label className="native-confirm">
           <input
