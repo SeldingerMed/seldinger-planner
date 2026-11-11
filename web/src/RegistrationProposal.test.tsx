@@ -13,7 +13,7 @@ import {
   phantomPair,
   transform,
 } from "./__fixtures__/registrationPhantom";
-import RegistrationProposal from "./RegistrationProposal";
+import RegistrationProposal, { startScoreText } from "./RegistrationProposal";
 import { validateRigid } from "./rigidFusion";
 
 const grid = (origin: number) => [
@@ -106,7 +106,7 @@ test("a proposal is computed in slices, entered as the draft and described", asy
     expect(Math.hypot(u[0] - v[0], u[1] - v[1], u[2] - v[2])).toBeLessThan(1.5);
   }
   expect(summary).toHaveTextContent(
-    /moved 11\d\.\d mm and 1[34]\.\d° from the starting matrix\. Normalized mutual information 1\.\d{3} \(starting matrix 0\.000\), with 100% of the secondary inside the primary\. The score is not an accuracy measure\. The secondary was compared in 1\.2 mm blocks\. Review the draft preview before confirming\./,
+    /moved 11\d\.\d mm and 1[34]\.\d° from the starting matrix\. Normalized mutual information 1\.\d{3} \(the starting matrix put only \d{1,2}% of the secondary inside the primary and was not scored\), with 100% of the secondary inside the primary\. The score is not an accuracy measure\. The secondary was compared in 1\.2 mm blocks\. Review the draft preview before confirming\./,
   );
   expect(button("Propose rigid registration")).toBeEnabled();
   // The description belongs to that exact matrix: an edit withdraws it.
@@ -115,6 +115,23 @@ test("a proposal is computed in slices, entered as the draft and described", asy
   });
   expect(screen.queryByText(/Proposed matrix entered above/)).toBeNull();
 }, 40000);
+
+test("a start under the overlap floor is described, not given a score of zero", () => {
+  // Zero is what the search returns for a position it does not score.
+  expect(startScoreText({ start_score: 0, start_overlap: 0.7499 })).toBe(
+    "the starting matrix put only 74% of the secondary inside the primary and was not scored",
+  );
+  expect(startScoreText({ start_score: 0, start_overlap: 0 })).toBe(
+    "the starting matrix put only 0% of the secondary inside the primary and was not scored",
+  );
+  expect(startScoreText({ start_score: 1.0384, start_overlap: 0.75 })).toBe(
+    "starting matrix 1.038",
+  );
+  // Enough overlap and nothing to compare is a measured zero.
+  expect(startScoreText({ start_score: 0, start_overlap: 0.9 })).toBe(
+    "starting matrix 0.000",
+  );
+});
 
 test("a hidden tab works in long slices, because its timers are throttled", async () => {
   stubCanvas();

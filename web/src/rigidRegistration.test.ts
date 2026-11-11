@@ -46,7 +46,10 @@ test("a known rigid offset is recovered from the identity across contrasts", () 
   // One primary voxel (1.5 mm) at the corners of the secondary volume.
   expect(worst(proposal.matrix, pair.truth, pair.corners)).toBeLessThan(1.5);
   expect(proposal.method).toBe(REGISTRATION_METHOD);
+  // The identity leaves too little of the secondary inside the primary to
+  // score, which the proposal says rather than leaving a bare zero.
   expect(proposal.start_score).toBe(0);
+  expect(proposal.start_overlap).toBeLessThan(REGISTRATION_LIMITS.min_overlap);
   expect(proposal.score).toBeGreaterThan(1.2);
   expect(proposal.overlap).toBeGreaterThan(0.95);
   expect(proposal.rotation_deg).toBeGreaterThan(13);
@@ -80,6 +83,8 @@ test("a search started near the answer stays there and improves the score", () =
   expect(worst(near, pair.truth, pair.corners)).toBeGreaterThan(4);
   expect(worst(refined.matrix, pair.truth, pair.corners)).toBeLessThan(1.5);
   expect(refined.score).toBeGreaterThan(refined.start_score);
+  expect(refined.start_score).toBeGreaterThan(1);
+  expect(refined.start_overlap).toBeGreaterThan(0.95);
   expect(refined.rotation_deg).toBeLessThan(5);
 });
 

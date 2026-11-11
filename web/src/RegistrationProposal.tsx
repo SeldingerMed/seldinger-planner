@@ -48,6 +48,18 @@ function parseMatrix(text: string): number[][] | null {
   }
 }
 
+/** What the status line says of the starting matrix. A start under the
+ * overlap floor has a score of zero that is not a measurement, so it is
+ * described instead of shown. */
+export function startScoreText({
+  start_score,
+  start_overlap,
+}: Pick<Proposal, "start_score" | "start_overlap">): string {
+  return start_overlap < REGISTRATION_LIMITS.min_overlap
+    ? `the starting matrix put only ${Math.floor(start_overlap * 100)}% of the secondary inside the primary and was not scored`
+    : `starting matrix ${start_score.toFixed(3)}`;
+}
+
 export default function RegistrationProposal({
   primary,
   secondary,
@@ -205,7 +217,7 @@ export default function RegistrationProposal({
         {active
           ? "Computing registration proposal… This waits while the tab is in the background."
           : proposal
-            ? `Proposed matrix entered above: moved ${proposal.translation_mm.toFixed(1)} mm and ${proposal.rotation_deg.toFixed(1)}° from the starting matrix. Normalized mutual information ${proposal.score.toFixed(3)} (starting matrix ${proposal.start_score.toFixed(3)}), with ${Math.round(proposal.overlap * 100)}% of the secondary inside the primary. The score is not an accuracy measure. The secondary was compared in ${proposal.sample_mm.toFixed(1)} mm blocks. Review the draft preview before confirming.`
+            ? `Proposed matrix entered above: moved ${proposal.translation_mm.toFixed(1)} mm and ${proposal.rotation_deg.toFixed(1)}° from the starting matrix. Normalized mutual information ${proposal.score.toFixed(3)} (${startScoreText(proposal)}), with ${Math.round(proposal.overlap * 100)}% of the secondary inside the primary. The score is not an accuracy measure. The secondary was compared in ${proposal.sample_mm.toFixed(1)} mm blocks. Review the draft preview before confirming.`
             : ""}
       </p>
       {shown?.failure && (

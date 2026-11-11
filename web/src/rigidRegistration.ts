@@ -35,9 +35,13 @@ export type RegistrationProposal = {
   /** Secondary RAS to primary RAS, in millimeters. */
   matrix: number[][];
   /** Normalized mutual information at the finest level, between 1 and 2.
-   * Zero means the overlap was below `min_overlap`. Not an accuracy measure. */
+   * Not an accuracy measure. */
   score: number;
+  /** The same at the starting matrix. Zero where `start_overlap` is below
+   * `min_overlap`: that position was not scored. */
   start_score: number;
+  /** Share of secondary samples inside the primary at the starting matrix. */
+  start_overlap: number;
   /** Share of secondary samples inside the primary at the proposal. */
   overlap: number;
   /** Longest edge of the block-averaged secondary samples at the finest
@@ -660,6 +664,7 @@ function* solve(
   const fine = levels[2],
     matrix = finish(pose(base, center, best.p)),
     final = similarity(fine, flat(matrix)),
+    begun = similarity(fine, base),
     moved = apply(
       flat(matrix),
       corner(secondary, (n) => (n - 1) / 2),
@@ -680,7 +685,8 @@ function* solve(
     method: REGISTRATION_METHOD,
     matrix,
     score: final.score,
-    start_score: similarity(fine, base).score,
+    start_score: begun.score,
+    start_overlap: begun.overlap,
     overlap: final.overlap,
     sample_mm: fine.block_mm,
     translation_mm: Math.hypot(
