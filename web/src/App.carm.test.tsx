@@ -70,6 +70,7 @@ const studio = vi.hoisted(
 );
 vi.mock("./ReformatStudio", () => ({ default: studio("Reformats") }));
 vi.mock("./CArmStudio", () => ({ default: studio("C-arm") }));
+vi.mock("./ProjectionOverlayStudio", () => ({ default: studio("Overlay") }));
 afterEach(() => {
   cleanup();
   localStorage.clear();
@@ -103,4 +104,25 @@ test("the App binds C-arm planning to the verified source and isolates unsaved d
   fireEvent.click(screen.getByRole("button", { name: "Reformats dirty" }));
   expect(carm).toHaveAttribute("data-disabled", "true");
   expect(reformats).toHaveAttribute("data-disabled", "false");
+  fireEvent.click(screen.getByRole("button", { name: "Reformats clean" }));
+  // The angiogram overlay is bound the same way, and an unsaved overlay
+  // proposal pauses the other studios, and the reverse.
+  const overlay = screen.getByRole("region", { name: "Overlay" });
+  expect(overlay).toHaveAttribute("data-volume", "verified");
+  expect(overlay).toHaveAttribute("data-revision", source.reference_revision);
+  expect(overlay).toHaveAttribute("data-disabled", "false");
+  expect(
+    screen.getByRole("link", { name: "Angiogram overlay" }),
+  ).toHaveAttribute("href", "#angio-overlay");
+  fireEvent.click(screen.getByRole("button", { name: "Overlay dirty" }));
+  expect(reformats).toHaveAttribute("data-disabled", "true");
+  expect(carm).toHaveAttribute("data-disabled", "true");
+  expect(overlay).toHaveAttribute("data-disabled", "false");
+  fireEvent.click(screen.getByRole("button", { name: "Overlay clean" }));
+  expect(carm).toHaveAttribute("data-disabled", "false");
+  fireEvent.click(screen.getByRole("button", { name: "C-arm dirty" }));
+  expect(overlay).toHaveAttribute("data-disabled", "true");
+  fireEvent.click(screen.getByRole("button", { name: "C-arm clean" }));
+  fireEvent.click(screen.getByRole("button", { name: "Reformats dirty" }));
+  expect(overlay).toHaveAttribute("data-disabled", "true");
 });
