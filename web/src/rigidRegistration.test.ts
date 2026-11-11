@@ -475,6 +475,24 @@ test("a result under the overlap floor at the finest level is refused", () => {
   ).toThrow("The best position found leaves too little of the secondary");
 });
 
+test("samples on the far faces of the primary are counted in its last voxels", () => {
+  // The same grid for both, so at the identity every secondary sample lies
+  // on a primary voxel and a twenty-fourth of them an axis on a far face.
+  // Counted in the voxel they lie on, the two images agree bin for bin and
+  // the score is exactly 2; a face sample counted anywhere else lowers it.
+  const g = [
+    [3, 0, 0, -34.5],
+    [0, 3, 0, -34.5],
+    [0, 0, 3, -34.5],
+    [0, 0, 0, 1],
+  ];
+  const volume = makeVolume(24, g, scene);
+  const result = proposeRigidRegistration(volume, volume, identity);
+  expect(result.start_overlap).toBe(1);
+  expect(result.start_score).toBeCloseTo(2, 12);
+  expect(result.matrix).toEqual(identity);
+});
+
 test("a start that is not a rigid matrix is refused", () => {
   const skewed = identity.map((r) => [...r]);
   skewed[0][1] = 0.2;
