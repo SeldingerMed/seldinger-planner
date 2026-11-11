@@ -183,7 +183,7 @@ def test_other_argument_rejections(tmp_path):
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="needs ffmpeg on PATH")
-def test_real_extraction_writes_gray_pngs_and_an_unattested_template(tmp_path):
+def test_real_extraction_writes_gray_pngs_and_an_unattested_template(tmp_path, monkeypatch):
     ffmpeg = tool.ensure_ffmpeg(tmp_path / "tools", download=False)
     video = tmp_path / "clip.mp4"
     made = subprocess.run(
@@ -198,7 +198,23 @@ def test_real_extraction_writes_gray_pngs_and_an_unattested_template(tmp_path):
     if made.returncode != 0:
         pytest.skip("this ffmpeg cannot encode the synthetic clip")
     out = tmp_path / "out"
+    commands = []
+    real = subprocess.run
+
+    def recorded(command, **options):
+        commands.append(command)
+        return real(command, **options)
+
+    monkeypatch.setattr(tool.subprocess, "run", recorded)
     template = tool.extract(video, out, [12, 3], ffmpeg=ffmpeg)
+    monkeypatch.undo()
+    # Some ffmpeg builds copy container text into a PNG unless told not to, so
+    # the request itself is checked as well as the bytes this build wrote.
+    assert len(commands) == 2
+    for command in commands:
+        text = " ".join(command)
+        assert "-map_metadata -1" in text and "-map_chapters -1" in text
+        assert "-fflags +bitexact" in text and "-flags:v +bitexact" in text
     names = sorted(p.name for p in out.iterdir())
     assert names == [
         "extraction.json",

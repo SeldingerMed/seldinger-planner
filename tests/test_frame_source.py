@@ -211,6 +211,25 @@ def test_png_deidentification_record_is_closed(change):
         validate_manifest(manifest([plane]))
 
 
+def test_the_plane_set_is_single_or_a_then_b():
+    def refused(planes, message, linkage=None):
+        value = manifest(planes)
+        if linkage:
+            value["biplane_linkage"] = linkage
+        with pytest.raises(ValueError, match=message):
+            validate_manifest(value)
+
+    count = "one or two planes required"
+    refused([], count)
+    refused([png_plane("a"), png_plane("b"), png_plane("single")], count)
+    refused([png_plane("single")] * 3, count)
+    refused([png_plane("b"), png_plane("a")], "requires planes A and B")
+    refused([png_plane("a"), png_plane("a")], "requires planes A and B")
+    refused([png_plane("a")], "carries no biplane linkage")
+    refused([png_plane("a"), png_plane("b")], "requires planes A and B", "not_applicable")
+    refused([png_plane()], "carries no biplane linkage", "operator_declared")
+
+
 @pytest.mark.parametrize(
     "change",
     [

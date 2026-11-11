@@ -455,13 +455,15 @@ def test_dicom_burned_in_annotation_needs_attested_redaction(tmp_path):
         directory = tmp_path / str(value)
         directory.mkdir()
         _, stack = xa(directory, BurnedInAnnotation=value)
-        for change in (
-            {},
-            {"identifiers_removed": True},  # attested, but nothing was removed
-            {"redactions": [[0, 0, 64, 8]]},  # removed, but not attested
+        for change, message in (
+            ({}, ATTEST),
+            # Attested, but nothing was removed.
+            ({"identifiers_removed": True}, "An attested plane needs a recorded crop or redaction"),
+            ({"redactions": [[0, 0, 64, 8]]}, ATTEST),  # removed, but not attested
         ):
-            with pytest.raises(IngestError):
+            with pytest.raises(IngestError) as caught:
                 admit_frames(dicom_request(directory, **change), tmp_path / "installed", "burned")
+            assert str(caught.value) == message
         request = dicom_request(directory, identifiers_removed=True, redactions=[[0, 0, 64, 8]])
         bundle = admit_frames(request, tmp_path / "installed", f"burned-{str(value).lower()}")
         manifest, _ = InstalledFrameStore(bundle.parent).load(bundle.name)
