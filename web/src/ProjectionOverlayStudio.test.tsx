@@ -44,6 +44,7 @@ import ProjectionOverlayStudio, {
 } from "./ProjectionOverlayStudio";
 import { projectRegistered } from "./projectionRegistration";
 import * as overlayJobs from "./projectionOverlayJob";
+import * as segmentation from "./segmentation";
 
 afterEach(() => {
   cleanup();
@@ -1782,4 +1783,42 @@ test("redrawing a saved record replaces values typed for another proposal", asyn
     screen.getByRole("combobox", { name: "Vessels in plane A's frame are" }),
   ).toHaveProperty("value", "bright");
   expect(screen.getByRole("slider")).toHaveProperty("value", "0.65");
+});
+
+test("a mask failure in the two-plane proposal is reported as the mask's", async () => {
+  const jobs = vi.spyOn(overlayJobs, "createBiplaneOverlayJob");
+  try {
+    // Both frames verify. The mask no longer matches its digest.
+    const flipped = maskBlob.slice();
+    flipped[flipped.length - 9] ^= 1;
+    server({ ...pairRoutes, mask: () => bytes(flipped) });
+    const view = render(<Harness />);
+    await openPair();
+    await acceptsInput();
+    click("Propose two-plane overlay");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Overlay computation failed: Segmentation integrity check failed.",
+    );
+    view.unmount();
+    // A failure that carries no message is still the mask's, not a frame's.
+    const read = vi
+      .spyOn(segmentation, "loadSegmentationMask")
+      .mockRejectedValue("offline");
+    try {
+      server(pairRoutes);
+      render(<Harness />);
+      await openPair();
+      await acceptsInput();
+      click("Propose two-plane overlay");
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        "Overlay computation failed: The vessel mask could not be read.",
+      );
+      expect(read).toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+    }
+    expect(jobs).not.toHaveBeenCalled();
+  } finally {
+    jobs.mockRestore();
+  }
 });

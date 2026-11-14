@@ -763,7 +763,7 @@ export default function ProjectionOverlayStudio({
     setNotice("");
     const loadedFrames: VerifiedFrame[] = [];
     let voxels: Uint8Array | null = null,
-      failure = "A frame failed its integrity check and is not used",
+      failure = "",
       canceled = false;
     try {
       for (const item of pairSetup)
@@ -772,11 +772,15 @@ export default function ProjectionOverlayStudio({
             ? shownFrame
             : await loadVerifiedFrame(frames, item.plane, item.index, signal),
         );
-      failure = "The vessel mask could not be read";
       voxels = await maskVoxels(mask, signal);
     } catch (error) {
-      if (loadedFrames.length === 2 && error instanceof Error)
-        failure = error.message;
+      // With both frames in hand, the failure is the mask's.
+      failure =
+        loadedFrames.length < 2
+          ? "A frame failed its integrity check and is not used"
+          : error instanceof Error
+            ? error.message
+            : "The vessel mask could not be read";
     } finally {
       canceled = signal.aborted;
       release();
@@ -1476,7 +1480,9 @@ export default function ProjectionOverlayStudio({
             </p>
           )}
           {shown?.failure && (
-            <p role="alert">Overlay computation failed: {shown.failure}.</p>
+            <p role="alert">
+              Overlay computation failed: {shown.failure.replace(/\.$/, "")}.
+            </p>
           )}
           {shown?.pair ? (
             <figure

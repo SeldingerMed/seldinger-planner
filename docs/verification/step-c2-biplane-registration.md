@@ -82,7 +82,7 @@ What the harness tests show: `ljubljanaEvaluation.test.ts` writes a phantom subj
 
 ## Saved record
 
-`tests/test_projection_registration_server.py` has 44 new cases for version 2, beside the 64 for version 1, which are unchanged, and 12 for stored rows that are not records at all. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 36 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` ten new tests.
+`tests/test_projection_registration_server.py` has 44 new cases for version 2, beside the 64 for version 1, which are unchanged, and 12 for stored rows that are not records at all. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 36 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` eleven new tests.
 
 ## Mutation checks
 
@@ -120,7 +120,7 @@ In Chrome against the local server:
 
 Three read-only reviewers looked at the backend, the browser code and the research wording at `7b65cd5`. Each finding was checked against the code before anything changed.
 
-Fixed, each with a test, and each test checked by removing the fix in a throwaway copy (18 mutants across this section and the next, 18 killed, baseline and restored runs green):
+Fixed, each with a test, and each test checked by removing the fix in a throwaway copy (18 mutants across this section and the first automated round, 18 killed, baseline and restored runs green):
 
 - A stored row nested too deeply to decode answered with a server error instead of the fail-closed 503. This predates Step C2. The reviewer's other claim, that a stored row which is not an object would do the same, was not reproduced: those rows already answer 503, and a test now pins that.
 - The studio kept an isocenter, entered geometry and frame choices when the case under it changed. This also predates Step C2. They are now cleared when the source changes and kept across revisions of one case.
@@ -143,6 +143,15 @@ The repository's review app raised three findings on `7b65cd5`. All three were f
 - Redrawing a saved record left whatever had last been typed in the geometry controls, which could contradict the overlay beside them and, with typed values out of range, show an alert about geometry next to a correctly redrawn record. One reviewer above raised the same point and it was first declined. The controls now take the record's own values: each plane's angles, distances, entered field width (the stored width divided by the fitted scale), fit setting, polarity and sensitivity, and the record's isocenter. This applies to single-plane records too.
 - The evaluation runner created its results directory before checking that it lies outside the repository. The check now resolves links through the nearest existing ancestor, so it runs first and creates nothing (`web/src/research/outsideRepository.ts`, with its own tests).
 - A test comment said the opposite of what the test asserts. Corrected.
+
+## Automated review, second round
+
+Two findings on `69818d2`, neither critical or major.
+
+- The review read the two-plane proposal as blaming a frame when the mask read fails without a message. The code already named the mask in that case, by setting the message before the read. The flow was easy to misread, so the attribution is now written out in one place, and a test covers a mask that fails its digest and a mask read that fails with no message. A doubled full stop after a message that already ended in one was removed.
+- The engine's comment and the guide said every evaluation scores both planes. An evaluation stops at the first plane that leaves too few points inside its frame. The wording was corrected. The engine's behavior is unchanged.
+
+Three further mutants on the failure attribution were killed, with baseline and restored runs green.
 
 ## A test race found and fixed
 

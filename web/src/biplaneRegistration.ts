@@ -42,7 +42,8 @@ export const BIPLANE_REGISTRATION_LIMITS = {
   /** Distance cap of the last refinement, in millimeters at the isocenter
    * plane. Earlier stages use the single-plane method's wider cap. */
   final_truncation_mm: 2,
-  /** One evaluation scores both planes. */
+  /** One evaluation scores both planes, or stops at the first plane that
+   * leaves too few points inside its frame. */
   max_evaluations: 60_000,
 } as const;
 
