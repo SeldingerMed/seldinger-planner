@@ -14,7 +14,7 @@ from test_territory_workflow_server import configured
 from planner import frame_source
 from planner.frame_source import frame_filename
 from planner.projection_plan import PlanConflict
-from planner.projection_registration import RegistrationLedger
+from planner.projection_registration import RegistrationLedger, plane_angle_deg
 from planner.segmentation_state import SegmentationLedger
 
 SQUARE = {"rows": ROWS, "columns": ROWS}
@@ -408,3 +408,286 @@ def test_malformed_and_oversized_bodies_are_rejected(tmp_path, monkeypatch, payl
     assert client.put(route, content=payload, headers=headers).status_code == 422
     assert client.put(route, content=b" " * 65537, headers=headers).status_code == 413
     assert client.get(route).json()["registration_revision"] == 0
+
+
+# Two-plane records (version 2).
+
+FRONTAL = {**VIEW, "primary_deg": 0.0, "secondary_deg": 0.0}
+LATERAL = {**VIEW, "primary_deg": 90.0, "secondary_deg": 0.0}
+PAIR_VERSION = "step-c2-biplane-registration-v2"
+PAIR_METHOD = "centerline_distance_compass_biplane_v1"
+
+
+def pair_ready(tmp_path, monkeypatch, planes=None):
+    planes = planes or [square(png_plane("a")), square(png_plane("b"))]
+    return ready(tmp_path, monkeypatch, value=manifest(planes))
+
+
+def pair_inputs(mask, listed, a=None, b=None, **change):
+    def entry(position, view, edits):
+        plane = listed["manifest"]["planes"][position]
+        frame = plane["frames"][0]
+        return {
+            "plane": plane["plane"],
+            "frame_index": frame["index"],
+            "frame_sha256": frame["sha256"],
+            "geometry_source": "operator_entered",
+            "view": dict(view),
+            "fit_detector_scale": False,
+            "detector_scale": 1.0,
+            "polarity": "dark",
+            "sensitivity": 0.5,
+            "reported_score": dict(SCORE),
+            "reported_start_score": {**SCORE, "mean_distance_mm": 5.5 + position},
+            **(edits or {}),
+        }
+
+    return {
+        "confirmed": True,
+        "same_position_attested": True,
+        "frame_source_id": "run-01",
+        "frame_manifest_revision": listed["manifest_revision"],
+        "mask_candidate_id": mask["candidate_id"],
+        "mask_sha256": mask["mask_sha256"],
+        "isocenter": [16.0, 16.0, 16.0],
+        "volume_to_carm_ras": turn(90.0, (3.0, 4.0, 0.0)),
+        "method": PAIR_METHOD,
+        "planes": [entry(0, FRONTAL, a), entry(1, LATERAL, b)],
+        **change,
+    }
+
+
+def pair_body(case, reference, mask, listed, revision=0, **change):
+    return {
+        "artifact_version": case["artifact_version"],
+        "reference_revision": reference,
+        "registration_revision": revision,
+        "inputs": pair_inputs(mask, listed, **change),
+    }
+
+
+def test_plane_angle_is_the_angle_between_central_rays():
+    assert plane_angle_deg(FRONTAL, LATERAL) == pytest.approx(90)
+    assert plane_angle_deg(FRONTAL, {**FRONTAL, "primary_deg": 31.0}) == pytest.approx(31)
+    # Opposite directions along one line are the same plane.
+    assert plane_angle_deg(FRONTAL, {**FRONTAL, "primary_deg": 151.0}) == pytest.approx(29)
+    assert plane_angle_deg(FRONTAL, {**FRONTAL, "primary_deg": 180.0}) == pytest.approx(0, abs=1e-6)
+    assert plane_angle_deg(FRONTAL, {**FRONTAL, "secondary_deg": 40.0}) == pytest.approx(40)
+
+
+def test_two_plane_registration_roundtrips_and_binds_both_frames(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    request = pair_body(case, reference, mask, listed)
+    response = client.put(route, json=request)
+    assert response.status_code == 200, response.text
+    saved = response.json()
+    current = saved["current"]
+    assert saved["registration_revision"] == 1
+    assert current["status"] == "current" and current["evidence"] == "verified"
+    assert current["inputs"] == request["inputs"]
+    assert [entry["plane"] for entry in current["inputs"]["planes"]] == ["a", "b"]
+    assert current["dependencies"]["version"] == PAIR_VERSION
+    assert current["result"] == {
+        "version": PAIR_VERSION,
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "method": PAIR_METHOD,
+        "status": "operator_confirmed_proposal",
+        "validated": False,
+        "same_position": "operator_attested_not_checked",
+        "plane_angle_deg": 90.0,
+        "rotation_deg": 90.0,
+        "isocenter_shift_mm": round(math.hypot(-29, 4), 3),
+        "score_source": "browser_reported_not_recomputed",
+        "planes": [
+            {
+                "plane": label,
+                "geometry_source": "operator_entered",
+                "reported_score": SCORE,
+                "reported_start_score": {**SCORE, "mean_distance_mm": 5.5 + position},
+            }
+            for position, label in enumerate("ab")
+        ],
+    }
+    assert client.get(route).json() == saved
+    # A single-plane confirmation on plane b follows as revision 2, and reads
+    # back as a version 1 record.
+    plane_b = listed["manifest"]["planes"][1]
+    single = body(
+        case,
+        reference,
+        mask,
+        listed,
+        1,
+        plane="b",
+        frame_index=plane_b["frames"][0]["index"],
+        frame_sha256=plane_b["frames"][0]["sha256"],
+    )
+    after = client.put(route, json=single)
+    assert after.status_code == 200, after.text
+    assert after.json()["current"]["dependencies"]["version"] == (
+        "step-c1-projection-registration-v1"
+    )
+    assert after.json()["current"]["result"]["method"] == "centerline_distance_compass_v1"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"confirmed": False},
+        {"same_position_attested": False},
+        {"same_position_attested": "true"},
+        {"same_position_attested": 1},
+        {"plane": "a"},  # a version 1 field
+        {"view": dict(FRONTAL)},
+        {"polarity": "dark"},
+        {"note": "validated"},
+        {"isocenter": [16.0, 16.0]},
+        {"volume_to_carm_ras": [[2.0, 0, 0, 0], [0, 1.0, 0, 0], [0, 0, 1.0, 0], [0, 0, 0, 1]]},
+        {"a": {"plane": "single"}},
+        {"a": {"plane": "b"}},  # plane b twice
+        {"a": {"plane": "b"}, "b": {"plane": "a"}},  # out of order
+        {"b": {"frame_index": -1}},
+        {"b": {"frame_sha256": "A" * 64}},
+        {"b": {"geometry_source": "guessed"}},
+        {"b": {"detector_scale": 1.1}},  # a scale other than one without a fit
+        {"b": {"fit_detector_scale": True, "detector_scale": 1.46}},
+        {"b": {"polarity": "inverted"}},
+        {"b": {"sensitivity": 1.5}},
+        {"b": {"reported_score": {**SCORE, "matched_fraction": 1.2}}},
+        {"b": {"reported_score": {**SCORE, "accuracy_mm": 1.0}}},
+        {"b": {"reported_start_score": None}},
+        {"b": {"view": {**LATERAL, "source_isocenter_mm": 1300.0}}},
+        {"b": {"pixels": "AAAA"}},
+        # Planes 29 degrees apart, directly and through the opposite direction.
+        {"b": {"view": {**FRONTAL, "primary_deg": 29.0}}},
+        {"b": {"view": {**FRONTAL, "primary_deg": 151.0}}},
+    ],
+)
+def test_two_plane_shape_rejections_do_not_store(tmp_path, monkeypatch, change):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    response = client.put(route, json=pair_body(case, reference, mask, listed, **change))
+    assert response.status_code == 422, response.text
+    assert "admitted frame or accepted mask" not in response.text
+    assert client.get(route).json()["registration_revision"] == 0
+
+
+def test_two_plane_inputs_with_one_or_three_planes_are_refused(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    for keep in (slice(0, 1), slice(0, 0)):
+        request = pair_body(case, reference, mask, listed)
+        request["inputs"]["planes"] = request["inputs"]["planes"][keep]
+        assert client.put(route, json=request).status_code == 422
+    request = pair_body(case, reference, mask, listed)
+    request["inputs"]["planes"].append(request["inputs"]["planes"][1])
+    assert client.put(route, json=request).status_code == 422
+    assert client.get(route).json()["registration_revision"] == 0
+
+
+def test_planes_exactly_at_the_smallest_angle_are_accepted(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    edge = pair_body(case, reference, mask, listed, b={"view": {**FRONTAL, "primary_deg": 30.0}})
+    saved = client.put(route, json=edge)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["current"]["result"]["plane_angle_deg"] == 30.0
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"frame_source_id": "run-02"},
+        {"frame_manifest_revision": "0" * 64},
+        {"mask_sha256": "0" * 64},
+        {"isocenter": [40.0, 16.0, 16.0]},
+        {"a": {"frame_sha256": "0" * 64}},
+        {"b": {"frame_sha256": "0" * 64}},
+        {"b": {"frame_index": 4}},
+        {"b": {"view": {**LATERAL, "detector_height_mm": 160.0}}},
+        {"b": {"geometry_source": "frame_manifest"}},  # the PNG plane carries no geometry
+    ],
+)
+def test_two_plane_bindings_must_match_both_admitted_frames(tmp_path, monkeypatch, change):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    response = client.put(route, json=pair_body(case, reference, mask, listed, **change))
+    assert response.status_code == 422, response.text
+    assert "admitted frame or accepted mask" in response.json()["detail"]
+    assert client.get(route).json()["registration_revision"] == 0
+
+
+def test_a_two_plane_record_needs_a_declared_pair(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    request = pair_body(
+        case,
+        reference,
+        mask,
+        {
+            **listed,
+            "manifest": {
+                "planes": [
+                    {**listed["manifest"]["planes"][0], "plane": "a"},
+                    {**listed["manifest"]["planes"][0], "plane": "b"},
+                ]
+            },
+        },
+    )
+    response = client.put(route, json=request)
+    assert response.status_code == 422, response.text
+    assert "admitted frame or accepted mask" in response.json()["detail"]
+
+
+def test_losing_either_frame_makes_two_plane_evidence_unavailable(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, directory = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    assert client.put(route, json=pair_body(case, reference, mask, listed)).status_code == 200
+    for label in "ab":
+        target = directory / frame_filename(label, 3)
+        original = target.read_bytes()
+        target.write_bytes(original[:-1] + bytes([original[-1] ^ 1]))
+        assert client.get(route).json()["current"]["evidence"] == "unavailable", label
+        target.write_bytes(original)
+        assert client.get(route).json()["current"]["evidence"] == "verified"
+
+
+def test_tampered_two_plane_record_fails_closed(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    assert client.put(route, json=pair_body(case, reference, mask, listed)).status_code == 200
+    database = tmp_path.resolve() / "case.sqlite3"
+
+    def relabel(value):
+        return {**value, "version": "step-c1-projection-registration-v1"}
+
+    for column, edit in (
+        ("result", lambda value: {**value, "validated": True}),
+        ("result", lambda value: {**value, "plane_angle_deg": 45.0}),
+        ("result", lambda value: {**value, "same_position": "checked"}),
+        ("inputs", lambda value: {**value, "same_position_attested": False}),
+        ("inputs", lambda value: {**value, "planes": value["planes"][::-1]}),
+        # The record's version must be the one its method belongs to.
+        ("dependencies", relabel),
+    ):
+        with closing(sqlite3.connect(database)) as conn, conn:
+            original = conn.execute(f"SELECT {column} FROM projection_registrations").fetchone()[0]
+            conn.execute(
+                f"UPDATE projection_registrations SET {column}=?",
+                (json.dumps(edit(json.loads(original))),),
+            )
+        response = client.get(route)
+        assert response.status_code == 503, edit(json.loads(original))
+        with closing(sqlite3.connect(database)) as conn, conn:
+            conn.execute(f"UPDATE projection_registrations SET {column}=?", (original,))
+    assert client.get(route).status_code == 200
+    # An unknown record version is not read at all.
+    with closing(sqlite3.connect(database)) as conn, conn:
+        original = conn.execute("SELECT dependencies FROM projection_registrations").fetchone()[0]
+        conn.execute(
+            "UPDATE projection_registrations SET dependencies=?",
+            (json.dumps({**json.loads(original), "version": "step-c9"}),),
+        )
+    unknown = client.get(route).json()["current"]
+    assert unknown["status"] == "stale" and unknown["inputs"] is None

@@ -184,6 +184,18 @@
 .angio-overlay-figure canvas {
   image-rendering: auto;
 }
+.angio-overlay-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-items: start;
+}
+.angio-overlay-figure.enlarged .angio-overlay-pair canvas {
+  width: 100%;
+  height: auto;
+  max-height: 78vh;
+  object-fit: contain;
+}
 .angio-overlay-figure .native-actions {
   display: flex;
   flex-wrap: wrap;

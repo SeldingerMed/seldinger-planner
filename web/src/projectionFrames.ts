@@ -1,7 +1,13 @@
 /** Admitted angiographic pixel frames and the saved 2D-to-3D registration
- * proposal: strict parsing of what the server returns, and verification of
+ * proposal, single-plane or two-plane: strict parsing of what the server
+ * returns, and verification of
  * every pixel buffer against its manifest digest before anything is drawn.
  * Nothing here sends pixels anywhere. */
+import {
+  BIPLANE_REGISTRATION_METHOD,
+  planeAngleDeg,
+  planesFarEnough,
+} from "./biplaneRegistration";
 import { sha256Hex } from "./browserCrypto";
 import { validateView, type ViewNumbers } from "./carmGeometry";
 import type { Vec3 } from "./obliqueSlice";
@@ -22,6 +28,7 @@ export const FRAME_LIMITS = {
   max_frame_index: 1_000_000,
 } as const;
 export const REGISTRATION_VERSION = "step-c1-projection-registration-v1";
+export const BIPLANE_REGISTRATION_VERSION = "step-c2-biplane-registration-v2";
 export const FRAME_SOURCE_ID = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 const SHA = /^[a-f0-9]{64}$/;
 const VIEW_KEYS = [
@@ -437,34 +444,57 @@ export async function decodeVesselMask(
   return voxels;
 }
 
-export type RegistrationInputs = {
-  confirmed: true;
-  frame_source_id: string;
-  frame_manifest_revision: string;
-  plane: PlaneLabel;
+/** What a confirmed record states about one plane. */
+type PlaneFields = {
   frame_index: number;
   frame_sha256: string;
-  mask_candidate_id: string;
-  mask_sha256: string;
   geometry_source: "frame_manifest" | "operator_entered";
   /** The view the proposal was scored in. With a fitted detector scale, its
    * detector size is the entered size times `detector_scale`. */
   view: ViewNumbers;
   fit_detector_scale: boolean;
   detector_scale: number;
-  isocenter: Vec3;
-  volume_to_carm_ras: number[][];
-  method: typeof PROJECTION_REGISTRATION_METHOD;
   polarity: Polarity;
   sensitivity: number;
   reported_score: RegistrationScore;
   reported_start_score: RegistrationScore;
 };
+type SharedFields = {
+  confirmed: true;
+  frame_source_id: string;
+  frame_manifest_revision: string;
+  mask_candidate_id: string;
+  mask_sha256: string;
+  isocenter: Vec3;
+  volume_to_carm_ras: number[][];
+};
+/** Version 1: one pose against one frame. */
+export type RegistrationInputs = SharedFields &
+  PlaneFields & {
+    plane: PlaneLabel;
+    method: typeof PROJECTION_REGISTRATION_METHOD;
+  };
+export type BiplanePlaneInputs = PlaneFields & { plane: "a" | "b" };
+/** Version 2: one pose against one frame from each plane of a declared
+ * pair. The operator attests that both frames show the patient in the same
+ * position; nothing checks it. */
+export type BiplaneRegistrationInputs = SharedFields & {
+  same_position_attested: true;
+  method: typeof BIPLANE_REGISTRATION_METHOD;
+  planes: [BiplanePlaneInputs, BiplanePlaneInputs];
+};
+export type SavedInputs = RegistrationInputs | BiplaneRegistrationInputs;
+export const isBiplane = (
+  inputs: SavedInputs,
+): inputs is BiplaneRegistrationInputs =>
+  inputs.method === BIPLANE_REGISTRATION_METHOD;
 export type RegistrationResult = {
   status: "operator_confirmed_proposal";
   validated: false;
   rotation_deg: number;
   isocenter_shift_mm: number;
+  /** Angle between the two central rays; null for a single-plane record. */
+  plane_angle_deg: number | null;
 };
 export type RegistrationCurrent =
   | { status: "not_confirmed" }
@@ -472,10 +502,10 @@ export type RegistrationCurrent =
   | {
       status: "current";
       registration_id: string;
-      /** Whether the frame and mask the record names are still installed
-       * and unchanged. */
+      /** Whether every frame and the mask the record names are still
+       * installed and unchanged. */
       evidence: "verified" | "unavailable";
-      inputs: RegistrationInputs;
+      inputs: SavedInputs;
       result: RegistrationResult;
     };
 export type SavedRegistration = Identity & {
@@ -499,44 +529,59 @@ function parseScore(value: unknown): RegistrationScore {
   return value as RegistrationScore;
 }
 
-function parseInputs(value: unknown): RegistrationInputs {
-  if (
-    !exact(value, [
-      "confirmed",
-      "frame_source_id",
-      "frame_manifest_revision",
-      "plane",
-      "frame_index",
-      "frame_sha256",
-      "mask_candidate_id",
-      "mask_sha256",
-      "geometry_source",
-      "view",
-      "fit_detector_scale",
-      "detector_scale",
-      "isocenter",
-      "volume_to_carm_ras",
-      "method",
-      "polarity",
-      "sensitivity",
-      "reported_score",
-      "reported_start_score",
-    ])
-  )
-    throw new Error("Invalid registration");
-  const [low, high] = PROJECTION_REGISTRATION_LIMITS.detector_scale;
+const SHARED_KEYS = [
+  "confirmed",
+  "frame_source_id",
+  "frame_manifest_revision",
+  "mask_candidate_id",
+  "mask_sha256",
+  "isocenter",
+  "volume_to_carm_ras",
+  "method",
+] as const;
+const PLANE_KEYS = [
+  "plane",
+  "frame_index",
+  "frame_sha256",
+  "geometry_source",
+  "view",
+  "fit_detector_scale",
+  "detector_scale",
+  "polarity",
+  "sensitivity",
+  "reported_score",
+  "reported_start_score",
+] as const;
+
+function checkShared(value: Record<string, unknown>) {
   if (
     value.confirmed !== true ||
     typeof value.frame_source_id !== "string" ||
     !FRAME_SOURCE_ID.test(value.frame_source_id) ||
-    ![
-      value.frame_manifest_revision,
-      value.frame_sha256,
-      value.mask_sha256,
-    ].every((item) => typeof item === "string" && SHA.test(item)) ||
-    !["single", "a", "b"].includes(value.plane as string) ||
+    ![value.frame_manifest_revision, value.mask_sha256].every(
+      (item) => typeof item === "string" && SHA.test(item),
+    ) ||
     typeof value.mask_candidate_id !== "string" ||
     !/^[A-Za-z0-9_-]{1,100}$/.test(value.mask_candidate_id) ||
+    !Array.isArray(value.isocenter) ||
+    value.isocenter.length !== 3 ||
+    !Array.from(value.isocenter).every(
+      (x) => typeof x === "number" && Number.isFinite(x),
+    )
+  )
+    throw new Error("Invalid registration");
+  validateRigid(value.volume_to_carm_ras);
+}
+/** Checks one plane's fields and returns its view. */
+function checkPlane(
+  value: Record<string, unknown>,
+  labels: string[],
+): ViewNumbers {
+  const [low, high] = PROJECTION_REGISTRATION_LIMITS.detector_scale;
+  if (
+    !labels.includes(value.plane as string) ||
+    typeof value.frame_sha256 !== "string" ||
+    !SHA.test(value.frame_sha256) ||
     !["frame_manifest", "operator_entered"].includes(
       value.geometry_source as string,
     ) ||
@@ -546,23 +591,51 @@ function parseInputs(value: unknown): RegistrationInputs {
     (!value.fit_detector_scale && value.detector_scale !== 1) ||
     (value.fit_detector_scale &&
       value.geometry_source !== "operator_entered") ||
-    !Array.isArray(value.isocenter) ||
-    value.isocenter.length !== 3 ||
-    !Array.from(value.isocenter).every(
-      (x) => typeof x === "number" && Number.isFinite(x),
-    ) ||
-    value.method !== PROJECTION_REGISTRATION_METHOD ||
     !["dark", "bright"].includes(value.polarity as string) ||
     !fraction(value.sensitivity)
   )
     throw new Error("Invalid registration");
   integer(value.frame_index, 0, FRAME_LIMITS.max_frame_index);
-  parseView(value.view);
-  validateRigid(value.volume_to_carm_ras);
   parseScore(value.reported_score);
   parseScore(value.reported_start_score);
+  return parseView(value.view);
+}
+
+function parseInputs(value: unknown): SavedInputs {
+  if (!isObject(value)) throw new Error("Invalid registration");
+  if (value.method === BIPLANE_REGISTRATION_METHOD) {
+    const planes = value.planes;
+    if (
+      !exact(value, [...SHARED_KEYS, "same_position_attested", "planes"]) ||
+      value.same_position_attested !== true ||
+      !Array.isArray(planes) ||
+      planes.length !== 2 ||
+      !planes.every((plane) => exact(plane, [...PLANE_KEYS]))
+    )
+      throw new Error("Invalid registration");
+    checkShared(value);
+    const first = checkPlane(planes[0], ["a"]),
+      second = checkPlane(planes[1], ["b"]);
+    if (!planesFarEnough(planeAngleDeg(first, second)))
+      throw new Error("Invalid registration");
+    return value as BiplaneRegistrationInputs;
+  }
+  if (
+    !exact(value, [...SHARED_KEYS, ...PLANE_KEYS]) ||
+    value.method !== PROJECTION_REGISTRATION_METHOD
+  )
+    throw new Error("Invalid registration");
+  checkShared(value);
+  checkPlane(value, ["single", "a", "b"]);
   return value as RegistrationInputs;
 }
+
+const sameScore = (reported: unknown, expected: RegistrationScore) => {
+  const score = parseScore(reported);
+  return (Object.keys(expected) as (keyof RegistrationScore)[]).every(
+    (key) => score[key] === expected[key],
+  );
+};
 
 /** Parses `GET` and `PUT /api/cases/{id}/projection-registration` and binds
  * the answer to the identity that was asked about. */
@@ -634,7 +707,6 @@ export function parseSavedRegistration(
       "reference_revision",
       "version",
     ]) ||
-    current.dependencies.version !== REGISTRATION_VERSION ||
     current.dependencies.case_id !== identity.case_id ||
     current.dependencies.image_sha256 !== identity.image_sha256 ||
     current.dependencies.artifact_version !== identity.artifact_version ||
@@ -642,10 +714,14 @@ export function parseSavedRegistration(
     !digest(current.input_sha256)
   )
     throw new Error("Invalid registration");
-  const inputs = parseInputs(current.inputs);
+  const inputs = parseInputs(current.inputs),
+    pair = isBiplane(inputs),
+    // A record's version is the one its method belongs to.
+    version = pair ? BIPLANE_REGISTRATION_VERSION : REGISTRATION_VERSION;
   const result = current.result;
   if (
     current.status !== "current" ||
+    current.dependencies.version !== version ||
     !["verified", "unavailable"].includes(current.evidence as string) ||
     !exact(result, [
       "version",
@@ -653,18 +729,17 @@ export function parseSavedRegistration(
       "method",
       "status",
       "validated",
-      "geometry_source",
       "rotation_deg",
       "isocenter_shift_mm",
       "score_source",
-      "reported_score",
-      "reported_start_score",
+      ...(pair
+        ? ["same_position", "plane_angle_deg", "planes"]
+        : ["geometry_source", "reported_score", "reported_start_score"]),
     ]) ||
     result.convention !== "dicom_xa_patient_longitude_latitude_ras_v1" ||
     result.method !== inputs.method ||
-    result.geometry_source !== inputs.geometry_source ||
     result.score_source !== "browser_reported_not_recomputed" ||
-    result.version !== REGISTRATION_VERSION ||
+    result.version !== version ||
     result.status !== "operator_confirmed_proposal" ||
     result.validated !== false ||
     typeof result.rotation_deg !== "number" ||
@@ -676,20 +751,46 @@ export function parseSavedRegistration(
     result.isocenter_shift_mm < 0
   )
     throw new Error("Invalid registration");
-  for (const [reported, expected] of [
-    [result.reported_score, inputs.reported_score],
-    [result.reported_start_score, inputs.reported_start_score],
-  ] as const) {
-    const score = parseScore(reported);
+  let planeAngle: number | null = null;
+  if (pair) {
+    const planes = result.planes,
+      angle = result.plane_angle_deg;
     if (
-      Object.keys(expected).some(
-        (key) =>
-          score[key as keyof RegistrationScore] !==
-          expected[key as keyof RegistrationScore],
+      result.same_position !== "operator_attested_not_checked" ||
+      typeof angle !== "number" ||
+      // The server's angle, rounded to a thousandth, must be the views' own.
+      !(
+        Math.abs(
+          angle - planeAngleDeg(inputs.planes[0].view, inputs.planes[1].view),
+        ) <= 0.001
+      ) ||
+      !Array.isArray(planes) ||
+      planes.length !== 2 ||
+      !planes.every(
+        (plane, k) =>
+          exact(plane, [
+            "plane",
+            "geometry_source",
+            "reported_score",
+            "reported_start_score",
+          ]) &&
+          plane.plane === inputs.planes[k].plane &&
+          plane.geometry_source === inputs.planes[k].geometry_source &&
+          sameScore(plane.reported_score, inputs.planes[k].reported_score) &&
+          sameScore(
+            plane.reported_start_score,
+            inputs.planes[k].reported_start_score,
+          ),
       )
     )
       throw new Error("Invalid registration");
-  }
+    planeAngle = angle;
+  } else if (
+    result.geometry_source !== inputs.geometry_source ||
+    !sameScore(result.reported_score, inputs.reported_score) ||
+    !sameScore(result.reported_start_score, inputs.reported_start_score)
+  )
+    throw new Error("Invalid registration");
   return {
     ...base,
     current: {
@@ -702,6 +803,7 @@ export function parseSavedRegistration(
         validated: false,
         rotation_deg: result.rotation_deg,
         isocenter_shift_mm: result.isocenter_shift_mm,
+        plane_angle_deg: planeAngle,
       },
     },
   };

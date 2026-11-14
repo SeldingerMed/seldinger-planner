@@ -11,6 +11,7 @@ import {
   BIPLANE_REGISTRATION_LIMITS as LIMITS,
   createBiplaneRegistrationJob,
   planeAngleDeg,
+  planesFarEnough,
   proposeBiplaneRegistration,
   type BiplaneRegistrationInput,
   type BiplaneRegistrationProposal,
@@ -398,6 +399,15 @@ describe("biplane registration proposal", () => {
       expect(() => proposeBiplaneRegistration(near(angle))).toThrow(
         "The two planes are too close to parallel",
       );
+    // Planes entered exactly at the limit pass, whichever way rounding falls.
+    expect(planesFarEnough(planeAngleDeg(AP, LAO30))).toBe(true);
+    expect(planesFarEnough(planeAngleDeg(AP, RAO30))).toBe(true);
+    expect(
+      planesFarEnough(planeAngleDeg(AP, { ...AP, primary_deg: 150 })),
+    ).toBe(true);
+    expect(planesFarEnough(30)).toBe(true);
+    expect(planesFarEnough(29.999)).toBe(false);
+    expect(planesFarEnough(Number.NaN)).toBe(false);
     expect(planeAngleDeg(AP, { ...AP, primary_deg: 31 })).toBeCloseTo(31);
     expect(planeAngleDeg(AP, { ...AP, primary_deg: 151 })).toBeCloseTo(29);
     expect(

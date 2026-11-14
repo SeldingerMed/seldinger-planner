@@ -97,6 +97,12 @@ const rad = Math.PI / 180;
 const dot = (a: readonly number[], b: readonly number[]) =>
   a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 
+/** Whether two central rays this many degrees apart can be fitted together.
+ * The margin absorbs rounding, so that planes entered exactly at the limit
+ * pass here, in the saved-record parser and on the server alike. */
+export const planesFarEnough = (plane_angle_deg: number) =>
+  plane_angle_deg >= BIPLANE_REGISTRATION_LIMITS.min_plane_angle_deg - 1e-9;
+
 /** Angle between the central rays of two views, 0 to 90 degrees. */
 export function planeAngleDeg(a: ViewNumbers, b: ViewNumbers): number {
   const cosine = Math.abs(
@@ -285,7 +291,7 @@ function* solve(
     finiteView(plane.view, plane.frame),
   );
   const plane_angle_deg = planeAngleDeg(views[0], views[1]);
-  if (!(plane_angle_deg >= L.min_plane_angle_deg))
+  if (!planesFarEnough(plane_angle_deg))
     throw new Error("The two planes are too close to parallel");
   const total = points.length / 3;
   // Points at the start pose, and their centroid: the pivot of the search.
