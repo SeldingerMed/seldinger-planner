@@ -76,6 +76,7 @@ Order of events, all on 2026-11-14:
 3. One run at `352ebca` with a clean tree: 330 registrations.
 4. `0e1f64c`: the results.
 5. `557cdc0`: the studio and record work. It gave the engine's plane-angle check a rounding margin of one billionth of a degree, so that planes entered exactly 30 degrees apart are admitted. The evaluation was run again at this commit. All 330 runs were identical to the first run in every recorded number except run time.
+6. `dd59fee`: the review fixes below, which touch the decode script's input checks and the runner's destination check and leave the engines and the harness as they were. The decode step and the evaluation were run again. The decoded output and all 330 runs were again identical to the first run apart from run time, and a results path inside the repository was refused with nothing created.
 
 What the harness tests show: `ljubljanaEvaluation.test.ts` writes a phantom subject in the prepared layout with its cameras stored the way the public copy stores them, and runs the whole evaluation on those files. Reversing either principal-point sign, the beam direction or the volume centering in `ljubljanaGeometry.ts` makes it fail. `ljubljanaGeometry.test.ts` checks the camera mapping against an independent projection written from the stored conventions.
 
