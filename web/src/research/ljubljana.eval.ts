@@ -6,31 +6,21 @@
  *     npx vitest run --config vitest.research.config.ts
  * Both directories must lie outside this repository. Per-run detail is
  * written only to LJUBLJANA_RESULTS; the summary is also printed. */
-import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { it } from "vitest";
 import { evaluatePrepared } from "./ljubljanaEvaluation";
+import { outsideRepository } from "./outsideRepository";
 
 const PREPARED = process.env.LJUBLJANA_PREPARED,
   RESULTS = process.env.LJUBLJANA_RESULTS;
-const REPOSITORY = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-
-function outside(path: string): string {
-  const real = realpathSync(path);
-  if (real === REPOSITORY || real.startsWith(REPOSITORY + sep))
-    throw new Error(
-      "Evaluation data and results must stay outside the repository",
-    );
-  return real;
-}
 
 it.skipIf(!PREPARED || !RESULTS)(
   "runs the committed protocol",
   () => {
-    const prepared = outside(PREPARED!);
-    mkdirSync(RESULTS!, { recursive: true });
-    const results = outside(RESULTS!);
+    // Both are checked before anything is created.
+    const prepared = outsideRepository(PREPARED!),
+      results = outsideRepository(RESULTS!);
+    mkdirSync(results, { recursive: true });
     const { arms, summary } = evaluatePrepared(prepared, undefined, (message) =>
       console.log(message),
     );

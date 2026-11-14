@@ -896,6 +896,16 @@ test("shows a saved proposal only while its evidence is unchanged", async () => 
   expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(
     /with projected 3D vessels/,
   );
+  // The controls show the geometry the record was computed with.
+  expect(
+    ["Source to isocenter (mm)", "Field width at the detector (mm)"].map(
+      (name) =>
+        (screen.getByRole("textbox", { name }) as HTMLInputElement).value,
+    ),
+  ).toEqual(["800", "180"]);
+  expect(
+    screen.getByRole("checkbox", { name: /Fit the field size/ }),
+  ).toHaveProperty("checked", false);
   expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
   view.unmount();
 
@@ -1533,13 +1543,40 @@ test("shows a saved two-plane proposal only while both frames are unchanged", as
   expect(screen.getByRole("figure").textContent).toMatch(
     /saved operator-confirmed two-plane proposal/,
   );
+  // The controls now show what the record was computed with: plane A is
+  // open, with the record's geometry, no fit and the record's isocenter.
+  const shownValue = (name: string | RegExp) =>
+    (screen.getByRole("textbox", { name }) as HTMLInputElement).value;
+  expect(screen.getByRole("combobox", { name: "Plane" })).toHaveProperty(
+    "value",
+    "a",
+  );
+  expect([
+    shownValue(/Primary angle/),
+    shownValue("Source to isocenter (mm)"),
+    shownValue("Field width at the detector (mm)"),
+  ]).toEqual(["0", "800", "180"]);
+  expect(
+    screen.getByRole("checkbox", { name: /Fit the field size/ }),
+  ).toHaveProperty("checked", false);
+  expect(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  ).toHaveProperty("checked", true);
+  expect(status("Overlay isocenter").textContent).toBe(
+    `Isocenter: ${pivot.map((x) => x.toFixed(1)).join(", ")} mm (RAS)`,
+  );
+  expect(status("Two-plane selection").textContent).toMatch(
+    /The central rays are 90° apart\./,
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
   // A redraw extracts no lines and offers nothing to save.
   expect(screen.getByRole("figure").textContent).not.toMatch(/Amber/);
   expect(
     screen.queryByRole("button", { name: "Save confirmed proposal" }),
   ).toBeNull();
   expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
-  // Opening another frame leaves the redraw: it shows the record's frames.
+  // Opening a frame drops the redraw, as any frame change does: the redraw
+  // shows the record's frames, not the one opened.
   fireEvent.change(screen.getByRole("combobox", { name: "Frame" }), {
     target: { value: "12" },
   });
@@ -1688,4 +1725,61 @@ test("with two planes the controls name the plane they edit", async () => {
   expect(
     screen.getByRole("combobox", { name: "Vessels in plane A's frame are" }),
   ).toBeTruthy();
+});
+
+test("redrawing a saved record replaces values typed for another proposal", async () => {
+  // A fitted record: the field was entered 150 mm wide and fitted 1.2 times
+  // wider. Plane B's record uses the admitted geometry.
+  const inputs = savedPairInputs();
+  inputs.planes[0] = {
+    ...inputs.planes[0],
+    fit_detector_scale: true,
+    detector_scale: 1.2,
+    polarity: "bright",
+    sensitivity: 0.65,
+    view: { ...VIEW, detector_width_mm: 180, detector_height_mm: 180 },
+  };
+  server({
+    ...pairRoutes,
+    registration: () => json(currentPairAnswer(inputs)),
+  });
+  render(<Harness />);
+  await screen.findByRole("status", { name: "Saved overlay proposal" });
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  // Values outside the C-arm bounds are typed for plane A, and pair mode
+  // is on, so the studio reports them.
+  type(/Primary angle/, "400");
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  );
+  expect(
+    screen.getAllByRole("alert").map((alert) => alert.textContent),
+  ).toEqual([
+    "Geometry values of one plane are outside the supported C-arm bounds.",
+    "Geometry values are outside the supported C-arm bounds.",
+  ]);
+  click("Show saved overlay");
+  await waitFor(
+    () =>
+      expect(status("Overlay status").textContent).toMatch(
+        /Showing the saved operator-confirmed two-plane proposal/,
+      ),
+    { timeout: 30000 },
+  );
+  // No alert about typed values sits beside the saved overlay.
+  expect(screen.queryByRole("alert")).toBeNull();
+  const shownValue = (name: string | RegExp) =>
+    (screen.getByRole("textbox", { name }) as HTMLInputElement).value;
+  expect(shownValue(/Primary angle/)).toBe("0");
+  // The entered width, not the fitted one.
+  expect(shownValue("Field width at the detector (mm)")).toBe("150");
+  expect(
+    screen.getByRole("checkbox", { name: /Fit the field size/ }),
+  ).toHaveProperty("checked", true);
+  expect(
+    screen.getByRole("combobox", { name: "Vessels in plane A's frame are" }),
+  ).toHaveProperty("value", "bright");
+  expect(screen.getByRole("slider")).toHaveProperty("value", "0.65");
 });

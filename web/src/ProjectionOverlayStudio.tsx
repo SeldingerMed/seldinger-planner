@@ -134,6 +134,37 @@ const defaults = (label: PlaneLabel): PlaneSettings => ({
   polarity: "dark",
   sensitivity: 0.5,
 });
+/** The controls as one plane of a confirmed record was computed with. A
+ * fitted view holds the entered field width times the fitted scale. */
+function settingsOf(
+  entry: Pick<
+    RegistrationInputs,
+    | "view"
+    | "geometry_source"
+    | "fit_detector_scale"
+    | "detector_scale"
+    | "polarity"
+    | "sensitivity"
+  >,
+): PlaneSettings {
+  const entered = entry.geometry_source === "operator_entered",
+    text = (value: number) => String(Number(value.toFixed(6)));
+  return {
+    editor: {
+      primary_deg: text(entry.view.primary_deg),
+      secondary_deg: text(entry.view.secondary_deg),
+      source_detector_mm: text(entry.view.source_detector_mm),
+      source_isocenter_mm: text(entry.view.source_isocenter_mm),
+      detector_width_mm: text(
+        entry.view.detector_width_mm / entry.detector_scale,
+      ),
+    },
+    entered,
+    fitScale: entered ? entry.fit_detector_scale : true,
+    polarity: entry.polarity,
+    sensitivity: entry.sensitivity,
+  };
+}
 const usesEntered = (plane: FramePlane, settings: PlaneSettings) =>
   settings.entered || !plane.geometry;
 /** The view a plane's search starts from: the admitted acquisition geometry,
@@ -893,6 +924,14 @@ export default function ProjectionOverlayStudio({
         Object.fromEntries(verified.map((one) => [one.plane, one.index])),
       );
       setPaired(isBiplane(savedInputs));
+      // The controls show what the record was computed with, not what was
+      // last typed, so they cannot contradict the overlay beside them.
+      setSettings(
+        Object.fromEntries(
+          named.map((entry) => [entry.plane, settingsOf(entry)]),
+        ),
+      );
+      setIsocenter(savedInputs.isocenter);
       setFrame(verified[0]);
       if (isBiplane(savedInputs)) {
         const [a, b] = savedInputs.planes,

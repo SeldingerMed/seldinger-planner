@@ -81,7 +81,7 @@ What the harness tests show: `ljubljanaEvaluation.test.ts` writes a phantom subj
 
 ## Saved record
 
-`tests/test_projection_registration_server.py` has 44 new cases for version 2, beside the 64 for version 1, which are unchanged, and 12 for stored rows that are not records at all. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 36 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` nine new tests.
+`tests/test_projection_registration_server.py` has 44 new cases for version 2, beside the 64 for version 1, which are unchanged, and 12 for stored rows that are not records at all. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 36 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` ten new tests.
 
 ## Mutation checks
 
@@ -119,7 +119,7 @@ In Chrome against the local server:
 
 Three read-only reviewers looked at the backend, the browser code and the research wording at `7b65cd5`. Each finding was checked against the code before anything changed.
 
-Fixed, each with a test, and each test checked by removing the fix in a throwaway copy (12 mutants, 12 killed, baseline and restored runs green):
+Fixed, each with a test, and each test checked by removing the fix in a throwaway copy (18 mutants across this section and the next, 18 killed, baseline and restored runs green):
 
 - A stored row nested too deeply to decode answered with a server error instead of the fail-closed 503. This predates Step C2. The reviewer's other claim, that a stored row which is not an object would do the same, was not reproduced: those rows already answer 503, and a test now pins that.
 - The studio kept an isocenter, entered geometry and frame choices when the case under it changed. This also predates Step C2. They are now cleared when the source changes and kept across revisions of one case.
@@ -131,10 +131,17 @@ Fixed, each with a test, and each test checked by removing the fix in a throwawa
 
 Declined:
 
-- Syncing the geometry panel to a redrawn saved record. The panel sets up the next proposal; the saved record is described by its own status line.
 - A distinct message for each way a frame can fail to load in the two-plane proposal. One message covers them, as it does for a single frame.
 - Rewording the protocol. It is kept byte-identical to the version committed before the run.
 - A change to the evaluation's frame window for frames far larger than any in this set. The harness is left as it ran. The case would end in a recorded failure, and it did not occur.
+
+## Automated review, first round
+
+The repository's review app raised three findings on `7b65cd5`. All three were fixed.
+
+- Redrawing a saved record left whatever had last been typed in the geometry controls, which could contradict the overlay beside them and, with typed values out of range, show an alert about geometry next to a correctly redrawn record. One reviewer above raised the same point and it was first declined. The controls now take the record's own values: each plane's angles, distances, entered field width (the stored width divided by the fitted scale), fit setting, polarity and sensitivity, and the record's isocenter. This applies to single-plane records too.
+- The evaluation runner created its results directory before checking that it lies outside the repository. The check now resolves links through the nearest existing ancestor, so it runs first and creates nothing (`web/src/research/outsideRepository.ts`, with its own tests).
+- A test comment said the opposite of what the test asserts. Corrected.
 
 ## A test race found and fixed
 
