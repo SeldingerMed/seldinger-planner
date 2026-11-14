@@ -387,6 +387,22 @@ export default function ProjectionOverlayStudio({
     setEditor = (next: (prior: Editor) => Editor) =>
       change((now) => ({ editor: next(now.editor) }));
 
+  // An isocenter and entered geometry describe one case's source. They are
+  // kept across revisions of that case and never carried to another source.
+  const source = allowed
+    ? stable([
+        identity.case_id,
+        identity.image_sha256,
+        identity.reference_revision,
+      ])
+    : "";
+  useEffect(() => {
+    setIsocenter(null);
+    setSettings({});
+    setPicks({});
+    setPaired(false);
+  }, [source]);
+
   const load = useCallback(async () => {
     if (!key) return;
     const owned = key,
@@ -515,7 +531,10 @@ export default function ProjectionOverlayStudio({
       pairSetup?.[0].view && pairSetup[1].view
         ? planeAngleDeg(pairSetup[0].view, pairSetup[1].view)
         : null,
-    pairReady = pairAngle !== null && planesFarEnough(pairAngle);
+    // Two views this far apart cannot show one picture.
+    pairDistinct = !!pairSetup && pairSetup[0].sha256 !== pairSetup[1].sha256,
+    pairReady =
+      pairAngle !== null && planesFarEnough(pairAngle) && pairDistinct;
   const singleScope =
     shownFrame && mask && view
       ? stable({
@@ -555,6 +574,8 @@ export default function ProjectionOverlayStudio({
         frames.manifest_revision === savedInputs.frame_manifest_revision
       : savedInputs &&
         shownFrame &&
+        shownFrame.source_id === savedInputs.frame_source_id &&
+        shownFrame.manifest_revision === savedInputs.frame_manifest_revision &&
         shownFrame.sha256 === savedInputs.frame_sha256
   )
     ? stable({ key, saved: current?.saved.registration_revision })
@@ -1030,6 +1051,9 @@ export default function ProjectionOverlayStudio({
 
   if (!allowed) return null;
   const saved = current?.saved.current;
+  // With two planes, the controls say which plane they edit.
+  const planeWords =
+    frames?.planes.length === 2 ? `, plane ${editing.toUpperCase()}` : "";
   return (
     <section
       id="angio-overlay"
@@ -1198,7 +1222,14 @@ export default function ProjectionOverlayStudio({
                         ? ` The central rays are ${pairAngle.toFixed(0)}° apart.`
                         : ""}
                     </p>
-                    {pairAngle !== null && !pairReady && (
+                    {!pairDistinct && (
+                      <p role="alert">
+                        Both planes name identical pixels. One image was
+                        admitted under both planes, so they cannot be fitted
+                        together.
+                      </p>
+                    )}
+                    {pairAngle !== null && !planesFarEnough(pairAngle) && (
                       <p role="alert">
                         A two-plane proposal needs central rays at least{" "}
                         {PAIR_LIMITS.min_plane_angle_deg}° apart. Closer planes
@@ -1218,7 +1249,7 @@ export default function ProjectionOverlayStudio({
           </fieldset>
           {plane && (
             <fieldset disabled={!editable}>
-              <legend>Acquisition geometry</legend>
+              <legend>Acquisition geometry{planeWords}</legend>
               {manifestView && (
                 <label>
                   <input
@@ -1316,10 +1347,12 @@ export default function ProjectionOverlayStudio({
           )}
           {plane && (
             <fieldset disabled={!editable}>
-              <legend>Proposal</legend>
+              <legend>Proposal{planeWords && pairOn ? "" : planeWords}</legend>
               <div className="native-view-controls">
                 <label>
-                  Vessels in this frame are
+                  {planeWords
+                    ? `Vessels in plane ${editing.toUpperCase()}'s frame are`
+                    : "Vessels in this frame are"}
                   <select
                     value={polarity}
                     onChange={(e) => setPolarity(e.target.value as Polarity)}
@@ -1329,9 +1362,10 @@ export default function ProjectionOverlayStudio({
                   </select>
                 </label>
                 <label>
-                  2D vessel sensitivity
+                  2D vessel sensitivity{planeWords}
                   <input
                     type="range"
+                    aria-valuetext={sensitivity.toFixed(2)}
                     min={0}
                     max={1}
                     step={0.05}

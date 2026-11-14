@@ -53,7 +53,8 @@ def square(plane):
 def write_frames(directory, value):
     for plane in value["planes"]:
         for item in plane["frames"]:
-            data = pixels(item["index"])[: ROWS * ROWS]
+            # Plane b holds other pixels than plane a at the same index.
+            data = pixels(item["index"] + (97 if plane["plane"] == "b" else 0))[: ROWS * ROWS]
             item["sha256"] = hashlib.sha256(data).hexdigest()
             (directory / frame_filename(plane["plane"], item["index"])).write_bytes(data)
     (directory / "frames.json").write_text(json.dumps(value))
@@ -547,6 +548,7 @@ def test_two_plane_registration_roundtrips_and_binds_both_frames(tmp_path, monke
         {"a": {"plane": "single"}},
         {"a": {"plane": "b"}},  # plane b twice
         {"a": {"plane": "b"}, "b": {"plane": "a"}},  # out of order
+        {"b": {"frame_sha256": "SAME_AS_A"}},  # one image under both planes
         {"b": {"frame_index": -1}},
         {"b": {"frame_sha256": "A" * 64}},
         {"b": {"geometry_source": "guessed"}},
@@ -567,6 +569,8 @@ def test_two_plane_registration_roundtrips_and_binds_both_frames(tmp_path, monke
 def test_two_plane_shape_rejections_do_not_store(tmp_path, monkeypatch, change):
     client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
     route = f"/api/cases/{case['case_id']}/projection-registration"
+    if change.get("b", {}).get("frame_sha256") == "SAME_AS_A":
+        change = {"b": {"frame_sha256": listed["manifest"]["planes"][0]["frames"][0]["sha256"]}}
     response = client.put(route, json=pair_body(case, reference, mask, listed, **change))
     assert response.status_code == 422, response.text
     assert "admitted frame or accepted mask" not in response.text
@@ -634,6 +638,8 @@ def test_a_two_plane_record_needs_a_declared_pair(tmp_path, monkeypatch):
                 ]
             },
         },
+        # Other pixels than plane a, so that only the missing pair refuses it.
+        b={"frame_sha256": "1" * 64},
     )
     response = client.put(route, json=request)
     assert response.status_code == 422, response.text
@@ -691,3 +697,24 @@ def test_tampered_two_plane_record_fails_closed(tmp_path, monkeypatch):
         )
     unknown = client.get(route).json()["current"]
     assert unknown["status"] == "stale" and unknown["inputs"] is None
+
+
+@pytest.mark.parametrize("pair", [False, True])
+@pytest.mark.parametrize(
+    "stored",
+    ["[]", '"text"', "7", "null", '{"method": 5}', "[" * 100_000 + "]" * 100_000],
+)
+def test_a_stored_row_that_is_not_a_record_fails_closed(tmp_path, monkeypatch, pair, stored):
+    if pair:
+        client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+        request = pair_body(case, reference, mask, listed)
+    else:
+        client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+        request = body(case, reference, mask, listed)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    assert client.put(route, json=request).status_code == 200
+    with closing(sqlite3.connect(tmp_path.resolve() / "case.sqlite3")) as conn, conn:
+        conn.execute("UPDATE projection_registrations SET inputs=?", (stored,))
+    response = client.get(route)
+    assert response.status_code == 503, response.text
+    assert response.json()["detail"] == "Projection registration is unavailable; reload"

@@ -17,6 +17,8 @@ Stdlib only. Example:
   python3 scripts/research/fetch_ljubljana.py /Volumes/External/ljubljana
 """
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
@@ -57,6 +59,16 @@ def outside_repository(destination: Path, repository: Path = REPOSITORY) -> Path
     return resolved
 
 
+def created_outside(directory: Path, repository: Path = REPOSITORY) -> Path:
+    """Create ``directory`` and check again where it landed.
+
+    The first check looks at the nearest existing ancestor. A mount can
+    change between that check and the directory's creation.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    return outside_repository(directory, repository)
+
+
 def _get(url: str, limit: int) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": "seldinger-planner-research"})
     with urllib.request.urlopen(request, timeout=120) as response:
@@ -80,7 +92,8 @@ def listing(revision: str) -> list[dict]:
         path, size = entry.get("path"), entry.get("size")
         parts = Path(path).parts if isinstance(path, str) else ()
         if (
-            not parts
+            # The folder itself is not a file to fetch.
+            len(parts) < 2
             or parts[0] != FOLDER
             or ".." in parts
             or Path(path).is_absolute()
@@ -114,7 +127,7 @@ def _matches(path: Path, item: dict) -> str | None:
 def fetch(destination: Path, revision: str = REVISION) -> dict:
     root = outside_repository(destination)
     files = listing(revision)
-    root.mkdir(parents=True, exist_ok=True)
+    root = created_outside(root)
     records = []
     for item in files:
         relative = Path(item["path"]).relative_to(FOLDER)

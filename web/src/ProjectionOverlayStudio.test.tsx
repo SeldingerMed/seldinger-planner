@@ -1566,3 +1566,126 @@ test("shows a saved two-plane proposal only while both frames are unchanged", as
   );
   expect(screen.queryByRole("img")).toBeNull();
 }, 60000);
+
+test("an isocenter and entered geometry are not carried to another source", async () => {
+  server(pairRoutes);
+  const props = { binding, volume, cursor: [1, 2, 3] as Vec3 };
+  const view = render(
+    <ProjectionOverlayStudio {...props} caseState={caseState} />,
+  );
+  await openPair();
+  click("Set isocenter to crosshair");
+  expect(status("Overlay isocenter").textContent).toMatch(
+    /1\.0, 2\.0, 3\.0 mm/,
+  );
+  // A later revision of the same case and source keeps them. The bundle has
+  // to be opened again, as before.
+  const revised = { ...caseState, artifact_version: "8" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/projection-registration")
+        ? json({ ...registrationAnswer(), artifact_version: "8" })
+        : url.endsWith("/segmentations")
+          ? json({ current: { vessel: maskEntry, aneurysm: null } })
+          : url.includes("/planes/")
+            ? pairFrame(url)
+            : json(pairBundleAnswer()),
+    ),
+  );
+  view.rerender(<ProjectionOverlayStudio {...props} caseState={revised} />);
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  expect(status("Overlay isocenter").textContent).toMatch(
+    /1\.0, 2\.0, 3\.0 mm/,
+  );
+  expect(
+    screen.getByRole("textbox", { name: "Source to isocenter (mm)" }),
+  ).toHaveProperty("value", "800");
+  // Another source: the isocenter was a point in the first source's space,
+  // and the geometry was entered for its frames.
+  const other = {
+    ...binding,
+    image_sha256: "9".repeat(64),
+  };
+  const otherCase = { ...revised, image_sha256: other.image_sha256 };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/projection-registration")
+        ? json({
+            ...registrationAnswer(),
+            artifact_version: "8",
+            image_sha256: other.image_sha256,
+          })
+        : url.endsWith("/segmentations")
+          ? json({ current: { vessel: maskEntry, aneurysm: null } })
+          : url.includes("/planes/")
+            ? pairFrame(url)
+            : json(pairBundleAnswer()),
+    ),
+  );
+  view.rerender(
+    <ProjectionOverlayStudio
+      {...props}
+      binding={other}
+      caseState={otherCase}
+    />,
+  );
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  expect(status("Overlay isocenter").textContent).toMatch(
+    /centroid of the vessel mask/,
+  );
+  expect(
+    screen.getByRole("textbox", { name: "Source to isocenter (mm)" }),
+  ).toHaveProperty("value", "750");
+  expect(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  ).toHaveProperty("checked", false);
+});
+
+test("one image admitted under both planes cannot be fitted as a pair", async () => {
+  const same = pairBundleAnswer();
+  (same.manifest.planes as any)[1].frames[0].sha256 = hex(pairGray[0]);
+  server({
+    bundle: () => json(same),
+    frame: () => bytes(pairGray[0], { "X-Frame-Manifest-Revision": REVISION }),
+  });
+  render(<Harness />);
+  await openPair();
+  expect(
+    screen.getAllByRole("alert").map((alert) => alert.textContent),
+  ).toEqual([
+    "Both planes name identical pixels. One image was admitted under both planes, so they cannot be fitted together.",
+  ]);
+  expect(
+    screen.getByRole("button", { name: "Propose two-plane overlay" }),
+  ).toHaveProperty("disabled", true);
+});
+
+test("with two planes the controls name the plane they edit", async () => {
+  server(pairRoutes);
+  render(<Harness />);
+  await openPair();
+  // Plane B is open.
+  expect(
+    screen.getByRole("group", { name: "Acquisition geometry, plane B" }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("combobox", { name: "Vessels in plane B's frame are" }),
+  ).toBeTruthy();
+  const slider = screen.getByRole("slider", {
+    name: "2D vessel sensitivity, plane B",
+  });
+  expect(slider.getAttribute("aria-valuetext")).toBe("0.50");
+  choosePlane("a");
+  await screen.findByRole("group", { name: "Acquisition geometry, plane A" });
+  expect(
+    screen.getByRole("combobox", { name: "Vessels in plane A's frame are" }),
+  ).toBeTruthy();
+});

@@ -616,7 +616,11 @@ function parseInputs(value: unknown): SavedInputs {
     checkShared(value);
     const first = checkPlane(planes[0], ["a"]),
       second = checkPlane(planes[1], ["b"]);
-    if (!planesFarEnough(planeAngleDeg(first, second)))
+    if (
+      !planesFarEnough(planeAngleDeg(first, second)) ||
+      // One image admitted under both planes.
+      planes[0].frame_sha256 === planes[1].frame_sha256
+    )
       throw new Error("Invalid registration");
     return value as BiplaneRegistrationInputs;
   }

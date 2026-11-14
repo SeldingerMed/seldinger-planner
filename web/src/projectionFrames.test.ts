@@ -768,6 +768,12 @@ describe("saved two-plane registration parsing", () => {
       }),
     ],
     [
+      "one image under both planes",
+      inputs((v) => {
+        v.planes[1].frame_sha256 = v.planes[0].frame_sha256;
+      }),
+    ],
+    [
       "plane a twice",
       inputs((v) => {
         v.planes[1].plane = "a";

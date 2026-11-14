@@ -8,8 +8,8 @@ Only aggregate numbers are recorded here. Per-run detail is kept outside the rep
 
 ## Summary
 
-- The two-plane proposal was better than either single-plane proposal on every measure. It was still wrong by more than 1 mm in about three runs out of four.
-- Started at the reference pose itself, the two-plane engine moved away from it by more than 1 mm in 8 of 10 subjects. The limit is what the score prefers, not how far the search can reach.
+- The two-plane proposal was better than either single-plane proposal in median and mean error and in the share of runs under each threshold. Its worst runs were worse: its 90th percentile and largest target errors were higher than either single plane's. It was more than 1 mm from the reference in about three runs out of four.
+- Started at the reference pose itself, the two-plane engine moved away from it by more than 1 mm in 8 of 10 subjects. That points to what the score prefers, not how far the search can reach, as the limit.
 - Fitting the detector size did not work on this data in any arm.
 
 ## Calibrated arms, perturbed starts
@@ -64,7 +64,7 @@ The 16 runs with no proposal all failed the same way. The search took the detect
 | `biplane`, at the result | 5.97 | 14% |
 | At the reference pose | 6.08 | 15% |
 
-The mean distance is capped at 8 mm per point. At the reference pose the share of 3D points within 2 mm of an extracted 2D line ranged from 4% to 35% across the twenty frames.
+Every run in these arms returned a proposal, so the medians are over all runs. The mean distance is capped at 8 mm per point. At the reference pose the share of 3D points within 2 mm of an extracted 2D line ranged from 4% to 35% across the twenty frames.
 
 The score at the reference pose is about as poor as at a pose 11 mm away. It does not mark the reference as a good pose, and a result's score says little about whether the result is right.
 
@@ -73,11 +73,11 @@ The score at the reference pose is about as poor as at a pose 11 mm away. It doe
 These were computed from the per-run detail after the run. They were not planned in the protocol.
 
 - 40 of the 50 `biplane` runs ended closer to the reference than they started.
-- Results for one subject were similar across its five starts: the spread between a subject's best and worst run had a median of 2.0 mm. One subject spread 31 mm.
+- Results for one subject were usually similar across its five starts: the spread between a subject's best and worst run had a median of 2.0 mm across subjects, and the largest spread was 31 mm.
 - In 2 of 10 subjects every `biplane` run ended more than 30 mm from the reference.
 - In `biplane_from_reference`, 8 of 10 runs moved more than 1 mm from the reference. In 6 of those 8 the engine's score at the result was no worse than at the reference.
 
-Taken together: the search reaches a consistent answer from 10 mm and 10 degrees away, and that answer is often not the reference. The score is the limit.
+Taken together: from 10 mm and 10 degrees away the search usually reaches a similar answer for a subject, and that answer is often not the reference. This points to the score, not the reach of the search, as the limit.
 
 ## What the evaluation does not separate
 
@@ -87,7 +87,7 @@ At the reference pose few projected 3D points lie near an extracted 2D line. Thi
 - the 2D line extraction missing vessels or adding lines that are not vessels,
 - error in the reference pose or in this project's reading of the stored cameras.
 
-The reading of the stored cameras is checked against a phantom and, before the protocol was fixed, against image intensity in all twenty frames. It is the least likely of the three, and it is not excluded.
+The reading of the stored cameras is checked against a phantom and, before the protocol was fixed, against image intensity in all twenty frames. It is the only one of the three that was checked, and it is not excluded.
 
 ## Limits
 

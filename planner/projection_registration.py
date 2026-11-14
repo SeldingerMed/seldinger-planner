@@ -175,6 +175,10 @@ def validate_registration(inputs):
         value = BiplaneRegistrationInputs.model_validate(inputs).model_dump(mode="json")
         if [entry["plane"] for entry in value["planes"]] != ["a", "b"]:
             raise ValueError("A two-plane registration names plane a, then plane b")
+        # Two views this far apart cannot show the same picture. Identical
+        # pixels mean one image was admitted under both planes.
+        if value["planes"][0]["frame_sha256"] == value["planes"][1]["frame_sha256"]:
+            raise ValueError("The two planes name identical pixels")
         first, second = (entry["view"] for entry in value["planes"])
         # The margin absorbs rounding against the browser's own check.
         if plane_angle_deg(first, second) < MIN_PLANE_ANGLE_DEG - 1e-9:

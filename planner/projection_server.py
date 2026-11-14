@@ -255,7 +255,16 @@ def register_projection_registration_routes(app, db_path, sources, read_case, fr
             raise HTTPException(409, "Case changed; reload") from None
         except HTTPException:
             raise
-        except (sqlite3.Error, ValueError, TypeError, KeyError, OSError, OverflowError) as exc:
+        except (
+            sqlite3.Error,
+            ValueError,
+            TypeError,
+            KeyError,
+            OSError,
+            OverflowError,
+            # A stored row nested too deeply to decode.
+            RecursionError,
+        ) as exc:
             raise HTTPException(503, "Projection registration is unavailable; reload") from exc
 
     def save(case_id, payload):
@@ -295,7 +304,15 @@ def register_projection_registration_routes(app, db_path, sources, read_case, fr
             ) from None
         except HTTPException:
             raise
-        except (sqlite3.Error, ValueError, TypeError, KeyError, OSError, OverflowError) as exc:
+        except (
+            sqlite3.Error,
+            ValueError,
+            TypeError,
+            KeyError,
+            OSError,
+            OverflowError,
+            RecursionError,
+        ) as exc:
             raise HTTPException(
                 503, "Projection registration save could not be confirmed; reload"
             ) from exc

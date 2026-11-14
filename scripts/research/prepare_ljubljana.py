@@ -15,8 +15,9 @@ For each subject it writes, under the destination:
   lateral.u16
   subject.json     shapes, the volume affine, the stored poses and intrinsics
 
-The destination must lie outside the repository and on another storage
-device. Needs numpy, nibabel and torch, which the planner's optional model
+Every file read is first checked against the size and SHA-256 the fetch
+recorded. The destination must lie outside the repository and on another
+storage device. Needs numpy, nibabel and torch, which the planner's optional model
 runtime provides:
   .runtime/ml-runtime/bin/python scripts/research/prepare_ljubljana.py SRC DST
 """
@@ -29,9 +30,15 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fetch_ljubljana import SUBJECTS, FetchError, outside_repository
+from fetch_ljubljana import SUBJECTS, FetchError, _digest, created_outside, outside_repository
 
 VIEWS = ("frontal", "lateral")
+# The files of one subject that are decoded here.
+USED = (
+    "volume.nii.gz",
+    "fiducials.pt",
+    *(f"xrays/{view}.{kind}" for view in VIEWS for kind in ("pt", "dcm")),
+)
 MARGIN = 2
 _PIXEL_DATA = bytes.fromhex("e07f1000") + b"OW\x00\x00"
 _ROWS, _COLUMNS = bytes.fromhex("28001000"), bytes.fromhex("28001100")
@@ -57,7 +64,8 @@ def frame_pixels(path: Path, height: int, width: int) -> bytes:
         return None if at < 0 else struct.unpack("<H", before[at + 8 : at + 10])[0]
 
     if (
-        data[128:132] != b"DICM"
+        len(header) != 12
+        or data[128:132] != b"DICM"
         or header[:8] != _PIXEL_DATA
         or struct.unpack("<I", header[8:])[0] != size
         or b"1.2.840.10008.1.2.1\x00" not in before[:468]
@@ -113,7 +121,7 @@ def prepare_subject(source: Path, destination: Path) -> dict:
             "width": width,
         }
 
-    destination.mkdir(parents=True, exist_ok=True)
+    destination = created_outside(destination)
     for name, data in files.items():
         (destination / name).write_bytes(data)
     record = {
@@ -131,11 +139,28 @@ def prepare_subject(source: Path, destination: Path) -> dict:
     return record
 
 
+def verify_source(source: Path, subjects: list[Path]) -> None:
+    """Refuse any file that is not the one the fetch recorded."""
+    try:
+        manifest = json.loads((source / "MANIFEST.json").read_text(encoding="utf-8"))
+        listed = {item["path"]: (item["bytes"], item["sha256"]) for item in manifest["files"]}
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise PrepareError("The source has no readable fetch manifest") from error
+    for subject in subjects:
+        for name in USED:
+            path = subject / name
+            if not path.is_file() or (path.stat().st_size, _digest(path)) != listed.get(
+                f"{subject.name}/{name}"
+            ):
+                raise PrepareError(f"Not the fetched file: {subject.name}/{name}")
+
+
 def prepare(source: Path, destination: Path) -> list[dict]:
     root = outside_repository(destination)
     subjects = sorted(path for path in source.glob("subject*") if path.is_dir())
     if len(subjects) != SUBJECTS:
         raise PrepareError(f"Expected {SUBJECTS} subjects, found {len(subjects)}")
+    verify_source(source, subjects)
     return [prepare_subject(subject, root / subject.name) for subject in subjects]
 
 

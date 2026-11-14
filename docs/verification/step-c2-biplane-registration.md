@@ -4,7 +4,7 @@ Step C2 adds a registration proposal that fits one rigid pose to two angiographi
 
 Evidence classes used below: unit evidence on synthetic data, a synthetic known-pose gate, one completed run of a small fixed protocol on public clinical data, mutation checks of the new guards, and one browser check on synthetic frames. Nothing here is a validation study, and no registration accuracy on patient data is claimed.
 
-The headline result is mixed. The two-plane proposal passes its synthetic gate with a wide margin and is better than a single plane on the public clinical data. On that data it is still more than 1 mm from the reference pose in about three runs out of four, and its score does not identify the reference pose.
+The headline result is mixed. The two-plane proposal passes its synthetic gate with a wide margin. On the public clinical data it is better than a single plane at the median and worse in its worst runs, it is more than 1 mm from the reference pose in about three runs out of four, and its score does not identify the reference pose.
 
 ## Delivered surface
 
@@ -81,7 +81,7 @@ What the harness tests show: `ljubljanaEvaluation.test.ts` writes a phantom subj
 
 ## Saved record
 
-`tests/test_projection_registration_server.py` has 43 new cases for version 2, beside the 64 for version 1, which are unchanged. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 35 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` six new tests for the two-plane path.
+`tests/test_projection_registration_server.py` has 44 new cases for version 2, beside the 64 for version 1, which are unchanged, and 12 for stored rows that are not records at all. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 36 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` nine new tests.
 
 ## Mutation checks
 
@@ -114,6 +114,27 @@ In Chrome against the local server:
 - The save button stayed disabled with neither box ticked, with only the review box, and with only the same-position box. With both it saved revision 4 as a version 2 record. The server log shows one `PUT`.
 - The saved pose was 0.18 degrees and 0.35 mm at the isocenter from the pose the frames were drawn at.
 - After a full reload the record read back, and both overlays redrew from the installed frames and mask.
+
+## Independent review
+
+Three read-only reviewers looked at the backend, the browser code and the research wording at `7b65cd5`. Each finding was checked against the code before anything changed.
+
+Fixed, each with a test, and each test checked by removing the fix in a throwaway copy (12 mutants, 12 killed, baseline and restored runs green):
+
+- A stored row nested too deeply to decode answered with a server error instead of the fail-closed 503. This predates Step C2. The reviewer's other claim, that a stored row which is not an object would do the same, was not reproduced: those rows already answer 503, and a test now pins that.
+- The studio kept an isocenter, entered geometry and frame choices when the case under it changed. This also predates Step C2. They are now cleared when the source changes and kept across revisions of one case.
+- One image admitted under both planes could be fitted and saved as a pair. The studio, the saved-record parser and the server now refuse it.
+- With two planes, the geometry and filter controls did not say which plane they edit. Their legends and labels now name the plane, and the sensitivity slider states its value.
+- The fetch script accepted a listing entry naming the folder itself as a file, checked the storage device only before the destination existed, and ran only under Python 3.10 or later. The decode script did not check its inputs against the fetch manifest, and a frame file cut short inside one header raised a decoding error. All five are fixed. The decode step was run again on the real copy with the manifest check on, and its output is byte-identical to the output the evaluation used.
+- A single-plane saved overlay is now tied to the bundle and manifest revision the record names as well as the frame digest. No sequence reaches the difference, so this one has no test.
+- Wording: an earlier draft said the two-plane proposal was better than a single plane on every measure. Its 90th percentile and largest errors are worse. The results, this note, the guide and the README now say so. Three sentences in the results that claimed more than was measured were also reworded.
+
+Declined:
+
+- Syncing the geometry panel to a redrawn saved record. The panel sets up the next proposal; the saved record is described by its own status line.
+- A distinct message for each way a frame can fail to load in the two-plane proposal. One message covers them, as it does for a single frame.
+- Rewording the protocol. It is kept byte-identical to the version committed before the run.
+- A change to the evaluation's frame window for frames far larger than any in this set. The harness is left as it ran. The case would end in a recorded failure, and it did not occur.
 
 ## A test race found and fixed
 
