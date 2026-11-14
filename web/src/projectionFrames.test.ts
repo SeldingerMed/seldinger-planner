@@ -768,6 +768,18 @@ describe("saved two-plane registration parsing", () => {
       }),
     ],
     [
+      "plane a twice",
+      inputs((v) => {
+        v.planes[1].plane = "a";
+      }),
+    ],
+    [
+      "a third plane beside a two-plane summary",
+      answer((c) => {
+        c.inputs.planes.push(c.inputs.planes[1]);
+      }),
+    ],
+    [
       "a single-plane label",
       inputs((v) => {
         v.planes[0].plane = "single";
@@ -877,9 +889,22 @@ describe("saved two-plane registration parsing", () => {
       }),
     ],
     [
-      "result planes out of order",
+      "result planes under each other's labels",
       answer((c) => {
-        c.result.planes = c.result.planes.reverse();
+        c.result.planes[0].plane = "b";
+        c.result.planes[1].plane = "a";
+      }),
+    ],
+    [
+      "an extra field in a result plane",
+      answer((c) => {
+        c.result.planes[1].accuracy_mm = 0.4;
+      }),
+    ],
+    [
+      "an extra result field",
+      answer((c) => {
+        c.result.accuracy_mm = 0.4;
       }),
     ],
     [
@@ -920,7 +945,6 @@ describe("saved two-plane registration parsing", () => {
     const edge = clone(savedPairInputs());
     edge.planes[1].view = { ...VIEW, primary_deg: 30 };
     const value = currentPairAnswer(edge);
-    (value.current.result as Record<string, unknown>).plane_angle_deg = 30;
     const current = parseSavedRegistration(value, identity).current;
     expect(current.status === "current" && current.result.plane_angle_deg).toBe(
       30,

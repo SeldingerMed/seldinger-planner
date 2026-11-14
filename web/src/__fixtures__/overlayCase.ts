@@ -277,8 +277,12 @@ export function savedPairInputs(change: Record<string, unknown> = {}) {
     ...change,
   };
 }
-/** The server's own summary of a two-plane record, mirroring `summarize`. */
+/** The server's own summary of a two-plane record, mirroring `summarize`.
+ * Both fixture views have no secondary angle, so the angle between their
+ * central rays is the difference of their primary angles, folded to 90. */
 export function savedPairResult(inputs: Record<string, any>) {
+  const primary = (k: number) => inputs.planes[k]?.view?.primary_deg ?? 0,
+    apart = Math.abs(primary(0) - primary(1));
   return {
     version: "step-c2-biplane-registration-v2",
     convention: "dicom_xa_patient_longitude_latitude_ras_v1",
@@ -286,7 +290,7 @@ export function savedPairResult(inputs: Record<string, any>) {
     status: "operator_confirmed_proposal",
     validated: false,
     same_position: "operator_attested_not_checked",
-    plane_angle_deg: 90,
+    plane_angle_deg: Math.min(apart, 180 - apart),
     rotation_deg: 6.4,
     isocenter_shift_mm: 8.8,
     score_source: "browser_reported_not_recomputed",

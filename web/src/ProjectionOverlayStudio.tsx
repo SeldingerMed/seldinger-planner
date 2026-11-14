@@ -83,7 +83,7 @@ type PairOutcome = {
   isocenter: Vec3;
   pooling: number;
   matrix: number[][];
-  /** Null once saved, and when a saved record is redrawn. */
+  /** Null when a saved record is redrawn. */
   proposal: BiplaneRegistrationProposal | null;
   /** What each plane's search was given, for the record. */
   searched: Pick<
@@ -965,7 +965,7 @@ export default function ProjectionOverlayStudio({
           reported_start_score: pairProposal.planes[k].start_score,
         })) as BiplaneRegistrationInputs["planes"],
       };
-      kept = { pair: { ...pair, proposal: null } };
+      kept = { pair };
     } else if (proposal && result && shownFrame) {
       const single: RegistrationInputs = {
         confirmed: true,
