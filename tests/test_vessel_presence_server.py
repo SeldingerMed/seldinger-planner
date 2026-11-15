@@ -6,11 +6,16 @@ import sqlite3
 from contextlib import closing
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from test_projection_registration_server import body as registration_body
 from test_projection_registration_server import pair_body, pair_ready, ready
 
 from planner.frame_source import frame_filename
+from planner.fusion_brief import project_fusion
+from planner.planning_context import IDENTITY_KEYS
 from planner.projection_plan import PlanConflict
+from planner.reformat_scene import digest
 from planner.vessel_presence import (
     CLASSES,
     PresenceLedger,
@@ -18,6 +23,7 @@ from planner.vessel_presence import (
     summarize,
     validate_presence,
 )
+from planner.vessel_presence_server import register_vessel_presence_routes
 
 # Three segments: two of one unbranched run, then one of another.
 SEGMENTS = [
@@ -685,3 +691,77 @@ def test_local_brief_fails_closed_on_a_tampered_registration(tmp_path, monkeypat
     response = client.get(f"/api/cases/{case['case_id']}/local-brief")
     assert response.status_code == 503
     assert "markdown" not in response.json()
+
+
+def test_the_brief_checks_the_envelopes_it_is_given(tmp_path, monkeypatch):
+    """The brief does not rely on the readers having checked what they hand it."""
+    client, case, reference, _, _, _, registration, route = started(tmp_path, monkeypatch)
+    assert client.put(route, json=request(case, reference, registration)).status_code == 200
+    registration = client.get(f"/api/cases/{case['case_id']}/projection-registration").json()
+    presence = client.get(route).json()
+    identity = {key: registration[key] for key in IDENTITY_KEYS}
+    read = project_fusion(identity, registration, presence)
+    assert read["vessel_presence"]["status"] == "current"
+    assert read["vessel_presence"]["validated"] is False
+
+    def current(**change):
+        return {**presence, "current": {**presence["current"], **change}}
+
+    def consistent(inputs):
+        # A report whose digest and summary are its own, so only what it names is wrong.
+        return current(inputs=inputs, input_sha256=digest(inputs), result=summarize(inputs))
+
+    inputs = presence["current"]["inputs"]
+    other_frame = copy.deepcopy(inputs)
+    other_frame["planes"][0]["frame_sha256"] = "0" * 64
+    stale = {"status": "stale", "report_id": presence["current"]["report_id"]}
+    for wrong, message in (
+        (consistent(other_frame), "integrity"),
+        (current(result={**presence["current"]["result"], "validated": True}), "integrity"),
+        (current(result={**presence["current"]["result"], "cause": "occlusion"}), "integrity"),
+        (current(input_sha256="0" * 64), "integrity"),
+        ({**presence, "current": {**stale, "inputs": inputs, "result": None}}, "carries values"),
+        ({**presence, "registration_revision": 2}, "contradicts brief"),
+        ({**presence, "case_id": "another"}, "contradicts brief"),
+        ({**presence, "report_revision": 0}, "Invalid report revision"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            project_fusion(identity, registration, wrong)
+    # A stale report that carries nothing is read as stale.
+    quiet = {**presence, "current": {**stale, "inputs": None, "result": None}}
+    assert project_fusion(identity, registration, quiet)["vessel_presence"] == {
+        "status": "stale",
+        "report_revision": 1,
+        "report_id": presence["current"]["report_id"],
+    }
+
+
+def test_a_read_that_changes_between_two_looks_is_refused(tmp_path):
+    """Two reads must agree before either is given out."""
+    identity = {
+        "case_id": "c" * 22,
+        "image_sha256": "1" * 64,
+        "artifact_version": "1",
+        "reference_revision": "2" * 64,
+    }
+    assert set(identity) == set(IDENTITY_KEYS)
+    seen = []
+
+    def moving(case_id):
+        seen.append(case_id)
+        return {
+            **identity,
+            "registration_revision": len(seen),
+            "current": {"status": "not_confirmed"},
+        }
+
+    def still(case_id):
+        return {**identity, "registration_revision": 0, "current": {"status": "not_confirmed"}}
+
+    database = tmp_path / "case.sqlite3"
+    for reader, status in ((moving, 409), (still, 200)):
+        app = FastAPI()
+        register_vessel_presence_routes(app, database, reader)
+        response = TestClient(app).get(f"/api/cases/{identity['case_id']}/vessel-presence")
+        assert response.status_code == status, response.text
+    assert len(seen) == 2

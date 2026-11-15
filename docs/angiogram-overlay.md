@@ -1,4 +1,4 @@
-# Angiogram overlay and 2D-to-3D registration proposal (fusion Steps C1 and C2)
+# Angiogram overlay and 2D-to-3D registration proposal (fusion Steps C1 to C3)
 
 Step C1 lays the accepted 3D vessel mask of a case over one acquired angiographic frame. Step C2 adds a proposal that fits one pose to a frame from each plane of a pair, described under [Two planes](#two-planes). Step C1 adds four things:
 
@@ -9,7 +9,7 @@ Step C1 lays the accepted 3D vessel mask of a case over one acquired angiographi
 
 Everything here is retrospective. No live video is read. A proposal is not a validated registration and no accuracy is claimed for it. The angle convention is the one Step A declares (`dicom_xa_patient_longitude_latitude_ras_v1`), which has not been verified against a vendor system, a detector rotation or an image flip.
 
-Step C2 added joint refinement across two planes and an evaluation against public data with a known pose. The vessel-presence report and the brief section are left for Step C3.
+Step C2 added joint refinement across two planes and an evaluation against public data with a known pose. Step C3 added the vessel-presence report and a section of the brief, described under [Vessel-presence report](#vessel-presence-report).
 
 ## Frame admission
 
@@ -94,8 +94,10 @@ The command writes to a private staging directory, claims the destination by cre
 | `GET /api/projection-frames/{source_id}/planes/{plane}/frames/{index}` | One frame's bytes, with `X-Frame-Manifest-Revision` |
 | `GET /api/cases/{case_id}/projection-registration` | The saved proposal for the case, if any |
 | `PUT /api/cases/{case_id}/projection-registration` | Save an operator-confirmed proposal |
+| `GET /api/cases/{case_id}/vessel-presence` | The saved vessel-presence report for the current proposal, if any |
+| `PUT /api/cases/{case_id}/vessel-presence` | Save an operator-confirmed vessel-presence report |
 
-The frame routes are read-only and re-verify every frame against its manifest digest before serving it. Nothing accepts pixels: the `PUT` body holds identifiers, hashes, six view numbers, a 4 by 4 matrix and scalar scores.
+The frame routes are read-only and re-verify every frame against its manifest digest before serving it. Nothing accepts pixels: the `PUT` body holds identifiers, hashes, six view numbers, a 4 by 4 matrix and scalar scores. The vessel-presence `PUT` body holds identifiers, hashes, and counts and lengths per segment, with no pixels and no coordinates.
 
 ## The proposal engine
 
@@ -154,6 +156,58 @@ A two-plane record (`step-c2-biplane-registration-v2`) binds one matrix and one 
 
 Records are append-only. A later case revision makes the record stale, and a stale record is not shown or reused. On every read the server checks that every frame the record names and the mask are still installed with the recorded hashes and reports `verified` or `unavailable`. The studio redraws a saved overlay only after repeating those checks itself.
 
+## Vessel-presence report
+
+Beside a saved proposal that is current and whose frames and mask are still verified, the studio offers **Vessel presence report**. The report says, for each segment of the accepted vessel mask and each plane of the saved proposal, whether the frame shows a vessel where the segment projects.
+
+It asserts no cause. A segment without 2D support may be occluded, unfilled, outside the injected territory or absent, or the saved proposal may be wrong. The report is only as good as that proposal, which is an operator-confirmed proposal and not a validated registration. On five public clinical cases the proposals did not visibly lie on the filled arteries and the reports there described the misfit, not the anatomy (see the [verification note](verification/step-c3-vessel-presence.md)).
+
+### Segments
+
+The mask is cut into geometric segments (`mask_band_sweep_v1`). Each connected piece of the mask is swept from one end in bands of path distance 2 mm deep (two voxel diagonals on a coarser grid). The runs between branchings and ends are cut into equal pieces of at most 15 mm. An end run shorter than 4 mm is taken into the branching it hangs from. A connected piece of the mask shorter than 6 mm is left out and counted in the share of the mask's volume that is in no segment.
+
+A segment has an index, a length, a mean radius and the number of the unbranched run it was cut from. The mean radius is that of a cylinder of the segment's length holding the mask volume that lies along it. Segments are not named and no artery is identified.
+
+### Classes
+
+Samples every 1 mm along each segment are projected into each plane with the saved pose. A sample is:
+
+- **in the field** when it projects inside the frame;
+- **clear** when no sample of another run, and no sample of its own run 6 mm or more away in the volume, projects within 2 mm of it;
+- **supported** when it is clear and an extracted 2D centerline lies within 2 mm of it, measured at the isocenter plane.
+
+| Class | Rule, applied in this order |
+|---|---|
+| Outside the field | Fewer than half of the segment's samples are in the field |
+| Indeterminate | Fewer than three samples are clear, or fewer than 3 in 10 of those in the field |
+| 2D support | At least 7 in 10 of the clear samples are supported |
+| No 2D support | At most 3 in 10 of the clear samples are supported |
+| Indeterminate | Anything between |
+
+Pieces of 2D centerline at least 5 mm long with no projected sample within 2 mm are listed separately, longest first. They can be vessels the mask does not hold, and they can equally be catheters, wires or bone edges.
+
+The method is `segment_centerline_support_v1`. The limits are fixed in the code and held identically by the browser and the server; changing one is a new method.
+
+### In the studio
+
+1. Save a proposal, single-plane or two-plane.
+2. Select **Compute vessel presence**. Each plane's own saved frame, view, polarity and sensitivity are used. The frame is drawn with the segment axes colored by class: green for 2D support, red for none, yellow for indeterminate, and magenta for the unmatched 2D pieces. A table gives counts and lengths by class per plane, and another lists every segment.
+3. Tick the review box and select **Save confirmed report**.
+
+A report belongs to one saved proposal. A new proposal makes the old report stale, and a stale report is not shown.
+
+### The saved report
+
+The record (`step-c3-vessel-presence-v1`) is append-only and names the proposal it was computed with: its identifier, revision and input digest, and each plane's frame hash. It stores `validated: false`, the status `operator_confirmed_report`, `cause: not_asserted` and `counts_source: browser_reported_not_recomputed`.
+
+The server never sees the frame or the mask and cannot recompute the counts. It checks that the counts are possible, that every class follows from its counts under the rule above, that the report names the latest proposal inside the write transaction, and that the proposal's frames and mask are on hand. It refuses anything else.
+
+When a saved report is read back, the browser recomputes it from the frames, the mask and the saved proposal. It is shown as saved only when every count agrees. Otherwise the studio says the saved report was not reproduced and does not show its counts.
+
+### In the brief
+
+The local brief gains the section **Angiogram registration and vessel presence**: the proposal's status, revision, method, number of planes and the angle between them, each plane's geometry source, and for a current report the counts and lengths by class per plane. It carries no image, no pose, no coordinates and no fit scores, and it states that the proposal is not a validated registration and that its accuracy is not measured.
+
 ## Limits
 
 - Rigid, and one frame per plane. No vessel deformation, cardiac or respiratory motion, or table movement.
@@ -161,6 +215,8 @@ Records are append-only. A later case revision makes the record stale, and a sta
 - On public clinical frames with a reference pose, most two-plane proposals were more than 1 mm from the reference, some were tens of millimeters away, and the score did not tell them apart.
 - With one plane, depth along the beam is not determined, and a turn about an in-plane axis only weakly. On the synthetic phantoms the total rotation error reached 7.7 degrees while the in-plane error stayed under 1 degree.
 - The search is local. A start more than about 15 degrees from the true view, or a mirrored image, is outside its range.
-- A whole-head vessel mask against a single-vessel injection leaves most of each line set without a partner. The capped score tolerates that but does not resolve it. The vessel-presence report planned for Step C3 addresses it.
+- A whole-head vessel mask against a single-vessel injection leaves most of each line set without a partner. The capped score tolerates that but does not resolve it. The vessel-presence report lists the segments without a partner, but it cannot say whether they are unfilled or misregistered.
 - TAIR-style screen captures have no DICOM geometry. Their angles come from burned-in text and their pixel aspect is not declared.
+- The vessel-presence report reads a wrong proposal as missing vessels and unmatched 2D lines. On the five public clinical cases reviewed, that is what it showed. It is not evidence of occlusion, stenosis or absence.
+- A vessel seen end-on, or lying over another vessel in the frame, is left indeterminate whatever the frame shows.
 - Not for live guidance, diagnosis or treatment decisions.

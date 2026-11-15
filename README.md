@@ -47,6 +47,12 @@ For a bundle with two declared planes, the overlay studio can fit one rigid pose
 
 Both proposal engines were run once, under a protocol committed beforehand, on ten public clinical subjects with a reference pose. The two-plane proposal was better than either single plane at the median, its worst runs were worse, it was more than 1 mm from the reference in about three runs out of four, and its score did not identify the reference pose. It remains a starting point for an operator to correct. No dataset file or per-subject number is in this repository. See the [protocol](docs/research/ljubljana-known-pose-protocol.md), the [aggregate results](docs/research/ljubljana-known-pose-results.md) and the [verification note](docs/verification/step-c2-biplane-registration.md).
 
+## Fusion Step C3: vessel-presence report
+
+Beside a saved overlay proposal, the studio can report, for each unnamed geometric segment of the accepted vessel mask and each plane, whether the frame shows a vessel where the segment projects: 2D support, no 2D support, outside the field, or indeterminate. Pieces of 2D centerline with no segment near are listed separately. The report names no artery and asserts no cause. An operator reviews and confirms it, it is saved as an append-only record bound to the exact proposal, and it is recomputed and compared when read back. The local brief gains a scalar-only section with the proposal's status and the counts and lengths by class.
+
+The report is only as good as the proposal beneath it, which is not a validated registration. On five public clinical cases, chosen by a rule fixed beforehand, the proposals did not visibly lie on the filled arteries, and the reports described that misfit and not the anatomy. See [Vessel-presence report](docs/angiogram-overlay.md#vessel-presence-report) and the [verification note](docs/verification/step-c3-vessel-presence.md).
+
 ## Historical hackathon source and original work
 
 The source checkout includes the planning workspace. Images and trained artifacts are installed separately under the source/model contracts below. Public source does not mean a hosted deployment.

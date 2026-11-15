@@ -384,6 +384,28 @@ describe("vessel segments", () => {
     },
   );
 
+  // On a grid this coarse a band is longer than half a piece, so a piece can
+  // lie between two of the sweep's nodes and hold neither. It still holds
+  // the vessel along it.
+  it("leaves no piece empty on a grid coarser than its pieces", () => {
+    const radius = 8,
+      { mask, shape, affine } = treeMask(4, [
+        {
+          path: [
+            [0, 0, -50],
+            [0, 0, 50],
+          ],
+          radius,
+        },
+      ]),
+      { segments } = vesselSegments(mask, shape, affine);
+    expect(segments.length).toBeGreaterThan(3);
+    for (const segment of segments) {
+      expect(segment.mean_radius_mm).toBeGreaterThan(0.75 * radius);
+      expect(segment.mean_radius_mm).toBeLessThan(1.25 * radius);
+    }
+  });
+
   it("refuses more segments than it is built to list", () => {
     // Separate rods, each long enough to be a segment: 45 by 45 of them.
     const n = 180,
