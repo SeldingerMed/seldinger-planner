@@ -54,7 +54,7 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 
 Written 2026-11-15, after reading the dataset's file sizes and per-frame text tables and before extracting a frame or running a registration on these cases.
 
-- Cases: the five smallest biplane head-CTA cases other than 00028, by the bytes of the two `A1_t00` clips, their text tables and `CTA-H_defaced.nii.gz`: 00164, 00132, 00151, 00161, 00146 (252.1 MiB). A case with no usable pair under this rule is recorded as excluded and the next smallest is taken (00046, then 00072).
+- Cases: the five smallest biplane head-CTA cases other than 00028, by the bytes of the two `A1_t00` clips, their text tables and `CTA-H_defaced.nii.gz`: 00164, 00132, 00151, 00161, 00146 (252.1 MiB). A case with no usable pair under this rule is recorded as excluded and the next smallest is taken (00167, then 00174).
 - Runs: consecutive frames with the same `frame_type` and `relative_time` in the dataset's text table. A run pair is one run in each clip, both of a `WC` type, both at least 15 frames, with the same `relative_time`. Run pairs are taken in time order, at most the first four.
 - Frames: the frame at 30% of each run, then 40%, then 50%, the same fraction in both clips. The first fraction at which both frames show contrast-filled arteries, on inspection, is used. This is the only judgement in the choice and it is made before any registration.
 - Planes and angles: the plane letter and angles are the most frequent on-screen reading in the run, not the folder letter. They are screen text, not calibrated geometry. A pair the app refuses as less than 30 degrees apart is skipped for the next run pair.
