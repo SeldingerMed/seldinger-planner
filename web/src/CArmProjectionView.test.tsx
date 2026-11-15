@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import type { NVImage } from "@niivue/niivue";
 import CArmProjectionView from "./CArmProjectionView";
 import type { ViewNumbers } from "./carmGeometry";
@@ -77,7 +77,9 @@ test("paints the simulated projection, the target path and the isocenter", async
   // A 100 x 50 mm detector keeps its aspect ratio at 160 px on the long side.
   expect(canvas).toHaveAttribute("width", "160");
   expect(canvas).toHaveAttribute("height", "80");
-  expect(calls[0]).toBe("put 160x80");
+  // The canvas is in the page before the effect that paints it has run, so
+  // the paint is awaited, not assumed.
+  await waitFor(() => expect(calls[0]).toBe("put 160x80"));
   // The isocenter is on the central ray: the image center.
   expect(calls).toContain("move 76.00,40.00");
   expect(calls).toContain("line 84.00,40.00");
