@@ -49,3 +49,19 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 - 2026-11-15. A saved report is recomputed in the browser when it is read back, once, and is shown as the saved report only when every count agrees. When it does not agree, the recomputation is shown as unsaved and the saved counts are not shown. When the frames or mask are gone, the saved counts are shown and said to be as saved.
 - 2026-11-15. An unsaved report is not counted as an unsaved draft of the case. It is recomputed in seconds from saved inputs, and counting it would lock the other studios every time a case with a saved report is opened. Its requests lock the workspace like any other request.
 - 2026-11-15. A save with no readable answer, or a server failure, is treated as possibly stored: nothing more can be saved until the report is read back.
+
+## TAIR qualitative note: the rule, fixed before any frame was opened
+
+Written 2026-11-15, after reading the dataset's file sizes and per-frame text tables and before extracting a frame or running a registration on these cases.
+
+- Cases: the five smallest biplane head-CTA cases other than 00028, by the bytes of the two `A1_t00` clips, their text tables and `CTA-H_defaced.nii.gz`: 00164, 00132, 00151, 00161, 00146 (252.1 MiB). A case with no usable pair under this rule is recorded as excluded and the next smallest is taken (00046, then 00072).
+- Runs: consecutive frames with the same `frame_type` and `relative_time` in the dataset's text table. A run pair is one run in each clip, both of a `WC` type, both at least 15 frames, with the same `relative_time`. Run pairs are taken in time order, at most the first four.
+- Frames: the frame at 30% of each run, then 40%, then 50%, the same fraction in both clips. The first fraction at which both frames show contrast-filled arteries, on inspection, is used. This is the only judgement in the choice and it is made before any registration.
+- Planes and angles: the plane letter and angles are the most frequent on-screen reading in the run, not the folder letter. They are screen text, not calibrated geometry. A pair the app refuses as less than 30 degrees apart is skipped for the next run pair.
+- Frames are cropped to the image area, which removes the burned-in text, and admitted as a public-scope PNG bundle.
+- CTA: resampled by trilinear interpolation onto a 0.8 mm RAS-aligned grid of 200 voxels per side, centered on the centroid of the voxels above -200 HU, as for case 00028.
+- Vessel mask: the RSNA vessel model's candidate, accepted as produced.
+- Geometry, assumed: source to detector 1200 mm, source to isocenter 750 mm. The on-screen field size is taken as the diagonal of the cropped image area. The field-size fit is on for both planes. Vessel polarity is read off the frame; sensitivity 0.5, or 0.8 if the app finds no vessels at 0.5.
+- One two-plane proposal per case from the on-screen angles, saved as proposed, then one presence report. No retries with other settings.
+- What is recorded: counts and lengths by class, and what the overlay looks like against the frame. This is one reviewer's reading of five cases. It is not accuracy evidence. No frame, image, pose or per-case file enters the repository.
+
