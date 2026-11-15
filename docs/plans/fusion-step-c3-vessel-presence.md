@@ -65,3 +65,11 @@ Written 2026-11-15, after reading the dataset's file sizes and per-frame text ta
 - One two-plane proposal per case from the on-screen angles, saved as proposed, then one presence report. No retries with other settings.
 - What is recorded: counts and lengths by class, and what the overlay looks like against the frame. This is one reviewer's reading of five cases. It is not accuracy evidence. No frame, image, pose or per-case file enters the repository.
 
+### Frame choice under the rule, recorded before any registration
+
+- The dataset's two black masking boxes lie inside the image area, at its top left. The rule said only "cropped to the image area". The crop is therefore the largest rectangle of the image area that holds neither box, which is the full width below them. This was decided from the box positions, the same for every case, before any registration.
+- The two clips of a run are screen captures of different lengths, so the same fraction of each is not the same instant and the two frames can differ in phase. The rule is applied as written.
+- 00164: in the first run pair (0:09:48) the frontal frames show devices in the neck and no clearly filled artery at any of the three fractions. The second run pair (0:10:29) shows filled arteries in both planes at 30% and is used.
+- 00132 (0:11:23), 00151 (0:14:17), 00161 (0:01:08) and 00146 (0:20:03): the first run pair at 30% shows filled arteries in both planes and is used. In 00132 the lateral frame is late arterial, and in 00161 the lateral frame already shows some venous filling.
+- No case is excluded.
+
