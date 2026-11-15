@@ -28,7 +28,7 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 
 ## Phases
 
-- [ ] 1. Segment step: mask to unnamed segments with length and mean radius, with tests.
+- [x] 1. Segment step: mask to unnamed segments with length and mean radius, with tests. `web/src/vesselSegments.ts`, 11 tests.
 - [ ] 2. Presence classes per plane and unmatched 2D pieces, with the synthetic gate at the true pose.
 - [ ] 3. The same gate at the recovered pose, single-plane and two-plane.
 - [ ] 4. Report record: append-only, bound to the registration revision, recomputed and checked on reload. Server and parser.
@@ -40,3 +40,4 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 ## Decisions log
 
 - 2026-11-15. Built as approved, on a branch cut from the Step C2 merge commit. Reworking the registration score is recommended separately and does not hold this step.
+- 2026-11-15. Segments are cut from the mask itself, not from the medial points of the registration step. A first version linked the medial points and lost stretches of thin oblique vessels, where those points have gaps. The medial points stay as they are for registration.
