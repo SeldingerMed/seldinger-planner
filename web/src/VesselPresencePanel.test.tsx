@@ -781,7 +781,7 @@ test("a refused save keeps the report unsaved and says why", async () => {
   fireEvent.click(button("Save confirmed report"));
   await waitFor(() =>
     expect(screen.getByRole("alert").textContent).toBe(
-      "The report was not saved. The frame, mask or saved proposal may have changed; reload and try again.",
+      "The report was refused and was not saved. The frame, mask or saved proposal changed, or the report is not one the record accepts. Reload and compute it again.",
     ),
   );
   expect(api.puts()).toHaveLength(2);

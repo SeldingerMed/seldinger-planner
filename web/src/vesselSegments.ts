@@ -369,9 +369,12 @@ export function* vesselSegmentSteps(
         if (!used.has(edge(node, toward))) follow(node, toward);
       }
 
-    // Cut each run into pieces of equal length. A node shared by several
-    // runs, a branching, gives its volume to the first piece that reaches
-    // it.
+    // Cut each run into pieces of equal length. A node gives an equal share
+    // of its volume to each of its links, and a link spreads each end's share
+    // along its half next to that end. So a branching is shared by the runs
+    // that meet there, and every piece holds the volume that lies along it:
+    // none is left with no volume because another run reached its nodes
+    // first, or because its only node sits past a long link.
     const taken = new Uint8Array(nodes);
     for (const run of runs) {
       if (run.length === 0) continue;
@@ -380,7 +383,20 @@ export function* vesselSegmentSteps(
         base = segments.length,
         volume = new Float64Array(pieces),
         pieceAt = (along: number) =>
-          Math.min(pieces - 1, Math.floor(along / each));
+          Math.min(pieces - 1, Math.floor(along / each)),
+        spread = (from: number, to: number, amount: number) => {
+          if (!(to > from)) {
+            volume[pieceAt(from)] += amount;
+            return;
+          }
+          for (let k = pieceAt(from); k < pieces && k * each < to; k++)
+            volume[k] +=
+              (amount *
+                (Math.min(to, k === pieces - 1 ? to : (k + 1) * each) -
+                  Math.max(from, k * each))) /
+              (to - from);
+        },
+        share = (node: number) => (size[node] * cellVolume) / joined[node].size;
       if (base + pieces > L.max_segments)
         throw new Error("Vessel mask has too many segments");
       let along = 0;
@@ -405,12 +421,11 @@ export function* vesselSegmentSteps(
             );
             labels.push(base + pieceAt(s));
           }
+          spread(along, along + span / 2, share(run.nodes[k - 1]));
+          spread(along + span / 2, along + span, share(node));
           along += span;
         }
-        if (!taken[node]) {
-          taken[node] = 1;
-          volume[pieceAt(along)] += size[node] * cellVolume;
-        }
+        taken[node] = 1;
       }
       for (let k = 0; k < pieces; k++)
         segments.push({

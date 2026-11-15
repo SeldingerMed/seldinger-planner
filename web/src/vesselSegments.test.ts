@@ -335,6 +335,55 @@ describe("vessel segments", () => {
     ).toThrow();
   });
 
+  // Two rails joined by two rungs: every run but the rails' free ends lies
+  // between two branchings. A real vessel mask is full of these, and one of
+  // them used to be left with no volume, and so a radius of zero, when the
+  // runs before it had taken both of its ends.
+  it.each([1, 0.8, 0.6])(
+    "gives every piece the volume that lies along it, at %f mm",
+    (spacing) => {
+      const radius = 1.5,
+        ladder: Tube[] = [
+          [
+            [-5, 0, -30],
+            [-5, 0, 30],
+          ],
+          [
+            [5, 0, -30],
+            [5, 0, 30],
+          ],
+          [
+            [-5, 0, -10],
+            [5, 0, -10],
+          ],
+          [
+            [-5, 0, 12],
+            [5, 0, 12],
+          ],
+        ].map((path) => ({ path: path as Vec3[], radius })),
+        { mask, shape, affine } = treeMask(spacing, ladder),
+        result = vesselSegments(mask, shape, affine);
+      expect(result.unassigned_fraction).toBe(0);
+      // Eight runs: each rail in three, and the two rungs.
+      expect(new Set(result.segments.map((segment) => segment.run)).size).toBe(
+        8,
+      );
+      for (const segment of result.segments) {
+        expect(segment.mean_radius_mm).toBeGreaterThan(0.6 * radius);
+        expect(segment.mean_radius_mm).toBeLessThan(1.4 * radius);
+      }
+      // Nothing is counted twice or dropped: the pieces hold the mask.
+      const voxels = mask.reduce((sum, value) => sum + value, 0);
+      expect(
+        result.segments.reduce(
+          (sum, segment) =>
+            sum + Math.PI * segment.mean_radius_mm ** 2 * segment.length_mm,
+          0,
+        ),
+      ).toBeCloseTo(voxels * spacing ** 3, 6);
+    },
+  );
+
   it("refuses more segments than it is built to list", () => {
     // Separate rods, each long enough to be a segment: 45 by 45 of them.
     const n = 180,

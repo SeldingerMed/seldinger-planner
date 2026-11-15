@@ -495,7 +495,7 @@ export default function VesselPresencePanel({
         setNotice(
           error instanceof RevisionConflictError
             ? "The case, the saved proposal or the saved report changed. Reload before saving."
-            : "The report was not saved. The frame, mask or saved proposal may have changed; reload and try again.",
+            : "The report was refused and was not saved. The frame, mask or saved proposal changed, or the report is not one the record accepts. Reload and compute it again.",
         );
     } finally {
       release();
