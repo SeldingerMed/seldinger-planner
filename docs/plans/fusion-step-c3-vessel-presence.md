@@ -29,8 +29,8 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 ## Phases
 
 - [x] 1. Segment step: mask to unnamed segments with length and mean radius, with tests. `web/src/vesselSegments.ts`, 11 tests.
-- [ ] 2. Presence classes per plane and unmatched 2D pieces, with the synthetic gate at the true pose.
-- [ ] 3. The same gate at the recovered pose, single-plane and two-plane.
+- [x] 2. Presence classes per plane and unmatched 2D pieces, with the synthetic gate at the true pose. `web/src/vesselPresence.ts`.
+- [x] 3. The same gate at the recovered pose, single-plane and two-plane. Four constructed cases, each at three poses.
 - [ ] 4. Report record: append-only, bound to the registration revision, recomputed and checked on reload. Server and parser.
 - [ ] 5. Studio: compute, show and save the report beside a saved registration.
 - [ ] 6. Brief section, scalar only.
@@ -41,3 +41,6 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 
 - 2026-11-15. Built as approved, on a branch cut from the Step C2 merge commit. Reworking the registration score is recommended separately and does not hold this step.
 - 2026-11-15. Segments are cut from the mask itself, not from the medial points of the registration step. A first version linked the medial points and lost stretches of thin oblique vessels, where those points have gaps. The medial points stay as they are for registration.
+- 2026-11-15. A sample is judged only where the frame under it can be put down to its own vessel. Samples within 2 mm in the frame of a sample of another run of the mask, or of a sample of the same run 6 mm or more away in the volume, are left out. Before this rule the first segment of a branch missing from the frame read as indeterminate, because its first millimeters project onto the parent.
+- 2026-11-15. The gate views (AP and LAO 60) were chosen so that no segment of the phantom is seen end-on. The lateral view, where one is, has its own test: the segment is indeterminate whatever the frame shows.
+- 2026-11-15. Limits found while building, each pinned by a test or recorded for the verification note: a vessel that is only in the frame can take away the support of a mask segment it lies over; a wrong registration reads as missing vessels; with the field edge 3 mm lower than in the gate case, the single-plane registration slid the trunk along itself by 8.4 mm and three segments were misclassed, while the two-plane registration recovered the pose.

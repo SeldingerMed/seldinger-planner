@@ -43,6 +43,9 @@ export type VesselSegment = {
   mean_radius_mm: number;
   /** Axis samples of this segment in `points`. */
   sample_count: number;
+  /** The unbranched run the segment was cut from. Segments of one run
+   * follow one another along a vessel with no branching between them. */
+  run: number;
 };
 export type VesselSegments = {
   segments: VesselSegment[];
@@ -244,7 +247,8 @@ export function* vesselSegmentSteps(
     segments: VesselSegment[] = [],
     samples: number[] = [],
     labels: number[] = [];
-  let unassigned = 0;
+  let unassigned = 0,
+    cut = 0;
 
   for (let seed = 0; seed < cells; seed++) {
     if (seen[seed]) continue;
@@ -413,7 +417,9 @@ export function* vesselSegmentSteps(
           length_mm: each,
           mean_radius_mm: Math.sqrt(volume[k] / (Math.PI * each)),
           sample_count: 0,
+          run: cut,
         });
+      cut++;
     }
     for (let node = 0; node < nodes; node++)
       if (alive[node] && !taken[node]) unassigned += size[node];
