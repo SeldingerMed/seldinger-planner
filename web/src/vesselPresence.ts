@@ -90,6 +90,25 @@ export type VesselPresence = {
   planes: PlanePresence[];
 };
 
+/** The class that follows from one segment's counts in one plane: its
+ * samples, those inside the frame, those of them that lie over no other
+ * sample, and those of the latter with a 2D centerline near. The server
+ * holds the same rule and refuses a saved class that contradicts it. */
+export function classifyPresence(
+  sample_count: number,
+  in_field: number,
+  clear: number,
+  supported: number,
+): PresenceClass {
+  const L = VESSEL_PRESENCE_LIMITS;
+  if (in_field < L.min_in_field * sample_count) return "outside_field";
+  if (clear < L.min_clear_samples || clear < L.min_clear_fraction * in_field)
+    return "indeterminate";
+  if (supported >= L.supported_fraction * clear) return "supported";
+  if (supported <= L.unsupported_fraction * clear) return "no_2d_support";
+  return "indeterminate";
+}
+
 function planePresence(
   input: PresenceInput,
   plane: PresencePlaneInput,
@@ -221,21 +240,15 @@ function planePresence(
     mine.clear++;
     if (near[k]) mine.supported++;
   }
-  const classed = tally.map((mine, index): SegmentPresence => {
-    let found: PresenceClass;
-    if (mine.in_field < L.min_in_field * total[index]) found = "outside_field";
-    else if (
-      mine.clear < L.min_clear_samples ||
-      mine.clear < L.min_clear_fraction * mine.in_field
-    )
-      found = "indeterminate";
-    else if (mine.supported >= L.supported_fraction * mine.clear)
-      found = "supported";
-    else if (mine.supported <= L.unsupported_fraction * mine.clear)
-      found = "no_2d_support";
-    else found = "indeterminate";
-    return { class: found, ...mine };
-  });
+  const classed = tally.map((mine, index): SegmentPresence => ({
+    class: classifyPresence(
+      total[index],
+      mine.in_field,
+      mine.clear,
+      mine.supported,
+    ),
+    ...mine,
+  }));
 
   // 2D centerline pixels with no sample near, in connected pieces.
   const loose = new Uint8Array(w * h);

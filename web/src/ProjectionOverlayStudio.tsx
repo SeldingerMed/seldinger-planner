@@ -46,6 +46,7 @@ import {
 import { loadSegmentationMask, type SegmentationEntry } from "./segmentation";
 import { stable, type Identity } from "./territoryWorkflow";
 import type { Polarity, VesselTarget } from "./vesselness2d";
+import VesselPresencePanel from "./VesselPresencePanel";
 import "./reformats.css";
 
 type Props = {
@@ -361,7 +362,11 @@ export default function ProjectionOverlayStudio({
     [reviewedOutcome, setReviewedOutcome] = useState<Outcome | null>(null),
     [attestedOutcome, setAttestedOutcome] = useState<Outcome | null>(null),
     [localBusy, setLocalBusy] = useState(false),
-    [requestFailed, setRequestFailed] = useState(false);
+    [requestFailed, setRequestFailed] = useState(false),
+    // The vessel-presence report below has a request open, or is computing.
+    [reporting, setReporting] = useState(false),
+    [reportComputing, setReportComputing] = useState(false);
+  const reportingNow = useRef(false);
   // Each request releases the same callback it acquired, even after a case
   // switch. Cleanup is idempotent so late acknowledgements cannot relock it.
   const pending = useRef(
@@ -396,9 +401,10 @@ export default function ProjectionOverlayStudio({
       controller.abort();
       setLocalBusy(pending.current.size > 0);
       owner?.(
-        [...pending.current.values()].some(
-          (request) => request.owner === owner,
-        ),
+        reportingNow.current ||
+          [...pending.current.values()].some(
+            (request) => request.owner === owner,
+          ),
       );
     };
     pending.current.set(release, { key, owner, controller });
@@ -510,7 +516,24 @@ export default function ProjectionOverlayStudio({
         ? frame
         : null;
   const editable =
-    !!current && !disabled && !localBusy && !run && !requestFailed;
+    !!current &&
+    !disabled &&
+    !localBusy &&
+    !run &&
+    !requestFailed &&
+    !reporting &&
+    !reportComputing;
+  const onReporting = useCallback((value: boolean) => {
+    reportingNow.current = value;
+    setReporting(value);
+    const owner = callbacks.current.onBusy;
+    owner?.(
+      value ||
+        [...pending.current.values()].some(
+          (request) => request.owner === owner,
+        ),
+    );
+  }, []);
   const grid = useMemo(() => {
     try {
       return volume
@@ -1640,6 +1663,20 @@ export default function ProjectionOverlayStudio({
                 </button>
               </div>
             </fieldset>
+          )}
+          {saved?.status === "current" && (
+            <VesselPresencePanel
+              identity={identity}
+              binding={binding}
+              registration={current.saved}
+              mask={mask}
+              grid={grid}
+              disabled={
+                disabled || localBusy || !!run || requestFailed || dirty
+              }
+              onRequests={onReporting}
+              onComputing={setReportComputing}
+            />
           )}
         </>
       )}

@@ -31,8 +31,8 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 - [x] 1. Segment step: mask to unnamed segments with length and mean radius, with tests. `web/src/vesselSegments.ts`, 11 tests.
 - [x] 2. Presence classes per plane and unmatched 2D pieces, with the synthetic gate at the true pose. `web/src/vesselPresence.ts`.
 - [x] 3. The same gate at the recovered pose, single-plane and two-plane. Four constructed cases, each at three poses.
-- [ ] 4. Report record: append-only, bound to the registration revision, recomputed and checked on reload. Server done (`planner/vessel_presence.py`, `planner/vessel_presence_server.py`); parser and the reload check are open.
-- [ ] 5. Studio: compute, show and save the report beside a saved registration.
+- [x] 4. Report record: append-only, bound to the registration revision, recomputed and checked on reload. `planner/vessel_presence.py`, `planner/vessel_presence_server.py`, `web/src/presenceReport.ts`.
+- [x] 5. Studio: compute, show and save the report beside a saved registration. `web/src/VesselPresencePanel.tsx`, `web/src/vesselPresenceJob.ts`.
 - [x] 6. Brief section, scalar only. `planner/fusion_brief.py`.
 - [ ] 7. TAIR five-case note.
 - [ ] 8. Docs, verification record, mutation pass, independent review, automated review.
@@ -46,3 +46,6 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 - 2026-11-15. Limits found while building, each pinned by a test or recorded for the verification note: a vessel that is only in the frame can take away the support of a mask segment it lies over; a wrong registration reads as missing vessels; with the field edge 3 mm lower than in the gate case, the single-plane registration slid the trunk along itself by 8.4 mm and three segments were misclassed, while the two-plane registration recovered the pose.
 - 2026-11-15. The server never sees the frame or the mask, so it cannot recompute the counts. It checks that the counts are possible, that each class follows from its counts under the same rule the browser uses, and that the report names the registration that is the latest one inside the write transaction. The recomputation on reload is the browser's.
 - 2026-11-15. The brief leaves out the registration's fit scores. They were shown not to identify the pose, and a number in a brief reads as a measurement.
+- 2026-11-15. A saved report is recomputed in the browser when it is read back, once, and is shown as the saved report only when every count agrees. When it does not agree, the recomputation is shown as unsaved and the saved counts are not shown. When the frames or mask are gone, the saved counts are shown and said to be as saved.
+- 2026-11-15. An unsaved report is not counted as an unsaved draft of the case. It is recomputed in seconds from saved inputs, and counting it would lock the other studios every time a case with a saved report is opened. Its requests lock the workspace like any other request.
+- 2026-11-15. A save with no readable answer, or a server failure, is treated as possibly stored: nothing more can be saved until the report is read back.

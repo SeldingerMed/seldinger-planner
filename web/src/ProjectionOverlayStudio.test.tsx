@@ -8,6 +8,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   binding,
@@ -27,6 +28,8 @@ import {
   pairTruth,
   phantom,
   pivot,
+  presenceAnswer,
+  presenceCurrent,
   registrationAnswer,
   REVISION,
   savedInputs,
@@ -67,6 +70,7 @@ type Routes = {
   frame?: (url: string) => Response;
   mask?: () => Response;
   put?: (body: any) => Response;
+  presence?: (method: string, body: any, revision: number) => Response;
 };
 /** A stand-in server. Every request is recorded as "METHOD path". */
 function server(routes: Routes = {}) {
@@ -75,15 +79,31 @@ function server(routes: Routes = {}) {
     body: unknown;
     signal: AbortSignal | null | undefined;
   }[] = [];
+  let revision = 0;
   const fetch = vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET",
       body = init?.body ? JSON.parse(init.body as string) : undefined;
     calls.push({ key: `${method} ${url}`, body, signal: init?.signal });
     const base = `/api/cases/${identity.case_id}`;
-    if (url === `${base}/projection-registration`)
-      return method === "PUT"
-        ? (routes.put ?? (() => json({}, 500)))(body)
-        : (routes.registration ?? (() => json(registrationAnswer())))();
+    if (url === `${base}/projection-registration`) {
+      const answer =
+        method === "PUT"
+          ? (routes.put ?? (() => json({}, 500)))(body)
+          : (routes.registration ?? (() => json(registrationAnswer())))();
+      // The report route answers for the registration revision last served.
+      try {
+        const sent = await answer.clone().json();
+        if (Number.isInteger(sent?.registration_revision))
+          revision = sent.registration_revision;
+      } catch {
+        // A malformed answer leaves the revision as it was.
+      }
+      return answer;
+    }
+    if (url === `${base}/vessel-presence`)
+      return (
+        routes.presence ?? ((_method, _body, at) => json(presenceAnswer(at)))
+      )(method, body, revision);
     if (url === `${base}/segmentations`)
       return json({
         current: {
@@ -1869,3 +1889,222 @@ test("a frame the two-plane proposal cannot fetch is reported as not loaded", as
     jobs.mockRestore();
   }
 });
+
+// The vessel-presence report of a saved proposal.
+
+const presenceRoute = `/api/cases/${identity.case_id}/vessel-presence`;
+const group = () =>
+  screen.getByRole("group", { name: "Vessel presence report" });
+
+test("offers a vessel presence report only on a saved current proposal", async () => {
+  const api = server();
+  const view = render(<Harness />);
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  expect(
+    screen.queryByRole("group", { name: "Vessel presence report" }),
+  ).toBeNull();
+  expect(api.keys()).not.toContain(`GET ${presenceRoute}`);
+  view.unmount();
+
+  const stale = server({
+    registration: () =>
+      json(registrationAnswer({ status: "stale", registration_id: "r-0" }, 2)),
+  });
+  render(<Harness />);
+  await screen.findByText(/confirmed for an earlier revision of this case/);
+  expect(
+    screen.queryByRole("group", { name: "Vessel presence report" }),
+  ).toBeNull();
+  expect(stale.keys()).not.toContain(`GET ${presenceRoute}`);
+});
+
+test("computes and saves a vessel presence report on the saved proposal", async () => {
+  let stored: any = null;
+  const api = server({
+    registration: () => json(currentAnswer()),
+    presence: (method, body, at) => {
+      if (method === "PUT") stored = presenceCurrent(body.inputs);
+      return json(stored ?? presenceAnswer(at));
+    },
+  });
+  const dirty = vi.fn();
+  render(<Harness onDirty={dirty} />);
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toBe(
+      "No vessel presence report is saved for this proposal.",
+    ),
+  );
+  const other = screen.getByRole("button", { name: "Other workspace action" });
+  await waitFor(() => expect(other).toHaveProperty("disabled", false));
+  fireEvent.click(
+    within(group()).getByRole("button", { name: "Compute vessel presence" }),
+  );
+  // While the report is computed the studio's own actions wait.
+  await screen.findByRole("status", { name: "Vessel presence status" });
+  expect(
+    screen.getByRole("button", { name: "Show saved overlay" }),
+  ).toHaveProperty("disabled", true);
+  expect(
+    screen
+      .getByRole("button", { name: "Open admitted frames" })
+      .closest("fieldset"),
+  ).toBeDisabled();
+  await waitFor(
+    () =>
+      expect(status("Vessel presence summary").textContent).toMatch(
+        /^Unsaved report: \d+ unnamed segments/,
+      ),
+    { timeout: 30000 },
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Show saved overlay" }),
+    ).toHaveProperty("disabled", false),
+  );
+  // The report is computed from the saved proposal's own frame and mask.
+  expect(api.keys()).toEqual(
+    expect.arrayContaining([
+      "GET /api/projection-frames/phantom-run",
+      "GET /api/projection-frames/phantom-run/planes/single/frames/12",
+      `GET ${maskEntry.mask_url}`,
+    ]),
+  );
+  // The whole tree is in the frame at the saved pose: nothing is missing.
+  const table = within(
+    screen.getByRole("table", { name: "Vessel presence in plane single" }),
+  );
+  expect(
+    within(table.getByRole("row", { name: /^No 2D support/ }))
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent),
+  ).toEqual(["0", "0.0"]);
+  // An unsaved report is not an unsaved draft of the case.
+  expect(dirty).not.toHaveBeenCalledWith(true);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed the classes/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save confirmed report" }),
+  );
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toMatch(
+      /^Saved operator-confirmed report, revision 1, on proposal revision 1\./,
+    ),
+  );
+  const put = api.calls.find((call) => call.key === `PUT ${presenceRoute}`)!;
+  expect((put.body as any).inputs.registration_id).toBe("registration-1");
+  expect((put.body as any).inputs.registration_revision).toBe(1);
+  expect((put.body as any).inputs.registration_input_sha256).toBe(
+    "f".repeat(64),
+  );
+  expect((put.body as any).inputs.planes[0].frame_sha256).toBe(hex(gray));
+  await waitFor(() => expect(other).toHaveProperty("disabled", false));
+}, 60000);
+
+test("the workspace is locked while a report request is open", async () => {
+  let release: (value: Response) => void = () => {};
+  const held = new Promise<Response>((resolve) => (release = resolve));
+  server({
+    registration: () => json(currentAnswer()),
+    presence: () => held as unknown as Response,
+  });
+  render(<Harness />);
+  await screen.findByRole("status", { name: "Saved overlay proposal" });
+  const other = screen.getByRole("button", { name: "Other workspace action" });
+  await waitFor(() => expect(other).toHaveProperty("disabled", true));
+  expect(
+    screen.getByRole("button", { name: "Show saved overlay" }),
+  ).toHaveProperty("disabled", true);
+  await act(async () => {
+    release(json(presenceAnswer(1)));
+    await held;
+  });
+  await waitFor(() => expect(other).toHaveProperty("disabled", false));
+  expect(
+    screen.getByRole("button", { name: "Show saved overlay" }),
+  ).toHaveProperty("disabled", false);
+});
+
+test("no report is computed while a proposal is unsaved, and a new proposal starts a new report", async () => {
+  let registration = currentAnswer();
+  let stored: any = null;
+  const api = server({
+    registration: () => json(registration),
+    put: (body) => {
+      registration = currentAnswer(
+        body.inputs,
+        { registration_id: "registration-7" },
+        2,
+      );
+      return json(registration);
+    },
+    presence: (method, body, at) => {
+      if (method === "PUT") stored = presenceCurrent(body.inputs);
+      // The report saved for revision 1 is stale against revision 2.
+      return json(
+        stored && stored.registration_revision === at
+          ? stored
+          : stored
+            ? presenceAnswer(at, { status: "stale", report_id: "report-1" }, 1)
+            : presenceAnswer(at),
+      );
+    },
+  });
+  render(<Harness />);
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toMatch(
+      /^No vessel presence report/,
+    ),
+  );
+  const compute = () =>
+    within(group()).getByRole("button", {
+      name: /^(Compute|Recompute) vessel presence$/,
+    }) as HTMLButtonElement;
+  fireEvent.click(compute());
+  await waitFor(
+    () =>
+      expect(status("Vessel presence summary").textContent).toMatch(
+        /^Unsaved report/,
+      ),
+    { timeout: 30000 },
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed the classes/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Save confirmed report" }),
+  );
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toMatch(
+      /revision 1, on proposal revision 1/,
+    ),
+  );
+  // A new proposal on the same frame.
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane single" });
+  enterGeometry();
+  click("Propose overlay");
+  await proposed();
+  expect(compute().disabled).toBe(true);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed the overlay/ }),
+  );
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed proposal, revision 2, not a validated registration/,
+  );
+  // The report belonged to revision 1. It is read again and is stale.
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toBe(
+      "A report was confirmed for an earlier proposal or an earlier revision of this case. It is not shown or reused.",
+    ),
+  );
+  expect(
+    screen.queryByRole("table", { name: "Vessel presence in plane single" }),
+  ).toBeNull();
+  expect(
+    api.keys().filter((key) => key === `GET ${presenceRoute}`).length,
+  ).toBeGreaterThanOrEqual(2);
+  expect(compute().disabled).toBe(false);
+}, 90000);

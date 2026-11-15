@@ -506,6 +506,8 @@ export type RegistrationCurrent =
   | {
       status: "current";
       registration_id: string;
+      /** The server's digest of `inputs`. A vessel-presence report names it. */
+      input_sha256: string;
       /** Whether every frame and the mask the record names are still
        * installed and unchanged. */
       evidence: "verified" | "unavailable";
@@ -804,6 +806,7 @@ export function parseSavedRegistration(
     current: {
       status: "current",
       registration_id: current.registration_id,
+      input_sha256: current.input_sha256,
       evidence: current.evidence as "verified" | "unavailable",
       inputs,
       result: {

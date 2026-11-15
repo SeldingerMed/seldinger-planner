@@ -13,6 +13,7 @@
  * gap would end a segment where the vessel does not end. */
 import { MASK_POINT_LIMITS, spacingOf } from "./maskPoints";
 
+export const VESSEL_SEGMENT_METHOD = "mask_band_sweep_v1";
 export const VESSEL_SEGMENT_LIMITS = {
   /** Width of one band of path distance. Raised to two voxel diagonals on a
    * coarser grid. A step through the mask is at most one diagonal, so no

@@ -88,7 +88,7 @@ function* run(
 }
 
 /** Wraps a stepping computation so it can be advanced in time slices. */
-function stepped<T>(
+export function stepped<T>(
   make: (clock: { expired: () => boolean }) => Generator<void, T>,
 ) {
   const clock = { expired: () => false },

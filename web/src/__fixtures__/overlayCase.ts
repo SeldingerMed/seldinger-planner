@@ -174,6 +174,86 @@ export function registrationAnswer(
         : current,
   };
 }
+/** The server's answer for the vessel-presence report of a registration. */
+export function presenceAnswer(
+  registrationRevision: number,
+  current: Record<string, unknown> = { status: "not_confirmed" },
+  revision = 0,
+) {
+  return {
+    ...identity,
+    registration_revision: registrationRevision,
+    report_revision: revision,
+    current:
+      current.status === "stale"
+        ? { inputs: null, result: null, ...current }
+        : current,
+  };
+}
+/** The server's own summary of a confirmed report, mirroring `summarize`
+ * in `planner/vessel_presence.py`. Lengths are rounded to a micrometer. */
+export function presenceResult(inputs: Record<string, any>) {
+  const round = (value: number) => Math.round(value * 1000) / 1000,
+    sum = (values: number[]) => round(values.reduce((a, b) => a + b, 0)),
+    names = ["supported", "no_2d_support", "outside_field", "indeterminate"];
+  return {
+    version: "step-c3-vessel-presence-v1",
+    method: "segment_centerline_support_v1",
+    segment_method: "mask_band_sweep_v1",
+    status: "operator_confirmed_report",
+    validated: false,
+    cause: "not_asserted",
+    counts_source: "browser_reported_not_recomputed",
+    segment_count: inputs.segments.length,
+    segment_length_mm: sum(inputs.segments.map((s: any) => s.length_mm)),
+    unassigned_fraction: inputs.unassigned_fraction,
+    planes: inputs.planes.map((plane: any) => ({
+      plane: plane.plane,
+      classes: Object.fromEntries(
+        names.map((name) => {
+          const mine = inputs.segments.filter(
+            (_: unknown, k: number) => plane.segments[k].presence === name,
+          );
+          return [
+            name,
+            {
+              count: mine.length,
+              length_mm: sum(mine.map((s: any) => s.length_mm)),
+            },
+          ];
+        }),
+      ),
+      unmatched_count: plane.unmatched_mm.length,
+      unmatched_length_mm: sum(plane.unmatched_mm),
+    })),
+  };
+}
+/** A current report as the server answers it, for confirmed `inputs`. */
+export function presenceCurrent(
+  inputs: Record<string, any>,
+  change: Record<string, unknown> = {},
+  revision = 1,
+) {
+  return presenceAnswer(
+    inputs.registration_revision,
+    {
+      status: "current",
+      report_id: "report-1",
+      dependencies: {
+        ...identity,
+        version: "step-c3-vessel-presence-v1",
+        registration_id: inputs.registration_id,
+        registration_revision: inputs.registration_revision,
+        registration_input_sha256: inputs.registration_input_sha256,
+      },
+      input_sha256: "9".repeat(64),
+      inputs,
+      result: presenceResult(inputs),
+      ...change,
+    },
+    revision,
+  );
+}
 export function savedInputs(change: Record<string, unknown> = {}) {
   return {
     confirmed: true,
