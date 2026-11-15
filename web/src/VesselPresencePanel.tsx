@@ -212,6 +212,9 @@ export default function VesselPresencePanel({
             identity,
             revision: registration.registration_revision,
             registration: saved.registration_id,
+            evidence: saved.evidence,
+            mask: mask ? [mask.candidate_id, mask.mask_sha256] : null,
+            grid,
           })
         : "";
   const live = useRef(key);
@@ -234,7 +237,8 @@ export default function VesselPresencePanel({
     [reviewedOutcome, setReviewedOutcome] = useState<Outcome | null>(null),
     [notice, setNotice] = useState("");
   const controllers = useRef(new Set<AbortController>());
-  /** One request with a deadline. `release` is idempotent. `answered` ends
+  const rechecked = useRef("");
+  /** One network operation with an aggregate deadline. `release` is idempotent. `answered` ends
    * the deadline and keeps the request open: what follows an answer is local
    * work, which no deadline is for. */
   const begin = () => {
@@ -265,6 +269,7 @@ export default function VesselPresencePanel({
     setOutcome(null);
     setRun(null);
     setNotice("");
+    rechecked.current = "";
     if (!key) return;
     const owned = key,
       { release, signal } = begin();
@@ -305,7 +310,12 @@ export default function VesselPresencePanel({
     shown = outcome?.key === key ? outcome : null,
     computed = shown && "result" in shown ? shown : null,
     evidence = saved.status === "current" && saved.evidence === "verified",
-    ready = !!key && !!current && evidence && !!mask && !!grid,
+    matchingMask =
+      saved.status === "current" &&
+      !!mask &&
+      mask.candidate_id === saved.inputs.mask_candidate_id &&
+      mask.mask_sha256 === saved.inputs.mask_sha256,
+    ready = !!key && !!current && evidence && matchingMask && !!grid,
     idle = !disabled && !busy && !active;
   const computing = !!active;
   useEffect(() => {
@@ -418,7 +428,7 @@ export default function VesselPresencePanel({
         setOutcome({
           key: owned,
           failure:
-            "The saved proposal's frame or vessel mask is no longer available unchanged, so no report is computed",
+            "The saved proposal could not be recomputed from its frames and vessel mask. Check their availability and identity, then retry",
         });
     } finally {
       release();
@@ -428,7 +438,6 @@ export default function VesselPresencePanel({
   }, [key, mask, grid]);
 
   // A saved report is recomputed when it is read back, once.
-  const rechecked = useRef("");
   const savedInputs =
     current?.current.status === "current" ? current.current.inputs : null;
   useEffect(() => {
@@ -503,12 +512,10 @@ export default function VesselPresencePanel({
   }
 
   if (saved.status !== "current") return null;
-  const table = computed
-      ? summarizeReport(computed.inputs)
-      : savedInputs
-        ? summarizeReport(savedInputs)
-        : null,
-    listed = computed?.inputs ?? savedInputs;
+  // Stored counts are not display evidence. Only a local computation can
+  // supply the table; its epoch includes mask, grid and evidence eligibility.
+  const table = computed ? summarizeReport(computed.inputs) : null,
+    listed = computed?.inputs;
   return (
     <fieldset aria-labelledby="vessel-presence-title">
       <legend id="vessel-presence-title">Vessel presence report</legend>
@@ -537,9 +544,11 @@ export default function VesselPresencePanel({
                   ? "Computed here from the frames, the mask and the saved proposal: the counts agree with the saved report."
                   : computed
                     ? `Computed here from the frames, the mask and the saved proposal: the saved report was not reproduced, ${difference}. Its counts are not shown.`
-                    : evidence
-                      ? "Not yet recomputed here."
-                      : "Its frames or vessel mask are no longer available unchanged, so it cannot be recomputed. The counts below are as saved."
+                    : !evidence
+                      ? "Its frames or vessel mask are no longer available unchanged, so it cannot be recomputed. Its counts are not shown."
+                      : !matchingMask
+                        ? "The accepted vessel mask differs from the saved proposal. Its counts are not shown."
+                        : "Not yet recomputed here."
               }`
             : current.current.status === "stale"
               ? "A report was confirmed for an earlier proposal or an earlier revision of this case. It is not shown or reused."

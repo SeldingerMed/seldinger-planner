@@ -158,7 +158,7 @@ Records are append-only. A later case revision makes the record stale, and a sta
 
 ## Vessel-presence report
 
-Beside a saved proposal that is current and whose frames and mask are still verified, the studio offers **Vessel presence report**. The report says, for each segment of the accepted vessel mask and each plane of the saved proposal, whether the frame shows a vessel where the segment projects.
+Beside a current saved proposal, the studio offers **Vessel presence report**. Computation requires verified evidence and the accepted mask named by that proposal. The report says, for each segment of the accepted vessel mask and each plane of the saved proposal, whether the frame shows a vessel where the segment projects.
 
 It asserts no cause. A segment without 2D support may be occluded, unfilled, outside the injected territory or absent, or the saved proposal may be wrong. The report is only as good as that proposal, which is an operator-confirmed proposal and not a validated registration. On five public clinical cases the proposals did not visibly lie on the filled arteries and the reports there described the misfit, not the anatomy (see the [verification note](verification/step-c3-vessel-presence.md)).
 
@@ -200,9 +200,9 @@ A report belongs to one saved proposal. A new proposal makes the old report stal
 
 The record (`step-c3-vessel-presence-v1`) is append-only and names the proposal it was computed with: its identifier, revision and input digest, and each plane's frame hash. It stores `validated: false`, the status `operator_confirmed_report`, `cause: not_asserted` and `counts_source: browser_reported_not_recomputed`.
 
-The server never sees the frame or the mask and cannot recompute the counts. It checks that the counts are possible, that every class follows from its counts under the rule above, that the report names the latest proposal inside the write transaction, and that the proposal's frames and mask are on hand. It refuses anything else.
+The report server does not process the frame pixels or mask voxels and cannot recompute the counts. It checks that the counts are possible, that every class follows from its counts under the rule above, that the report names the latest proposal inside the write transaction, and that the proposal's frames and mask are on hand. It refuses anything else. These are consistency checks, not a cryptographic signature: someone with database-write access can rewrite the inputs, digest and summary together. Browser recomputation remains necessary.
 
-When a saved report is read back, the browser recomputes it from the frames, the mask and the saved proposal. It is shown as saved only when every count agrees. Otherwise the studio says the saved report was not reproduced and does not show its counts.
+When a saved report is read back, the browser recomputes it from the frames, the mask and the saved proposal. It is shown as saved only when every count agrees. Pending or failed recomputation, unavailable evidence, or a different accepted mask withholds the stored counts. A mismatch says the report was not reproduced; any locally computed replacement is marked unsaved. The 30 s deadline bounds the aggregate network-fetch operation, not local mask decoding or computation. A failed automatic check can be retried explicitly.
 
 ### In the brief
 

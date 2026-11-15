@@ -163,6 +163,20 @@ The three reports saved before the mean-radius change were read back after it. E
 
 The brief of one case (00161) was read from the running server and held the registration status, the two planes and their angle, the class counts and lengths above, the two statements of limits, and no image, pose, coordinate or fit score.
 
+## Final local checks
+
+After the UI review corrections: backend 1363 passed and 127 skipped; frontend 1094 passed in 94 files; native ingestion 171 passed; physics 239 passed. Python lint and format checks, TypeScript typecheck, production build, and dependency audit passed (zero vulnerabilities). All 16 changed TypeScript/TSX files pass Prettier. A whole-source Prettier check also reported 53 existing files outside this change; those unrelated files were not reformatted. Browser test logs include jsdom canvas warnings; the five real-case studio runs above provide the separate rendered-path evidence.
+
+## Independent review and corrections
+
+Three independent Hermes reviewers inspected the server, algorithms, and UI/parser. The UI reviewer found that stored counts could be displayed before verification, or when evidence was unavailable. The fallback table has been removed: only a local computation supplies counts. Changes to the accepted mask, source grid or evidence state now invalidate a retained computation synchronously. Regression tests cover withheld counts while disabled, unavailable evidence, and changing the accepted mask after a successful recheck. A transient automatic-recheck failure withholds counts and an explicit retry can recover.
+
+The generic compute-failure message no longer diagnoses a network failure as changed evidence. The network deadline is explicitly an aggregate fetch budget; local decoding remains outside it. The panel may show stored revision metadata without counts when recomputation is not possible.
+
+The server reviewer noted that a brief assembled across different registration revisions fails closed with 503 rather than a reload conflict. This is retained: an inconsistent provider envelope is not assumed to be benign concurrency. A fully coherent malicious database rewrite can also pass self-consistency checks; the record is not signed and does not claim resistance to an administrator rewriting all anchors. Browser recomputation checks the numbers against the actual artifacts.
+
+JSON integers are valid physical-length numbers; count fields require integral JSON values. SQLite INTEGER affinity can normalize `1.0` to `1` before the revision guard sees it. Neither behavior changes the report contract. Algorithm review found no blocking defects; distance-map interpolation remains a pixel-grid approximation, not an exact geometric distance between subpixel locations.
+
 ## Limits
 
 - The report is only as good as the saved proposal, and on the clinical cases reviewed that proposal did not hold. Until registration on clinical frames is credible, a report on clinical data describes the registration.

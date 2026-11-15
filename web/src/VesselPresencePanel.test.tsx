@@ -534,7 +534,7 @@ test("a saved report the recomputation does not reproduce is said so, and not sh
   expect(api.puts()[0].body.report_revision).toBe(2);
 }, 60000);
 
-test("a saved report whose evidence is gone is shown as saved and not recomputed", async () => {
+test("a saved report whose evidence is gone withholds its counts", async () => {
   const lost = parseSavedRegistration(
     currentAnswer(savedInputs({ frame_sha256: hex(missing) }), {
       evidence: "unavailable",
@@ -545,18 +545,36 @@ test("a saved report whose evidence is gone is shown as saved and not recomputed
   render(<Panel registration={lost} />);
   await waitFor(() =>
     expect(saved()).toBe(
-      "Saved operator-confirmed report, revision 1, on proposal revision 1. Its frames or vessel mask are no longer available unchanged, so it cannot be recomputed. The counts below are as saved.",
+      "Saved operator-confirmed report, revision 1, on proposal revision 1. Its frames or vessel mask are no longer available unchanged, so it cannot be recomputed. Its counts are not shown.",
     ),
   );
-  expect(rows("Vessel presence in plane single")).toEqual(
-    tableOf(expectedSingle, 0),
-  );
+  expect(screen.queryByRole("table")).toBeNull();
   expect(screen.queryByRole("button", { name: /vessel presence/ })).toBeNull();
   expect(screen.queryByRole("img")).toBeNull();
   expect(api.keys()).toEqual([
     `GET /api/cases/${identity.case_id}/vessel-presence`,
   ]);
 });
+
+test("changing the accepted mask hides a previously reproduced report immediately", async () => {
+  server({ get: () => json(presenceCurrent(expectedSingle)) });
+  const view = render(<Panel />);
+  await waitFor(() => expect(saved()).toMatch(/counts agree/), {
+    timeout: 30000,
+  });
+  expect(screen.getAllByRole("table").length).toBeGreaterThan(0);
+  view.rerender(
+    <Panel
+      mask={{ ...maskEntry, candidate_id: "other-mask" } as SegmentationEntry}
+    />,
+  );
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(screen.queryByRole("img")).toBeNull();
+  await waitFor(() => expect(saved()).toMatch(/accepted vessel mask differs/));
+  expect(
+    screen.queryByRole("button", { name: /Compute vessel presence/ }),
+  ).toBeNull();
+}, 60000);
 
 test("a stale report is not shown, and a new one can be computed", async () => {
   server({
@@ -597,7 +615,7 @@ test("needs the accepted mask and the source volume", async () => {
 
 test("computes nothing from a frame, bundle or mask that is not the confirmed one", async () => {
   const failure =
-    "Vessel presence was not computed: The saved proposal's frame or vessel mask is no longer available unchanged, so no report is computed.";
+    "Vessel presence was not computed: The saved proposal could not be recomputed from its frames and vessel mask. Check their availability and identity, then retry.";
   const create = vi.spyOn(jobs, "createPresenceJob");
   const cases: { routes?: Routes; mask?: Record<string, unknown> }[] = [
     // Another frame's pixels under the confirmed name, served consistently.
@@ -626,9 +644,6 @@ test("computes nothing from a frame, bundle or mask that is not the confirmed on
     { routes: { bundle: () => json({}, 404) } },
     { routes: { frame: () => json({}, 404) } },
     { routes: { mask: () => json({}, 404) } },
-    // Another mask has been accepted since.
-    { mask: { ...maskEntry, candidate_id: "vessel-candidate-2" } },
-    { mask: { ...maskEntry, mask_sha256: "0".repeat(64) } },
   ];
   for (const entry of cases) {
     const api = server(entry.routes);
@@ -647,6 +662,45 @@ test("computes nothing from a frame, bundle or mask that is not the confirmed on
   }
   expect(create).not.toHaveBeenCalled();
 });
+
+test("a failed automatic recheck withholds saved counts and can be retried", async () => {
+  let available = false;
+  const api = server({
+    get: () => json(presenceCurrent(expectedSingle)),
+    bundle: () => {
+      if (!available) throw new TypeError("network offline");
+      return json(
+        bundleAnswer({
+          planes: [
+            {
+              ...bundleAnswer().manifest.planes[0],
+              frames: [
+                {
+                  index: 12,
+                  sha256: hex(missing),
+                  input_sha256: "c".repeat(64),
+                },
+              ],
+            },
+          ],
+        }),
+      );
+    },
+  });
+  render(<Panel />);
+  await screen.findByRole("alert");
+  expect(screen.getByRole("alert").textContent).toMatch(
+    /could not be recomputed/,
+  );
+  expect(screen.queryAllByRole("table")).toHaveLength(0);
+  expect(api.puts()).toEqual([]);
+  available = true;
+  fireEvent.click(button("Compute vessel presence"));
+  await waitFor(() => expect(saved()).toMatch(/counts agree/), {
+    timeout: 30000,
+  });
+  expect(screen.getAllByRole("table").length).toBeGreaterThan(0);
+}, 60000);
 
 test("a failed computation is reported and leaves nothing to confirm", async () => {
   server();
@@ -716,10 +770,11 @@ test("starts nothing while disabled", async () => {
   expect(api.keys()).toEqual([
     `GET /api/cases/${identity.case_id}/vessel-presence`,
   ]);
-  // The saved counts are shown meanwhile, as saved.
-  expect(status("Vessel presence summary").textContent).toMatch(
-    /^Saved report: /,
-  );
+  // No counts are shown until the recomputation has checked them.
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(
+    screen.queryByRole("status", { name: "Vessel presence summary" }),
+  ).toBeNull();
   view.rerender(<Panel />);
   await waitFor(() => expect(saved()).toMatch(/counts agree/), {
     timeout: 30000,
