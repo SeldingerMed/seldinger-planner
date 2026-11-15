@@ -31,9 +31,9 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 - [x] 1. Segment step: mask to unnamed segments with length and mean radius, with tests. `web/src/vesselSegments.ts`, 11 tests.
 - [x] 2. Presence classes per plane and unmatched 2D pieces, with the synthetic gate at the true pose. `web/src/vesselPresence.ts`.
 - [x] 3. The same gate at the recovered pose, single-plane and two-plane. Four constructed cases, each at three poses.
-- [ ] 4. Report record: append-only, bound to the registration revision, recomputed and checked on reload. Server and parser.
+- [ ] 4. Report record: append-only, bound to the registration revision, recomputed and checked on reload. Server done (`planner/vessel_presence.py`, `planner/vessel_presence_server.py`); parser and the reload check are open.
 - [ ] 5. Studio: compute, show and save the report beside a saved registration.
-- [ ] 6. Brief section, scalar only.
+- [x] 6. Brief section, scalar only. `planner/fusion_brief.py`.
 - [ ] 7. TAIR five-case note.
 - [ ] 8. Docs, verification record, mutation pass, independent review, automated review.
 
@@ -44,3 +44,5 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 - 2026-11-15. A sample is judged only where the frame under it can be put down to its own vessel. Samples within 2 mm in the frame of a sample of another run of the mask, or of a sample of the same run 6 mm or more away in the volume, are left out. Before this rule the first segment of a branch missing from the frame read as indeterminate, because its first millimeters project onto the parent.
 - 2026-11-15. The gate views (AP and LAO 60) were chosen so that no segment of the phantom is seen end-on. The lateral view, where one is, has its own test: the segment is indeterminate whatever the frame shows.
 - 2026-11-15. Limits found while building, each pinned by a test or recorded for the verification note: a vessel that is only in the frame can take away the support of a mask segment it lies over; a wrong registration reads as missing vessels; with the field edge 3 mm lower than in the gate case, the single-plane registration slid the trunk along itself by 8.4 mm and three segments were misclassed, while the two-plane registration recovered the pose.
+- 2026-11-15. The server never sees the frame or the mask, so it cannot recompute the counts. It checks that the counts are possible, that each class follows from its counts under the same rule the browser uses, and that the report names the registration that is the latest one inside the write transaction. The recomputation on reload is the browser's.
+- 2026-11-15. The brief leaves out the registration's fit scores. They were shown not to identify the pose, and a number in a brief reads as a measurement.

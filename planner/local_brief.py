@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 
 from planner.advanced_context import project_territory_context, render_territory_context
+from planner.fusion_brief import project_fusion, render_fusion
 from planner.numerical_projection import NUMERICAL_KINDS, project_numerical
 from planner.planning_context import IDENTITY_KEYS, freeze
 from planner.reformat_scene import VERSION, digest, summarize, validate_scene
@@ -312,6 +313,8 @@ def register_local_brief(
     read_scenarios=None,
     read_numerical=None,
     read_projection=None,
+    read_registration=None,
+    read_presence=None,
 ):
     def snapshot(case_id):
         case = freeze(read_case(case_id))
@@ -324,6 +327,11 @@ def register_local_brief(
         territories = {mode: freeze(read_territory(case_id, mode)) for mode in MODES}
         scene = freeze(read_scene(case_id))
         projection = freeze(read_projection(case_id)) if read_projection is not None else None
+        # Both or neither: a presence report means nothing without its registration.
+        registration = presence = None
+        if read_registration is not None and read_presence is not None:
+            registration = freeze(read_registration(case_id))
+            presence = freeze(read_presence(case_id))
         geometry = planning.get("morphometry_summary")
         # This reader requires current geometry. Without that prerequisite,
         # unavailable means not assessed, not that no saved set exists. Do not
@@ -344,7 +352,11 @@ def register_local_brief(
             for envelope in [
                 *territories.values(),
                 scene,
-                *([projection] if projection is not None else []),
+                *(
+                    envelope
+                    for envelope in (projection, registration, presence)
+                    if envelope is not None
+                ),
             ]
         ):
             raise HTTPException(409, "Source changed while preparing brief")
@@ -355,6 +367,8 @@ def register_local_brief(
                 "territories": territories,
                 "scene": scene,
                 "projection": projection,
+                "registration": registration,
+                "presence": presence,
                 "scenarios": scenarios,
                 "numerical": {
                     kind: freeze(read_numerical(case_id, kind)) for kind in NUMERICAL_KINDS
@@ -371,6 +385,7 @@ def register_local_brief(
             territory = project_territory_context(before["identity"], before["territories"])
             scene = project_scene(before["identity"], before["scene"])
             projection = project_projection_plan(before["identity"], before["projection"])
+            fusion = project_fusion(before["identity"], before["registration"], before["presence"])
             alternatives = project_scenarios(
                 before["identity"],
                 before["scenarios"],
@@ -429,6 +444,7 @@ def register_local_brief(
                 "",
             ]
             lines += render_projection_plan(projection)
+            lines += render_fusion(fusion)
             lines += ["## Saved device alternatives", "", f"- Status: {alternatives['status']}"]
             for field in (
                 "scenario_revision",
@@ -481,6 +497,7 @@ def register_local_brief(
                     "territories": territory["modes"],
                     "scene": scene,
                     "projection_plan": projection,
+                    "angiogram_fusion": fusion,
                     "device_scenarios": alternatives,
                     "numerical_runs": numerical,
                     "markdown": "\n".join(lines),
@@ -489,5 +506,5 @@ def register_local_brief(
             )
         except HTTPException:
             raise
-        except (ValueError, TypeError, KeyError, OSError, OverflowError) as exc:
+        except (ValueError, TypeError, KeyError, OSError, OverflowError, RecursionError) as exc:
             raise HTTPException(503, "Local brief evidence is unavailable") from exc

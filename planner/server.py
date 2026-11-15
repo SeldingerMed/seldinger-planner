@@ -299,7 +299,7 @@ def build_app(
 
     read_projection = register_projection_routes(app, db_path, image_sources, read_case)
     register_projection_series_routes(app, projection_series_store)
-    register_projection_registration_routes(
+    read_registration = register_projection_registration_routes(
         app,
         db_path,
         image_sources,
@@ -307,6 +307,9 @@ def build_app(
         register_projection_frame_routes(app, projection_frame_store),
         lambda case_id: segmentations.current(case_id, role="vessel"),
     )
+    from planner.vessel_presence_server import register_vessel_presence_routes
+
+    read_presence = register_vessel_presence_routes(app, db_path, read_registration)
 
     from planner.device_db import (
         CATEGORIES,
@@ -361,6 +364,8 @@ def build_app(
         read_scenarios,
         read_numerical,
         read_projection,
+        read_registration,
+        read_presence,
     )
 
     def planning_for_brief(case):
