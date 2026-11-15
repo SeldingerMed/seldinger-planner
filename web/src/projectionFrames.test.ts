@@ -944,8 +944,28 @@ describe("saved two-plane registration parsing", () => {
       }),
     ],
   ])("rejects %s", (_, value) => {
-    expect(() => parseSavedRegistration(value, identity)).toThrow();
+    // A deliberate refusal, never a failed property read.
+    expect(() => parseSavedRegistration(value, identity)).toThrow(
+      /^(Invalid |Rotation must be orthonormal$)/,
+    );
   });
+
+  // The stored row comes from the server, which a browser cannot trust. A
+  // plane entry of the wrong type is refused as an invalid record, not left
+  // to fail on a property read.
+  it.each([null, 7, "a", [], true])(
+    "rejects a plane entry that is %j, not an object",
+    (entry) => {
+      for (const at of [0, 1]) {
+        const value = answer((current) => {
+          current.inputs.planes[at] = entry;
+        });
+        expect(() => parseSavedRegistration(value, identity)).toThrow(
+          new Error("Invalid registration"),
+        );
+      }
+    },
+  );
 
   it("accepts planes exactly at the smallest angle", () => {
     const edge = clone(savedPairInputs());

@@ -25,6 +25,7 @@ runtime provides:
 import argparse
 import hashlib
 import json
+import os
 import struct
 import sys
 from pathlib import Path
@@ -121,9 +122,6 @@ def prepare_subject(source: Path, destination: Path) -> dict:
             "width": width,
         }
 
-    destination = created_outside(destination)
-    for name, data in files.items():
-        (destination / name).write_bytes(data)
     record = {
         "subject": source.name,
         "volume_shape": list(volume.shape),
@@ -135,8 +133,25 @@ def prepare_subject(source: Path, destination: Path) -> dict:
         "views": views,
         "sha256": {name: _sha256(data) for name, data in files.items()},
     }
-    (destination / "subject.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+    publish(created_outside(destination), files, record)
     return record
+
+
+def publish(destination: Path, files: dict, record: dict) -> None:
+    """Write one subject so that `subject.json` exists only beside the
+    complete files whose digests it lists.
+
+    An earlier record is removed first, and the new one appears in one step
+    after every file is written. A run that stops part way leaves a directory
+    with no `subject.json`, which the evaluation refuses.
+    """
+    marker = destination / "subject.json"
+    marker.unlink(missing_ok=True)
+    for name, data in files.items():
+        (destination / name).write_bytes(data)
+    staged = destination / "subject.json.partial"
+    staged.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+    os.replace(staged, marker)
 
 
 def verify_source(source: Path, subjects: list[Path]) -> None:

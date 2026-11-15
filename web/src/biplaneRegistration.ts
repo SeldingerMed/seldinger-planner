@@ -414,7 +414,8 @@ function* solve(
   const start_score = report(zero);
   yield;
   // Translation scan at the starting rotation, with a few detector scales
-  // common to the fitted planes.
+  // common to the fitted planes. The grid is fixed by two limits and is not
+  // stopped by the evaluation budget; a test holds it under a third of it.
   const scan: Found[] = [];
   const stepMm = PLANE.truncation_mm,
     reach = Math.floor(L.translation_mm / stepMm);

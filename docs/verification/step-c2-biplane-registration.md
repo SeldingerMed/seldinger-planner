@@ -82,7 +82,7 @@ What the harness tests show: `ljubljanaEvaluation.test.ts` writes a phantom subj
 
 ## Saved record
 
-`tests/test_projection_registration_server.py` has 44 new cases for version 2, beside the 64 for version 1, which are unchanged, and 12 for stored rows that are not records at all. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 36 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` eleven new tests.
+`tests/test_projection_registration_server.py` has 44 new cases for version 2, beside the 64 for version 1, which are unchanged, and 12 for stored rows that are not records at all. They cover the round trip with known values, both confirmations, plane order and count, the plane-angle limit from both sides and at the limit, each plane's binding to its admitted frame, a bundle that is not a declared pair, loss of either frame, a tampered row, a record whose version is not the one its method belongs to, and an unknown version. `web/src/projectionFrames.test.ts` has 41 new cases for the browser's parser, and `web/src/ProjectionOverlayStudio.test.tsx` thirteen new tests.
 
 ## Mutation checks
 
@@ -152,6 +152,18 @@ Two findings on `69818d2`, neither critical or major.
 - The engine's comment and the guide said every evaluation scores both planes. An evaluation stops at the first plane that leaves too few points inside its frame. The wording was corrected. The engine's behavior is unchanged.
 
 Three further mutants on the failure attribution were killed, with baseline and restored runs green.
+
+## Automated review, third round
+
+Five findings on `a6bd0e0`, none critical or major. Four were fixed and one was declined.
+
+- A frame that could not be fetched was reported as failing its integrity check, in the two-plane proposal and, since Step C1, when a single frame is opened. Only bytes that fail their length or digest are now called an integrity failure. A frame the server does not answer for, or serves under another manifest revision, is reported as not loaded.
+- The review expected the browser's parser to fail on a property read when a plane entry of a stored two-plane record is not an object. It does not: such an entry was already refused as an invalid record. Nothing pinned that, and the table of refused records accepted any exception at all. Five entry types are now tested at both positions for the exact refusal, and the table accepts only deliberate refusals.
+- The translation scan visits a fixed grid that the evaluation budget does not stop. With the committed limits it is 16,875 of 60,000 evaluations. The engine is unchanged, so the method evaluated is the method in the tree. A test now derives the grid size from the two limits and fails if a change to either would take more than a third of the budget.
+- The decode script wrote a subject's files and then its record, so a run that stopped part way over an earlier output left the old record beside new files. The old record is now removed first and the new one appears in one step after every file is written. The decode step was run again on the real copy: its records and its files are byte-identical to the output the evaluation used.
+- Declined: opening a frame drops a redrawn two-plane record even when the frame is one the record names, where a single-plane redraw survives it. The two-plane redraw shows both of the record's frames and is not tied to the frame that is open, so opening any frame leaves it, and one button brings it back. The single-plane redraw stays only because its one picture is the open frame.
+
+Six further mutants were killed, with baseline and restored runs green. The evaluation was run once more at the commit that carries these changes and again matched the first run in all 330 registrations apart from run time.
 
 ## A test race found and fixed
 

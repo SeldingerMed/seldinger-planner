@@ -19,7 +19,10 @@ import {
 import { camera, type ViewNumbers } from "./carmGeometry";
 import { centroid, medialPoints } from "./maskPoints";
 import type { Vec3 } from "./obliqueSlice";
-import { proposeProjectionRegistration } from "./projectionRegistration";
+import {
+  PROJECTION_REGISTRATION_LIMITS,
+  proposeProjectionRegistration,
+} from "./projectionRegistration";
 import { vesselTarget } from "./vesselness2d";
 
 const AP: ViewNumbers = {
@@ -473,5 +476,20 @@ describe("biplane registration proposal", () => {
     expect(run({ start: rigid([0, 0, 0], [0, 0, 400]) })).toThrow(
       "No pose in the search range keeps the vessel points inside both frames",
     );
+  });
+});
+
+describe("the evaluation budget", () => {
+  it("is not crowded out by the fixed translation scan", () => {
+    // The scan visits a fixed grid before any descent and is not stopped by
+    // the budget. Its size follows from two limits. A change to either that
+    // would leave the descent stages too little fails here, not silently.
+    const reach = Math.floor(
+        LIMITS.translation_mm / PROJECTION_REGISTRATION_LIMITS.truncation_mm,
+      ),
+      scales = 5,
+      scan = scales * (2 * reach + 1) ** 3;
+    expect(scan).toBe(16_875);
+    expect(scan).toBeLessThanOrEqual(LIMITS.max_evaluations / 3);
   });
 });

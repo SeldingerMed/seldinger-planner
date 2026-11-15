@@ -319,6 +319,10 @@ export type VerifiedFrame = {
   gray: Uint8Array;
 };
 
+/** The one failure of `loadVerifiedFrame` that says the bytes are wrong.
+ * Every other failure says the frame could not be fetched. */
+export const FRAME_INTEGRITY_FAILURE = "Frame integrity check failed";
+
 /** Fetches one frame and returns it only if its length, its digest and the
  * manifest revision it was served under all match the bundle. */
 export async function loadVerifiedFrame(
@@ -344,7 +348,7 @@ export async function loadVerifiedFrame(
     throw new Error("Frame unavailable");
   const buffer = await response.arrayBuffer();
   if (buffer.byteLength !== size || (await sha256Hex(buffer)) !== frame.sha256)
-    throw new Error("Frame integrity check failed");
+    throw new Error(FRAME_INTEGRITY_FAILURE);
   return {
     source_id: bundle.source_id,
     manifest_revision: bundle.manifest_revision,

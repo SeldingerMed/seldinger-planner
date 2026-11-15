@@ -259,3 +259,43 @@ def test_prepare_reads_only_the_files_the_fetch_recorded(tmp_path, monkeypatch):
         restore()
     prepare.prepare(source, tmp_path / "out")
     assert len(decoded) == 10
+
+
+def test_a_subject_record_exists_only_beside_its_complete_files(tmp_path, monkeypatch):
+    files = {"mask.u8": b"mask", "frontal.u16": b"frontal", "lateral.u16": b"lateral"}
+    record = {"subject": "subject01", "sha256": {"mask.u8": "0"}}
+    prepare.publish(tmp_path, files, record)
+    assert sorted(path.name for path in tmp_path.iterdir()) == [
+        "frontal.u16",
+        "lateral.u16",
+        "mask.u8",
+        "subject.json",
+    ]
+    assert json.loads((tmp_path / "subject.json").read_text()) == record
+    assert {name: (tmp_path / name).read_bytes() for name in files} == files
+
+    # A second run that stops after its first file leaves no record, old or
+    # new, beside the half-written files.
+    write = Path.write_bytes
+
+    def stops(path, data):
+        if path.name != "mask.u8":
+            raise OSError("No space left on device")
+        return write(path, data)
+
+    monkeypatch.setattr(Path, "write_bytes", stops)
+    with pytest.raises(OSError, match="No space left"):
+        prepare.publish(tmp_path, {name: b"new " + data for name, data in files.items()}, record)
+    assert not (tmp_path / "subject.json").exists()
+    assert not (tmp_path / "subject.json.partial").exists()
+    assert (tmp_path / "mask.u8").read_bytes() == b"new mask"
+    monkeypatch.setattr(Path, "write_bytes", write)
+
+    # Stopping while the record itself is written leaves no record either.
+    def no_text(path, *args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(Path, "write_text", no_text)
+    with pytest.raises(OSError, match="No space left"):
+        prepare.publish(tmp_path, files, record)
+    assert not (tmp_path / "subject.json").exists()

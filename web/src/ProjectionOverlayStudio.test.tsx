@@ -716,6 +716,28 @@ test("a refused save keeps the proposal unsaved and says so", async () => {
   expect(status("Overlay status").textContent).toMatch(/^Unsaved proposal/);
 }, 60000);
 
+test("a frame that cannot be fetched is not called an integrity failure", async () => {
+  for (const frame of [
+    () => new Response("", { status: 503 }),
+    // Served under another manifest revision.
+    () => bytes(gray, { "X-Frame-Manifest-Revision": "0".repeat(64) }),
+    (): Response => {
+      throw new TypeError("Failed to fetch");
+    },
+  ]) {
+    server({ frame });
+    const view = render(<Harness />);
+    await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+    type("Frame bundle identifier", "phantom-run");
+    click("Open admitted frames");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "This frame could not be loaded and is not displayed.",
+    );
+    expect(screen.queryByRole("img")).toBeNull();
+    view.unmount();
+  }
+});
+
 test("a frame that fails its digest is never drawn", async () => {
   const flipped = gray.slice();
   flipped[5] ^= 1;
@@ -727,7 +749,7 @@ test("a frame that fails its digest is never drawn", async () => {
   type("Frame bundle identifier", "phantom-run");
   click("Open admitted frames");
   expect((await screen.findByRole("alert")).textContent).toMatch(
-    /failed its integrity check and is not displayed/,
+    /^This frame failed its integrity check and is not displayed\.$/,
   );
   expect(screen.queryByRole("img")).toBeNull();
   expect(
@@ -1817,6 +1839,31 @@ test("a mask failure in the two-plane proposal is reported as the mask's", async
     } finally {
       read.mockRestore();
     }
+    expect(jobs).not.toHaveBeenCalled();
+  } finally {
+    jobs.mockRestore();
+  }
+});
+
+test("a frame the two-plane proposal cannot fetch is reported as not loaded", async () => {
+  const jobs = vi.spyOn(overlayJobs, "createBiplaneOverlayJob");
+  try {
+    let down = false;
+    server({
+      ...pairRoutes,
+      frame: (url: string) =>
+        down ? new Response("", { status: 503 }) : pairFrame(url),
+    });
+    render(<Harness />);
+    await openPair();
+    // Plane B is open and verified. Plane A is read again for the proposal
+    // and the server no longer answers.
+    down = true;
+    await acceptsInput();
+    click("Propose two-plane overlay");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Overlay computation failed: A frame could not be loaded and is not used.",
+    );
     expect(jobs).not.toHaveBeenCalled();
   } finally {
     jobs.mockRestore();

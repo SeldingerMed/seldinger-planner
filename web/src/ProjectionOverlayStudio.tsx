@@ -21,6 +21,7 @@ import {
   FRAME_SOURCE_ID,
   isBiplane,
   loadFrameBundle,
+  FRAME_INTEGRITY_FAILURE,
   loadVerifiedFrame,
   parseSavedRegistration,
   type BiplaneRegistrationInputs,
@@ -165,6 +166,12 @@ function settingsOf(
     sensitivity: entry.sensitivity,
   };
 }
+/** Only bytes that fail their length or digest are an integrity failure. A
+ * frame that could not be fetched is reported as that. */
+const frameFailure = (error: unknown) =>
+  error instanceof Error && error.message === FRAME_INTEGRITY_FAILURE
+    ? "failed its integrity check"
+    : "could not be loaded";
 const usesEntered = (plane: FramePlane, settings: PlaneSettings) =>
   settings.entered || !plane.geometry;
 /** The view a plane's search starts from: the admitted acquisition geometry,
@@ -733,11 +740,9 @@ export default function ProjectionOverlayStudio({
     try {
       const next = await loadVerifiedFrame(from, label, index, signal);
       if (!signal.aborted && live.current === owned) setFrame(next);
-    } catch {
+    } catch (error) {
       if (!signal.aborted && live.current === owned)
-        setNotice(
-          "This frame failed its integrity check and is not displayed.",
-        );
+        setNotice(`This frame ${frameFailure(error)} and is not displayed.`);
     } finally {
       release();
     }
@@ -777,7 +782,7 @@ export default function ProjectionOverlayStudio({
       // With both frames in hand, the failure is the mask's.
       failure =
         loadedFrames.length < 2
-          ? "A frame failed its integrity check and is not used"
+          ? `A frame ${frameFailure(error)} and is not used`
           : error instanceof Error
             ? error.message
             : "The vessel mask could not be read";
