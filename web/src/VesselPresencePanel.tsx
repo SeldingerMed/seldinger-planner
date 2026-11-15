@@ -531,7 +531,7 @@ export default function VesselPresencePanel({
       </p>
       {loadFailed && <p role="alert">{loadFailed}</p>}
       {notice && <p role="alert">{notice}</p>}
-      {loadFailed && (
+      {(loadFailed || notice) && (
         <button type="button" disabled={!idle} onClick={() => void load()}>
           Reload saved report
         </button>

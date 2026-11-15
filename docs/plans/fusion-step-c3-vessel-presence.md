@@ -35,7 +35,7 @@ Reported, not gated: class counts and lengths on the TAIR cases.
 - [x] 5. Studio: compute, show and save the report beside a saved registration. `web/src/VesselPresencePanel.tsx`, `web/src/vesselPresenceJob.ts`.
 - [x] 6. Brief section, scalar only. `planner/fusion_brief.py`.
 - [x] 7. TAIR five-case note. `docs/verification/step-c3-vessel-presence.md`. No case excluded; in none of the five does the proposal visibly lie on the filled arteries.
-- [ ] 8. Docs, verification record, mutation pass, independent review, automated review.
+- [x] 8. Docs, verification record, mutation pass, independent review, automated review. Review findings addressed; merging remains gated on successful review and CI on the exact final head.
 
 ## Decisions log
 

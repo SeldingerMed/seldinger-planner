@@ -845,6 +845,57 @@ test("a refused save keeps the report unsaved and says why", async () => {
   );
 }, 60000);
 
+test.each([409, 422])(
+  "a %s save refusal offers reload and uses the refreshed report revision",
+  async (code) => {
+    let stored: unknown = presenceAnswer(1),
+      attempts = 0;
+    const api = server({
+      get: () => json(stored),
+      put: (body) => {
+        if (++attempts === 1) {
+          stored = presenceAnswer(
+            1,
+            { status: "stale", report_id: "report-old" },
+            2,
+          );
+          return json({}, code);
+        }
+        return json(presenceCurrent(body.inputs, {}, 3));
+      },
+    });
+    render(<Panel />);
+    await waitFor(() => expect(saved()).toMatch(/^No vessel presence report/));
+    fireEvent.click(button("Compute vessel presence"));
+    await computedReport();
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /I reviewed the classes/ }),
+    );
+    fireEvent.click(button("Save confirmed report"));
+    await screen.findByRole("alert");
+    fireEvent.click(button("Reload saved report"));
+    await waitFor(() => expect(saved()).toMatch(/earlier proposal/));
+    expect(
+      api
+        .keys()
+        .filter(
+          (k) => k === `GET /api/cases/${identity.case_id}/vessel-presence`,
+        ),
+    ).toHaveLength(2);
+    expect(screen.queryAllByRole("table")).toHaveLength(0);
+    fireEvent.click(button("Compute vessel presence"));
+    await computedReport();
+    expect(button("Save confirmed report").disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /I reviewed the classes/ }),
+    );
+    fireEvent.click(button("Save confirmed report"));
+    await waitFor(() => expect(saved()).toMatch(/revision 3.*counts agree/));
+    expect(api.puts().map((p) => p.body.report_revision)).toEqual([0, 2]);
+  },
+  60000,
+);
+
 test("a save with no readable answer may have been stored: reload first", async () => {
   const uncertain =
     "Save acknowledgement was not received. The report may have been stored. Reload the saved report before continuing.";

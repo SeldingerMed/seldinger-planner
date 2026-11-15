@@ -431,7 +431,7 @@ describe("building the report to save", () => {
     const short = presence(1);
     short.planes[0].segments.pop();
     expect(() => reportInputs(single, segments, short)).toThrow(
-      "The report is too large to save",
+      "The presence result does not match the segmented mask",
     );
     const noisy = presence(1);
     noisy.planes[0].unmatched = Array(2001).fill(noisy.planes[0].unmatched[0]);

@@ -455,10 +455,11 @@ export function reportInputs(
       run: segment.run,
     })),
     planes: presence.planes.map((plane, k) => {
-      if (
-        plane.segments.length !== segments.segments.length ||
-        plane.unmatched.length > PRESENCE_REPORT_LIMITS.max_unmatched
-      )
+      if (plane.segments.length !== segments.segments.length)
+        throw new Error(
+          "The presence result does not match the segmented mask",
+        );
+      if (plane.unmatched.length > PRESENCE_REPORT_LIMITS.max_unmatched)
         throw new Error("The report is too large to save");
       return {
         ...binding.planes[k],
