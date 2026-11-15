@@ -41,6 +41,12 @@ A separate local command admits a small, bounded set of angiographic frames (at 
 
 Everything is retrospective. No live video is read, a saved proposal is not a validated registration, and no registration accuracy is claimed. See [Angiogram overlay and 2D-to-3D registration proposal](docs/angiogram-overlay.md) and its [verification note](docs/verification/step-c1-angiogram-overlay.md).
 
+## Fusion Step C2: two-plane proposal and known-pose evaluation
+
+For a bundle with two declared planes, the overlay studio can fit one rigid pose to a frame from each plane, draw both overlays, and save a record that binds both frames. Saving needs the review tick and the operator's attestation that both frames show the patient in the same position, which the software cannot check. Single-plane proposals and their saved records are unchanged.
+
+Both proposal engines were run once, under a protocol committed beforehand, on ten public clinical subjects with a reference pose. The two-plane proposal was better than either single plane at the median, its worst runs were worse, it was more than 1 mm from the reference in about three runs out of four, and its score did not identify the reference pose. It remains a starting point for an operator to correct. No dataset file or per-subject number is in this repository. See the [protocol](docs/research/ljubljana-known-pose-protocol.md), the [aggregate results](docs/research/ljubljana-known-pose-results.md) and the [verification note](docs/verification/step-c2-biplane-registration.md).
+
 ## Historical hackathon source and original work
 
 The source checkout includes the planning workspace. Images and trained artifacts are installed separately under the source/model contracts below. Public source does not mean a hosted deployment.

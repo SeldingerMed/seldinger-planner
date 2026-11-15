@@ -5,6 +5,7 @@ import {
   bundleAnswer,
   CONTAINER,
   currentAnswer,
+  currentPairAnswer,
   gray,
   hex,
   identity,
@@ -14,6 +15,7 @@ import {
   registrationAnswer,
   REVISION,
   savedInputs,
+  savedPairInputs,
   savedResult,
   SCORE,
   SIDE,
@@ -22,6 +24,7 @@ import {
 import {
   decodeVesselMask,
   loadFrameBundle,
+  isBiplane,
   loadVerifiedFrame,
   parseFrameBundle,
   parseSavedRegistration,
@@ -688,5 +691,289 @@ describe("saved registration parsing", () => {
     ["missing inputs", currentAnswer(null)],
   ])("rejects %s", (_, answer) => {
     expect(() => parseSavedRegistration(answer, identity)).toThrow();
+  });
+});
+
+describe("saved two-plane registration parsing", () => {
+  it("keeps both planes, the attestation and the plane angle", () => {
+    const saved = parseSavedRegistration(currentPairAnswer(), identity);
+    expect(saved.registration_revision).toBe(1);
+    const current = saved.current;
+    if (current.status !== "current" || !isBiplane(current.inputs))
+      throw new Error("not a two-plane record");
+    expect(current.inputs.same_position_attested).toBe(true);
+    expect(current.inputs.planes.map((plane) => plane.plane)).toEqual([
+      "a",
+      "b",
+    ]);
+    expect(current.result).toEqual({
+      status: "operator_confirmed_proposal",
+      validated: false,
+      rotation_deg: 6.4,
+      isocenter_shift_mm: 8.8,
+      plane_angle_deg: 90,
+    });
+    // A single-plane record carries no plane angle and is not a pair.
+    const single = parseSavedRegistration(currentAnswer(), identity).current;
+    if (single.status !== "current") throw new Error("not current");
+    expect(isBiplane(single.inputs)).toBe(false);
+    expect(single.result.plane_angle_deg).toBeNull();
+  });
+
+  const inputs = (change: (value: Record<string, any>) => void) => {
+    const value = clone(savedPairInputs());
+    change(value);
+    return currentPairAnswer(value);
+  };
+  const answer = (change: (value: Record<string, any>) => void) => {
+    const value = clone(currentPairAnswer());
+    change(value.current as Record<string, any>);
+    return value;
+  };
+  it.each([
+    [
+      "no attestation",
+      inputs((v) => {
+        v.same_position_attested = false;
+      }),
+    ],
+    [
+      "a missing attestation",
+      inputs((v) => {
+        delete v.same_position_attested;
+      }),
+    ],
+    [
+      "one plane",
+      inputs((v) => {
+        v.planes = v.planes.slice(0, 1);
+      }),
+    ],
+    [
+      "three planes",
+      inputs((v) => {
+        v.planes = [...v.planes, v.planes[1]];
+      }),
+    ],
+    [
+      "planes out of order",
+      inputs((v) => {
+        v.planes = v.planes.reverse();
+      }),
+    ],
+    [
+      "plane b twice",
+      inputs((v) => {
+        v.planes[0].plane = "b";
+      }),
+    ],
+    [
+      "one image under both planes",
+      inputs((v) => {
+        v.planes[1].frame_sha256 = v.planes[0].frame_sha256;
+      }),
+    ],
+    [
+      "plane a twice",
+      inputs((v) => {
+        v.planes[1].plane = "a";
+      }),
+    ],
+    [
+      "a third plane beside a two-plane summary",
+      answer((c) => {
+        c.inputs.planes.push(c.inputs.planes[1]);
+      }),
+    ],
+    [
+      "a single-plane label",
+      inputs((v) => {
+        v.planes[0].plane = "single";
+      }),
+    ],
+    [
+      "an extra plane field",
+      inputs((v) => {
+        v.planes[1].pixels = "AAAA";
+      }),
+    ],
+    [
+      "a version 1 field beside the planes",
+      inputs((v) => {
+        v.polarity = "dark";
+      }),
+    ],
+    [
+      "a plane frame digest that is not one",
+      inputs((v) => {
+        v.planes[1].frame_sha256 = "0".repeat(63);
+      }),
+    ],
+    [
+      "a scale without a fit",
+      inputs((v) => {
+        v.planes[1].detector_scale = 1.1;
+      }),
+    ],
+    [
+      "a fitted scale on manifest geometry",
+      inputs((v) => {
+        v.planes[1].fit_detector_scale = true;
+        v.planes[1].geometry_source = "frame_manifest";
+      }),
+    ],
+    [
+      "a plane view out of range",
+      inputs((v) => {
+        v.planes[1].view = { ...v.planes[1].view, primary_deg: 190 };
+      }),
+    ],
+    [
+      "a plane score out of range",
+      inputs((v) => {
+        v.planes[0].reported_score = { ...SCORE, matched_fraction: 1.2 };
+      }),
+    ],
+    [
+      "planes 29 degrees apart",
+      inputs((v) => {
+        v.planes[1].view = { ...VIEW, primary_deg: 29 };
+      }),
+    ],
+    [
+      "planes 29 degrees apart through the opposite direction",
+      inputs((v) => {
+        v.planes[1].view = { ...VIEW, primary_deg: 151 };
+      }),
+    ],
+    [
+      "a matrix that is not rigid",
+      inputs((v) => {
+        v.volume_to_carm_ras[0][0] = 2;
+      }),
+    ],
+    [
+      "the single-plane record version",
+      answer((c) => {
+        c.dependencies.version = "step-c1-projection-registration-v1";
+      }),
+    ],
+    [
+      "a result of the single-plane version",
+      answer((c) => {
+        c.result.version = "step-c1-projection-registration-v1";
+      }),
+    ],
+    [
+      "a result of the single-plane method",
+      answer((c) => {
+        c.result.method = "centerline_distance_compass_v1";
+      }),
+    ],
+    [
+      "a result that claims validation",
+      answer((c) => {
+        c.result.validated = true;
+      }),
+    ],
+    [
+      "a result that claims the position was checked",
+      answer((c) => {
+        c.result.same_position = "checked";
+      }),
+    ],
+    [
+      "a plane angle that is not the views' own",
+      answer((c) => {
+        c.result.plane_angle_deg = 60;
+      }),
+    ],
+    [
+      "a result missing a plane",
+      answer((c) => {
+        c.result.planes = c.result.planes.slice(0, 1);
+      }),
+    ],
+    [
+      "result planes under each other's labels",
+      answer((c) => {
+        c.result.planes[0].plane = "b";
+        c.result.planes[1].plane = "a";
+      }),
+    ],
+    [
+      "an extra field in a result plane",
+      answer((c) => {
+        c.result.planes[1].accuracy_mm = 0.4;
+      }),
+    ],
+    [
+      "an extra result field",
+      answer((c) => {
+        c.result.accuracy_mm = 0.4;
+      }),
+    ],
+    [
+      "a result score that is not the input's",
+      answer((c) => {
+        c.result.planes[1].reported_score = {
+          ...SCORE,
+          mean_distance_mm: 0.1,
+        };
+      }),
+    ],
+    [
+      "a result geometry source that is not the input's",
+      answer((c) => {
+        c.result.planes[0].geometry_source = "frame_manifest";
+      }),
+    ],
+    [
+      "single-plane result fields",
+      answer((c) => {
+        c.result.geometry_source = "operator_entered";
+      }),
+    ],
+    [
+      "a single-plane record under the two-plane version",
+      currentAnswer(savedInputs(), {
+        dependencies: {
+          ...identity,
+          version: "step-c2-biplane-registration-v2",
+        },
+      }),
+    ],
+  ])("rejects %s", (_, value) => {
+    // A deliberate refusal, never a failed property read.
+    expect(() => parseSavedRegistration(value, identity)).toThrow(
+      /^(Invalid |Rotation must be orthonormal$)/,
+    );
+  });
+
+  // The stored row comes from the server, which a browser cannot trust. A
+  // plane entry of the wrong type is refused as an invalid record, not left
+  // to fail on a property read.
+  it.each([null, 7, "a", [], true])(
+    "rejects a plane entry that is %j, not an object",
+    (entry) => {
+      for (const at of [0, 1]) {
+        const value = answer((current) => {
+          current.inputs.planes[at] = entry;
+        });
+        expect(() => parseSavedRegistration(value, identity)).toThrow(
+          new Error("Invalid registration"),
+        );
+      }
+    },
+  );
+
+  it("accepts planes exactly at the smallest angle", () => {
+    const edge = clone(savedPairInputs());
+    edge.planes[1].view = { ...VIEW, primary_deg: 30 };
+    const value = currentPairAnswer(edge);
+    const current = parseSavedRegistration(value, identity).current;
+    expect(current.status === "current" && current.result.plane_angle_deg).toBe(
+      30,
+    );
   });
 });

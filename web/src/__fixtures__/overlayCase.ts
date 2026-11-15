@@ -1,7 +1,7 @@
 /** Synthetic overlay case shared by the frame, job and studio tests: the
  * angiography phantom's mask as a gzipped NIfTI-1 blob, one frame rendered
- * at a known pose, and the server answers that describe them. No patient
- * data. */
+ * at a known pose, a frontal and lateral pair rendered at another, and the
+ * server answers that describe them. No patient data. */
 import { gzipSync } from "node:zlib";
 import { sha256 } from "@noble/hashes/sha2.js";
 import type { NVImage } from "@niivue/niivue";
@@ -215,6 +215,110 @@ export function currentAnswer(
       input_sha256: "f".repeat(64),
       inputs,
       result: savedResult((inputs ?? savedInputs()) as Record<string, any>),
+      ...change,
+    },
+    revision,
+  );
+}
+
+/** A declared pair: plane A is the frontal view above, plane B a lateral
+ * one. Both were rendered at one pose that is off in every freedom,
+ * including along each beam. */
+export const VIEW_B: ViewNumbers = { ...VIEW, primary_deg: 90 };
+export const pairTruth = rigid([3, -4, 4], [5, 6, -4], pivot);
+export const pairGray = [VIEW, VIEW_B].map((view, k) =>
+  renderFrame(view, pivot, pairTruth, {
+    width: SIDE,
+    height: SIDE,
+    polarity: "dark",
+    noise: 12,
+    seed: 11 + k,
+  }),
+) as [Uint8Array, Uint8Array];
+export function pairBundleAnswer(change: Record<string, unknown> = {}) {
+  const single = bundleAnswer().manifest.planes[0];
+  return bundleAnswer({
+    biplane_linkage: "operator_declared",
+    planes: ["a", "b"].map((plane, k) => ({
+      ...single,
+      plane,
+      frames: [
+        { index: 12, sha256: hex(pairGray[k]), input_sha256: "c".repeat(64) },
+        { index: 30, sha256: "d".repeat(64), input_sha256: "c".repeat(64) },
+      ],
+    })),
+    ...change,
+  });
+}
+export function savedPairInputs(change: Record<string, unknown> = {}) {
+  return {
+    confirmed: true,
+    same_position_attested: true,
+    frame_source_id: "phantom-run",
+    frame_manifest_revision: REVISION,
+    mask_candidate_id: maskEntry.candidate_id,
+    mask_sha256: maskEntry.mask_sha256,
+    isocenter: [...pivot] as Vec3,
+    volume_to_carm_ras: pairTruth,
+    method: "centerline_distance_compass_biplane_v1",
+    planes: ["a", "b"].map((plane, k) => ({
+      plane,
+      frame_index: 12,
+      frame_sha256: hex(pairGray[k]),
+      geometry_source: "operator_entered",
+      view: k ? VIEW_B : VIEW,
+      fit_detector_scale: false,
+      detector_scale: 1,
+      polarity: "dark",
+      sensitivity: 0.5,
+      reported_score: SCORE,
+      reported_start_score: { ...SCORE, mean_distance_mm: 5.5 + k },
+    })),
+    ...change,
+  };
+}
+/** The server's own summary of a two-plane record, mirroring `summarize`.
+ * Both fixture views have no secondary angle, so the angle between their
+ * central rays is the difference of their primary angles, folded to 90. */
+export function savedPairResult(inputs: Record<string, any>) {
+  const primary = (k: number) => inputs.planes[k]?.view?.primary_deg ?? 0,
+    apart = Math.abs(primary(0) - primary(1));
+  return {
+    version: "step-c2-biplane-registration-v2",
+    convention: "dicom_xa_patient_longitude_latitude_ras_v1",
+    method: "centerline_distance_compass_biplane_v1",
+    status: "operator_confirmed_proposal",
+    validated: false,
+    same_position: "operator_attested_not_checked",
+    plane_angle_deg: Math.min(apart, 180 - apart),
+    rotation_deg: 6.4,
+    isocenter_shift_mm: 8.8,
+    score_source: "browser_reported_not_recomputed",
+    planes: inputs.planes.map((plane: Record<string, unknown>) => ({
+      plane: plane.plane,
+      geometry_source: plane.geometry_source,
+      reported_score: plane.reported_score,
+      reported_start_score: plane.reported_start_score,
+    })),
+  };
+}
+export function currentPairAnswer(
+  inputs: Record<string, any> = savedPairInputs(),
+  change: Record<string, unknown> = {},
+  revision = 1,
+) {
+  return registrationAnswer(
+    {
+      status: "current",
+      registration_id: "registration-2",
+      evidence: "verified",
+      dependencies: {
+        ...identity,
+        version: "step-c2-biplane-registration-v2",
+      },
+      input_sha256: "f".repeat(64),
+      inputs,
+      result: savedPairResult(inputs),
       ...change,
     },
     revision,

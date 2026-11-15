@@ -14,6 +14,7 @@ import {
   bundleAnswer,
   caseState,
   currentAnswer,
+  currentPairAnswer,
   gray,
   hex,
   identity,
@@ -21,22 +22,29 @@ import {
   maskEntry,
   medial,
   nifti,
+  pairBundleAnswer,
+  pairGray,
+  pairTruth,
   phantom,
   pivot,
   registrationAnswer,
   REVISION,
   savedInputs,
+  savedPairInputs,
   SIDE,
   truth,
   VIEW,
+  VIEW_B,
   volume,
 } from "./__fixtures__/overlayCase";
+import { applyRigid } from "./__fixtures__/angioPhantom";
 import type { Vec3 } from "./obliqueSlice";
 import ProjectionOverlayStudio, {
   OVERLAY_REQUEST_TIMEOUT_MS,
 } from "./ProjectionOverlayStudio";
 import { projectRegistered } from "./projectionRegistration";
 import * as overlayJobs from "./projectionOverlayJob";
+import * as segmentation from "./segmentation";
 
 afterEach(() => {
   cleanup();
@@ -56,7 +64,7 @@ type Routes = {
   registration?: () => Response;
   vessel?: unknown;
   bundle?: () => Response;
-  frame?: () => Response;
+  frame?: (url: string) => Response;
   mask?: () => Response;
   put?: (body: any) => Response;
 };
@@ -92,7 +100,7 @@ function server(routes: Routes = {}) {
       return (
         routes.frame ??
         (() => bytes(gray, { "X-Frame-Manifest-Revision": REVISION }))
-      )();
+      )(url);
     return json({}, 404);
   });
   vi.stubGlobal("fetch", fetch);
@@ -708,6 +716,28 @@ test("a refused save keeps the proposal unsaved and says so", async () => {
   expect(status("Overlay status").textContent).toMatch(/^Unsaved proposal/);
 }, 60000);
 
+test("a frame that cannot be fetched is not called an integrity failure", async () => {
+  for (const frame of [
+    () => new Response("", { status: 503 }),
+    // Served under another manifest revision.
+    () => bytes(gray, { "X-Frame-Manifest-Revision": "0".repeat(64) }),
+    (): Response => {
+      throw new TypeError("Failed to fetch");
+    },
+  ]) {
+    server({ frame });
+    const view = render(<Harness />);
+    await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+    type("Frame bundle identifier", "phantom-run");
+    click("Open admitted frames");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "This frame could not be loaded and is not displayed.",
+    );
+    expect(screen.queryByRole("img")).toBeNull();
+    view.unmount();
+  }
+});
+
 test("a frame that fails its digest is never drawn", async () => {
   const flipped = gray.slice();
   flipped[5] ^= 1;
@@ -719,7 +749,7 @@ test("a frame that fails its digest is never drawn", async () => {
   type("Frame bundle identifier", "phantom-run");
   click("Open admitted frames");
   expect((await screen.findByRole("alert")).textContent).toMatch(
-    /failed its integrity check and is not displayed/,
+    /^This frame failed its integrity check and is not displayed\.$/,
   );
   expect(screen.queryByRole("img")).toBeNull();
   expect(
@@ -889,6 +919,16 @@ test("shows a saved proposal only while its evidence is unchanged", async () => 
   expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(
     /with projected 3D vessels/,
   );
+  // The controls show the geometry the record was computed with.
+  expect(
+    ["Source to isocenter (mm)", "Field width at the detector (mm)"].map(
+      (name) =>
+        (screen.getByRole("textbox", { name }) as HTMLInputElement).value,
+    ),
+  ).toEqual(["800", "180"]);
+  expect(
+    screen.getByRole("checkbox", { name: /Fit the field size/ }),
+  ).toHaveProperty("checked", false);
   expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
   view.unmount();
 
@@ -1037,4 +1077,795 @@ test("is locked while the owner is busy and absent without a millimeter source",
     />,
   );
   expect(container.innerHTML).toBe("");
+});
+
+// Two planes of a declared pair, fitted with one pose.
+
+const pairFrame = (url: string) =>
+  bytes(pairGray[url.includes("/planes/b/") ? 1 : 0], {
+    "X-Frame-Manifest-Revision": REVISION,
+  });
+const pairRoutes = {
+  bundle: () => json(pairBundleAnswer()),
+  frame: pairFrame,
+};
+const choosePlane = (label: string) =>
+  fireEvent.change(screen.getByRole("combobox", { name: "Plane" }), {
+    target: { value: label },
+  });
+/** Opens the pair and enters each plane's geometry as it was rendered. */
+async function openPair() {
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  enterGeometry();
+  choosePlane("b");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane b" });
+  // Plane B starts as a lateral view and keeps its own values.
+  expect(screen.getByRole("textbox", { name: /Primary angle/ })).toHaveProperty(
+    "value",
+    "90",
+  );
+  expect(
+    screen.getByRole("textbox", { name: "Source to isocenter (mm)" }),
+  ).toHaveProperty("value", "750");
+  enterGeometry();
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  );
+}
+/** Waits until the studio accepts input. A click while a frame request is
+ * still pending is ignored, as it is for an operator. */
+const acceptsInput = () =>
+  waitFor(() =>
+    expect(
+      screen
+        .getByRole("button", { name: "Propose two-plane overlay" })
+        .closest("fieldset"),
+    ).not.toBeDisabled(),
+  );
+async function proposePair() {
+  await acceptsInput();
+  click("Propose two-plane overlay");
+  await waitFor(
+    () =>
+      expect(status("Overlay status").textContent).toMatch(
+        /^Unsaved two-plane proposal/,
+      ),
+    { timeout: 30000 },
+  );
+}
+
+test("fits one pose to both planes and saves a record that binds both frames", async () => {
+  let saved: any = null;
+  const api = server({
+    ...pairRoutes,
+    put: (body) => {
+      saved = body;
+      const answer = currentPairAnswer(body.inputs);
+      return json(answer);
+    },
+  });
+  const dirty = vi.fn();
+  render(<Harness onDirty={dirty} />);
+  await openPair();
+  expect(status("Frame provenance").textContent).toMatch(
+    /the two planes are linked by operator declaration only/,
+  );
+  expect(status("Two-plane selection").textContent).toMatch(
+    /Plane A frame 12 and plane B frame 12\..*The central rays are 90° apart\./,
+  );
+  // Returning to plane A shows the values entered for it, not plane B's.
+  choosePlane("a");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  expect(screen.getByRole("textbox", { name: /Primary angle/ })).toHaveProperty(
+    "value",
+    "0",
+  );
+  expect(
+    screen.getByRole("textbox", { name: "Source to isocenter (mm)" }),
+  ).toHaveProperty("value", "800");
+  expect(screen.getByText(/Both frames must show the patient/)).toBeTruthy();
+  await proposePair();
+  const text = status("Overlay status").textContent!;
+  expect(text).toMatch(/central rays 90° apart\. Plane A: .* Plane B: /);
+  expect(text).toMatch(
+    /They are not a registration accuracy, and a wrong pose can score as well as a right one/,
+  );
+  expect(text).not.toMatch(/field size fitted/);
+  expect(dirty).toHaveBeenLastCalledWith(true);
+  // Both frames are drawn, each with the one pose over it.
+  expect(
+    screen.getAllByRole("img").map((img) => img.getAttribute("aria-label")),
+  ).toEqual([
+    "Admitted frame 12, plane a, with projected 3D vessels",
+    "Admitted frame 12, plane b, with projected 3D vessels",
+  ]);
+  expect(screen.getByRole("figure").textContent).toMatch(
+    /unsaved two-plane proposal, one pose for both frames\..*Not a validated registration\./,
+  );
+  // Saving needs the review tick and the same-position attestation, both.
+  const save = screen.getByRole("button", { name: "Save confirmed proposal" });
+  const review = screen.getByRole("checkbox", {
+      name: /I reviewed both overlays/,
+    }),
+    attest = screen.getByRole("checkbox", {
+      name: /Both frames show the patient in the same position/,
+    });
+  expect(save).toHaveProperty("disabled", true);
+  fireEvent.click(review);
+  expect(save).toHaveProperty("disabled", true);
+  fireEvent.click(review);
+  fireEvent.click(attest);
+  expect(save).toHaveProperty("disabled", true);
+  fireEvent.click(save);
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+  fireEvent.click(review);
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed two-plane proposal, revision 1, not a validated registration: frame 12 of plane a with operator-entered geometry \(assumed\) and frame 12 of plane b with operator-entered geometry \(assumed\) in phantom-run, central rays 90° apart, one pose for both/,
+  );
+  expect(status("Saved overlay proposal").textContent).toMatch(
+    /The operator attested that both frames show the patient in the same position; that was not checked\./,
+  );
+  expect(Object.keys(saved).sort()).toEqual([
+    "artifact_version",
+    "inputs",
+    "reference_revision",
+    "registration_revision",
+  ]);
+  expect(Object.keys(saved.inputs).sort()).toEqual(
+    Object.keys(savedPairInputs()).sort(),
+  );
+  expect(saved).toMatchObject({
+    artifact_version: identity.artifact_version,
+    reference_revision: identity.reference_revision,
+    registration_revision: 0,
+    inputs: {
+      confirmed: true,
+      same_position_attested: true,
+      frame_source_id: "phantom-run",
+      frame_manifest_revision: REVISION,
+      mask_candidate_id: maskEntry.candidate_id,
+      mask_sha256: maskEntry.mask_sha256,
+      method: "centerline_distance_compass_biplane_v1",
+      planes: [0, 1].map((k) => ({
+        plane: "ab"[k],
+        frame_index: 12,
+        frame_sha256: hex(pairGray[k]),
+        geometry_source: "operator_entered",
+        view: k ? VIEW_B : VIEW,
+        fit_detector_scale: false,
+        detector_scale: 1,
+        polarity: "dark",
+        sensitivity: 0.5,
+      })),
+    },
+  });
+  for (const plane of saved.inputs.planes)
+    expect(Object.keys(plane).sort()).toEqual(
+      Object.keys(savedPairInputs().planes[0]).sort(),
+    );
+  // No pixels, mask voxels or points leave the browser.
+  expect(JSON.stringify(saved).length).toBeLessThan(4000);
+  // The saved pose puts the vessel points within a millimeter of where the
+  // frames were rendered, in three dimensions.
+  let sum = 0;
+  for (let k = 0; k < medial.points.length; k += 3) {
+    const x: Vec3 = [
+        medial.points[k],
+        medial.points[k + 1],
+        medial.points[k + 2],
+      ],
+      got = applyRigid(saved.inputs.volume_to_carm_ras, x),
+      want = applyRigid(pairTruth, x);
+    sum += Math.hypot(got[0] - want[0], got[1] - want[1], got[2] - want[2]);
+  }
+  expect(sum / (medial.points.length / 3)).toBeLessThan(1);
+  await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(false));
+  expect(status("Overlay status").textContent).toMatch(
+    /Showing the saved operator-confirmed two-plane proposal. It is not a validated registration/,
+  );
+  expect(
+    screen.queryByRole("button", { name: "Save confirmed proposal" }),
+  ).toBeNull();
+  expect(screen.getAllByRole("img")).toHaveLength(2);
+}, 120000);
+
+test("a change to either plane drops a two-plane proposal and its ticks", async () => {
+  // The search is replaced by a fixed answer: this test is about what the
+  // studio does with a proposal, not about finding one.
+  const real = overlayJobs.createBiplaneOverlayJob;
+  const spy = vi
+    .spyOn(overlayJobs, "createBiplaneOverlayJob")
+    .mockImplementation((input) => {
+      const points = real({ ...input, search: false });
+      const score = {
+        mean_distance_mm: 0.4,
+        matched_fraction: 0.9,
+        in_field_fraction: 1,
+        uncovered_fraction: 0.1,
+      };
+      return {
+        advance: (expired) => points.advance(expired),
+        result: () => ({
+          ...points.result(),
+          targets: null,
+          proposal: {
+            method: "centerline_distance_compass_biplane_v1",
+            matrix: pairTruth,
+            planes: [input.planes[0], input.planes[1]].map((plane) => ({
+              view: plane.view,
+              detector_scale: 1,
+              score,
+              start_score: { ...score, mean_distance_mm: 6 },
+            })) as any,
+            plane_angle_deg: 90,
+            translation_mm: 8.8,
+            rotation_deg: 6.4,
+            point_count: 100,
+            evaluations: 1,
+          },
+        }),
+      };
+    });
+  try {
+    const api = server(pairRoutes);
+    const dirty = vi.fn();
+    render(<Harness onDirty={dirty} />);
+    await openPair();
+    const tick = async () => {
+      await proposePair();
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: /I reviewed both overlays/ }),
+      );
+      fireEvent.click(
+        screen.getByRole("checkbox", { name: /Both frames show the patient/ }),
+      );
+      expect(
+        screen.getByRole("button", { name: "Save confirmed proposal" }),
+      ).toHaveProperty("disabled", false);
+    };
+    await tick();
+    // Plane B is the plane open in the controls. Changing its sensitivity
+    // changes what the proposal was computed from.
+    fireEvent.change(screen.getByRole("slider"), { target: { value: "0.6" } });
+    expect(status("Overlay status").textContent).toBe("");
+    expect(
+      screen.queryByRole("button", { name: "Save confirmed proposal" }),
+    ).toBeNull();
+    await waitFor(() => expect(dirty).toHaveBeenLastCalledWith(false));
+    // A new proposal starts with neither tick.
+    await proposePair();
+    for (const name of [/I reviewed both overlays/, /Both frames show/])
+      expect(screen.getByRole("checkbox", { name })).toHaveProperty(
+        "checked",
+        false,
+      );
+    // So does a change on plane A, and choosing another frame of a plane.
+    choosePlane("a");
+    await screen.findByText(/Unsaved two-plane proposal/);
+    type("Source to isocenter (mm)", "790");
+    expect(status("Overlay status").textContent).toBe("");
+    type("Source to isocenter (mm)", "800");
+    expect(status("Overlay status").textContent).toBe("");
+    await tick();
+    // Leaving two-plane mode drops it as well.
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+    );
+    expect(status("Overlay status").textContent).toBe("");
+    expect(
+      screen.getByRole("button", { name: "Propose overlay" }),
+    ).toBeTruthy();
+    expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+    // Each search was given plane A, then plane B, with their own views.
+    for (const [input] of spy.mock.calls) {
+      expect(input.planes.map((plane) => plane.view.primary_deg)).toEqual([
+        0, 90,
+      ]);
+      expect(input.search).toBe(true);
+    }
+  } finally {
+    spy.mockRestore();
+  }
+}, 60000);
+
+test("a two-plane record names the frame chosen on each plane", async () => {
+  // Plane B has a second admitted frame with other pixels.
+  const later = pairGray[1].map((value) => 255 - value);
+  const bundle = pairBundleAnswer();
+  (bundle.manifest.planes as any)[1].frames[1].sha256 = hex(later);
+  const real = overlayJobs.createBiplaneOverlayJob;
+  const score = {
+    mean_distance_mm: 0.4,
+    matched_fraction: 0.9,
+    in_field_fraction: 1,
+    uncovered_fraction: 0.1,
+  };
+  const spy = vi
+    .spyOn(overlayJobs, "createBiplaneOverlayJob")
+    .mockImplementation((input) => {
+      const points = real({ ...input, search: false });
+      return {
+        advance: (expired) => points.advance(expired),
+        result: () => ({
+          ...points.result(),
+          targets: null,
+          proposal: {
+            method: "centerline_distance_compass_biplane_v1",
+            matrix: pairTruth,
+            planes: [input.planes[0], input.planes[1]].map((plane) => ({
+              view: plane.view,
+              detector_scale: 1,
+              score,
+              start_score: { ...score, mean_distance_mm: 6 },
+            })) as any,
+            plane_angle_deg: 90,
+            translation_mm: 8.8,
+            rotation_deg: 6.4,
+            point_count: 100,
+            evaluations: 1,
+          },
+        }),
+      };
+    });
+  try {
+    let saved: any = null;
+    server({
+      bundle: () => json(bundle),
+      frame: (url) =>
+        url.endsWith("/planes/b/frames/30")
+          ? bytes(later, { "X-Frame-Manifest-Revision": REVISION })
+          : pairFrame(url),
+      put: (body) => {
+        saved = body;
+        return json(currentPairAnswer(body.inputs));
+      },
+    });
+    render(<Harness />);
+    await openPair();
+    fireEvent.change(screen.getByRole("combobox", { name: "Frame" }), {
+      target: { value: "30" },
+    });
+    await screen.findByRole("img", { name: "Admitted frame 30, plane b" });
+    expect(status("Two-plane selection").textContent).toMatch(
+      /Plane A frame 12 and plane B frame 30\./,
+    );
+    // Looking at plane A and coming back keeps plane B's chosen frame.
+    choosePlane("a");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+    choosePlane("b");
+    await screen.findByRole("img", { name: "Admitted frame 30, plane b" });
+    await proposePair();
+    const [input] = spy.mock.calls[0];
+    expect(input.planes.map((plane) => plane.frame.gray)).toEqual([
+      pairGray[0],
+      later,
+    ]);
+    expect(
+      screen.getAllByRole("img").map((img) => img.getAttribute("aria-label")),
+    ).toEqual([
+      "Admitted frame 12, plane a, with projected 3D vessels",
+      "Admitted frame 30, plane b, with projected 3D vessels",
+    ]);
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /I reviewed both overlays/ }),
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /Both frames show the patient/ }),
+    );
+    click("Save confirmed proposal");
+    await screen.findByText(/frame 30 of plane b/);
+    expect(
+      saved.inputs.planes.map((plane: any) => [
+        plane.plane,
+        plane.frame_index,
+        plane.frame_sha256,
+      ]),
+    ).toEqual([
+      ["a", 12, hex(pairGray[0])],
+      ["b", 30, hex(later)],
+    ]);
+  } finally {
+    spy.mockRestore();
+  }
+}, 60000);
+
+test("planes too close together cannot be fitted with one pose", async () => {
+  server(pairRoutes);
+  render(<Harness />);
+  await openPair();
+  // Plane B is open. 29 degrees from plane A is one degree short.
+  type(/Primary angle/, "29");
+  expect(screen.getByRole("alert").textContent).toMatch(
+    /needs central rays at least 30° apart/,
+  );
+  expect(
+    screen.getByRole("button", { name: "Propose two-plane overlay" }),
+  ).toHaveProperty("disabled", true);
+  type(/Primary angle/, "30");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Propose two-plane overlay" }),
+  ).toHaveProperty("disabled", false);
+  // A value outside the C-arm bounds on one plane blocks it too.
+  type(/Primary angle/, "400");
+  expect(
+    screen.getAllByRole("alert").map((alert) => alert.textContent),
+  ).toContain(
+    "Geometry values of one plane are outside the supported C-arm bounds.",
+  );
+  expect(
+    screen.getByRole("button", { name: "Propose two-plane overlay" }),
+  ).toHaveProperty("disabled", true);
+});
+
+test("a second frame that fails its digest stops the two-plane proposal", async () => {
+  const spy = vi.spyOn(overlayJobs, "createBiplaneOverlayJob");
+  try {
+    let tamper = false;
+    const api = server({
+      ...pairRoutes,
+      frame: (url) =>
+        tamper && url.includes("/planes/a/")
+          ? bytes(
+              pairGray[0].map((value) => 255 - value),
+              { "X-Frame-Manifest-Revision": REVISION },
+            )
+          : pairFrame(url),
+    });
+    render(<Harness />);
+    await openPair();
+    // Plane B is open and verified. Plane A is read again for the proposal
+    // and no longer matches its recorded digest.
+    tamper = true;
+    await acceptsInput();
+    click("Propose two-plane overlay");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Overlay computation failed: A frame failed its integrity check and is not used.",
+    );
+    expect(spy).not.toHaveBeenCalled();
+    expect(status("Overlay status").textContent).toBe("");
+    expect(
+      screen.queryByRole("button", { name: "Save confirmed proposal" }),
+    ).toBeNull();
+    expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("shows a saved two-plane proposal only while both frames are unchanged", async () => {
+  const api = server({
+    ...pairRoutes,
+    registration: () => json(currentPairAnswer()),
+  });
+  const view = render(<Harness />);
+  const saved = await screen.findByRole("status", {
+    name: "Saved overlay proposal",
+  });
+  expect(saved.textContent).toMatch(
+    /two-plane proposal, revision 1, not a validated registration: frame 12 of plane a .* and frame 12 of plane b .* central rays 90° apart, one pose for both, turned 6.4° and moved the isocenter 8.8 mm .* that was not checked\. Its frames and vessel mask are installed and unchanged\./,
+  );
+  click("Show saved overlay");
+  await waitFor(
+    () =>
+      expect(status("Overlay status").textContent).toMatch(
+        /Showing the saved operator-confirmed two-plane proposal/,
+      ),
+    { timeout: 30000 },
+  );
+  expect(
+    screen.getAllByRole("img").map((img) => img.getAttribute("aria-label")),
+  ).toEqual([
+    "Admitted frame 12, plane a, with projected 3D vessels",
+    "Admitted frame 12, plane b, with projected 3D vessels",
+  ]);
+  expect(screen.getByRole("figure").textContent).toMatch(
+    /saved operator-confirmed two-plane proposal/,
+  );
+  // The controls now show what the record was computed with: plane A is
+  // open, with the record's geometry, no fit and the record's isocenter.
+  const shownValue = (name: string | RegExp) =>
+    (screen.getByRole("textbox", { name }) as HTMLInputElement).value;
+  expect(screen.getByRole("combobox", { name: "Plane" })).toHaveProperty(
+    "value",
+    "a",
+  );
+  expect([
+    shownValue(/Primary angle/),
+    shownValue("Source to isocenter (mm)"),
+    shownValue("Field width at the detector (mm)"),
+  ]).toEqual(["0", "800", "180"]);
+  expect(
+    screen.getByRole("checkbox", { name: /Fit the field size/ }),
+  ).toHaveProperty("checked", false);
+  expect(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  ).toHaveProperty("checked", true);
+  expect(status("Overlay isocenter").textContent).toBe(
+    `Isocenter: ${pivot.map((x) => x.toFixed(1)).join(", ")} mm (RAS)`,
+  );
+  expect(status("Two-plane selection").textContent).toMatch(
+    /The central rays are 90° apart\./,
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+  // A redraw extracts no lines and offers nothing to save.
+  expect(screen.getByRole("figure").textContent).not.toMatch(/Amber/);
+  expect(
+    screen.queryByRole("button", { name: "Save confirmed proposal" }),
+  ).toBeNull();
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+  // Opening a frame drops the redraw, as any frame change does: the redraw
+  // shows the record's frames, not the one opened.
+  fireEvent.change(screen.getByRole("combobox", { name: "Frame" }), {
+    target: { value: "12" },
+  });
+  await waitFor(() => expect(status("Overlay status").textContent).toBe(""));
+  view.unmount();
+
+  // Plane B's frame has other pixels under the same manifest revision.
+  const other = pairGray[1].map((value) => 255 - value);
+  const swapped = pairBundleAnswer();
+  (swapped.manifest.planes as any)[1].frames[0].sha256 = hex(other);
+  server({
+    registration: () => json(currentPairAnswer()),
+    bundle: () => json(swapped),
+    frame: (url) =>
+      url.includes("/planes/b/")
+        ? bytes(other, { "X-Frame-Manifest-Revision": REVISION })
+        : pairFrame(url),
+  });
+  render(<Harness />);
+  await screen.findByRole("status", { name: "Saved overlay proposal" });
+  click("Show saved overlay");
+  expect((await screen.findByRole("alert")).textContent).toMatch(
+    /no longer available unchanged, so its overlay is not shown/,
+  );
+  expect(screen.queryByRole("img")).toBeNull();
+}, 60000);
+
+test("an isocenter and entered geometry are not carried to another source", async () => {
+  server(pairRoutes);
+  const props = { binding, volume, cursor: [1, 2, 3] as Vec3 };
+  const view = render(
+    <ProjectionOverlayStudio {...props} caseState={caseState} />,
+  );
+  await openPair();
+  click("Set isocenter to crosshair");
+  expect(status("Overlay isocenter").textContent).toMatch(
+    /1\.0, 2\.0, 3\.0 mm/,
+  );
+  // A later revision of the same case and source keeps them. The bundle has
+  // to be opened again, as before.
+  const revised = { ...caseState, artifact_version: "8" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/projection-registration")
+        ? json({ ...registrationAnswer(), artifact_version: "8" })
+        : url.endsWith("/segmentations")
+          ? json({ current: { vessel: maskEntry, aneurysm: null } })
+          : url.includes("/planes/")
+            ? pairFrame(url)
+            : json(pairBundleAnswer()),
+    ),
+  );
+  view.rerender(<ProjectionOverlayStudio {...props} caseState={revised} />);
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  expect(status("Overlay isocenter").textContent).toMatch(
+    /1\.0, 2\.0, 3\.0 mm/,
+  );
+  expect(
+    screen.getByRole("textbox", { name: "Source to isocenter (mm)" }),
+  ).toHaveProperty("value", "800");
+  // Another source: the isocenter was a point in the first source's space,
+  // and the geometry was entered for its frames.
+  const other = {
+    ...binding,
+    image_sha256: "9".repeat(64),
+  };
+  const otherCase = { ...revised, image_sha256: other.image_sha256 };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      url.endsWith("/projection-registration")
+        ? json({
+            ...registrationAnswer(),
+            artifact_version: "8",
+            image_sha256: other.image_sha256,
+          })
+        : url.endsWith("/segmentations")
+          ? json({ current: { vessel: maskEntry, aneurysm: null } })
+          : url.includes("/planes/")
+            ? pairFrame(url)
+            : json(pairBundleAnswer()),
+    ),
+  );
+  view.rerender(
+    <ProjectionOverlayStudio
+      {...props}
+      binding={other}
+      caseState={otherCase}
+    />,
+  );
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  expect(status("Overlay isocenter").textContent).toMatch(
+    /centroid of the vessel mask/,
+  );
+  expect(
+    screen.getByRole("textbox", { name: "Source to isocenter (mm)" }),
+  ).toHaveProperty("value", "750");
+  expect(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  ).toHaveProperty("checked", false);
+});
+
+test("one image admitted under both planes cannot be fitted as a pair", async () => {
+  const same = pairBundleAnswer();
+  (same.manifest.planes as any)[1].frames[0].sha256 = hex(pairGray[0]);
+  server({
+    bundle: () => json(same),
+    frame: () => bytes(pairGray[0], { "X-Frame-Manifest-Revision": REVISION }),
+  });
+  render(<Harness />);
+  await openPair();
+  expect(
+    screen.getAllByRole("alert").map((alert) => alert.textContent),
+  ).toEqual([
+    "Both planes name identical pixels. One image was admitted under both planes, so they cannot be fitted together.",
+  ]);
+  expect(
+    screen.getByRole("button", { name: "Propose two-plane overlay" }),
+  ).toHaveProperty("disabled", true);
+});
+
+test("with two planes the controls name the plane they edit", async () => {
+  server(pairRoutes);
+  render(<Harness />);
+  await openPair();
+  // Plane B is open.
+  expect(
+    screen.getByRole("group", { name: "Acquisition geometry, plane B" }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole("combobox", { name: "Vessels in plane B's frame are" }),
+  ).toBeTruthy();
+  const slider = screen.getByRole("slider", {
+    name: "2D vessel sensitivity, plane B",
+  });
+  expect(slider.getAttribute("aria-valuetext")).toBe("0.50");
+  choosePlane("a");
+  await screen.findByRole("group", { name: "Acquisition geometry, plane A" });
+  expect(
+    screen.getByRole("combobox", { name: "Vessels in plane A's frame are" }),
+  ).toBeTruthy();
+});
+
+test("redrawing a saved record replaces values typed for another proposal", async () => {
+  // A fitted record: the field was entered 150 mm wide and fitted 1.2 times
+  // wider. Plane B's record uses the admitted geometry.
+  const inputs = savedPairInputs();
+  inputs.planes[0] = {
+    ...inputs.planes[0],
+    fit_detector_scale: true,
+    detector_scale: 1.2,
+    polarity: "bright",
+    sensitivity: 0.65,
+    view: { ...VIEW, detector_width_mm: 180, detector_height_mm: 180 },
+  };
+  server({
+    ...pairRoutes,
+    registration: () => json(currentPairAnswer(inputs)),
+  });
+  render(<Harness />);
+  await screen.findByRole("status", { name: "Saved overlay proposal" });
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  // Values outside the C-arm bounds are typed for plane A, and pair mode
+  // is on, so the studio reports them.
+  type(/Primary angle/, "400");
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  );
+  expect(
+    screen.getAllByRole("alert").map((alert) => alert.textContent),
+  ).toEqual([
+    "Geometry values of one plane are outside the supported C-arm bounds.",
+    "Geometry values are outside the supported C-arm bounds.",
+  ]);
+  click("Show saved overlay");
+  await waitFor(
+    () =>
+      expect(status("Overlay status").textContent).toMatch(
+        /Showing the saved operator-confirmed two-plane proposal/,
+      ),
+    { timeout: 30000 },
+  );
+  // No alert about typed values sits beside the saved overlay.
+  expect(screen.queryByRole("alert")).toBeNull();
+  const shownValue = (name: string | RegExp) =>
+    (screen.getByRole("textbox", { name }) as HTMLInputElement).value;
+  expect(shownValue(/Primary angle/)).toBe("0");
+  // The entered width, not the fitted one.
+  expect(shownValue("Field width at the detector (mm)")).toBe("150");
+  expect(
+    screen.getByRole("checkbox", { name: /Fit the field size/ }),
+  ).toHaveProperty("checked", true);
+  expect(
+    screen.getByRole("combobox", { name: "Vessels in plane A's frame are" }),
+  ).toHaveProperty("value", "bright");
+  expect(screen.getByRole("slider")).toHaveProperty("value", "0.65");
+});
+
+test("a mask failure in the two-plane proposal is reported as the mask's", async () => {
+  const jobs = vi.spyOn(overlayJobs, "createBiplaneOverlayJob");
+  try {
+    // Both frames verify. The mask no longer matches its digest.
+    const flipped = maskBlob.slice();
+    flipped[flipped.length - 9] ^= 1;
+    server({ ...pairRoutes, mask: () => bytes(flipped) });
+    const view = render(<Harness />);
+    await openPair();
+    await acceptsInput();
+    click("Propose two-plane overlay");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Overlay computation failed: Segmentation integrity check failed.",
+    );
+    view.unmount();
+    // A failure that carries no message is still the mask's, not a frame's.
+    const read = vi
+      .spyOn(segmentation, "loadSegmentationMask")
+      .mockRejectedValue("offline");
+    try {
+      server(pairRoutes);
+      render(<Harness />);
+      await openPair();
+      await acceptsInput();
+      click("Propose two-plane overlay");
+      expect((await screen.findByRole("alert")).textContent).toBe(
+        "Overlay computation failed: The vessel mask could not be read.",
+      );
+      expect(read).toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+    }
+    expect(jobs).not.toHaveBeenCalled();
+  } finally {
+    jobs.mockRestore();
+  }
+});
+
+test("a frame the two-plane proposal cannot fetch is reported as not loaded", async () => {
+  const jobs = vi.spyOn(overlayJobs, "createBiplaneOverlayJob");
+  try {
+    let down = false;
+    server({
+      ...pairRoutes,
+      frame: (url: string) =>
+        down ? new Response("", { status: 503 }) : pairFrame(url),
+    });
+    render(<Harness />);
+    await openPair();
+    // Plane B is open and verified. Plane A is read again for the proposal
+    // and the server no longer answers.
+    down = true;
+    await acceptsInput();
+    click("Propose two-plane overlay");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Overlay computation failed: A frame could not be loaded and is not used.",
+    );
+    expect(jobs).not.toHaveBeenCalled();
+  } finally {
+    jobs.mockRestore();
+  }
 });

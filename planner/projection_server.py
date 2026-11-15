@@ -15,6 +15,7 @@ from planner.projection_plan import PlanConflict, PlanLedger, PlanRequest, valid
 from planner.projection_registration import (
     RegistrationLedger,
     RegistrationRequest,
+    bound_planes,
     check_frame,
     validate_registration,
 )
@@ -220,15 +221,16 @@ def register_projection_registration_routes(app, db_path, sources, read_case, fr
         ):
             raise ValueError("Accepted vessel mask changed")
         manifest, revision = frames.load(inputs["frame_source_id"])
-        plane, frame = find_frame(manifest, inputs["plane"], inputs["frame_index"])
-        if (
-            revision != inputs["frame_manifest_revision"]
-            or frame["sha256"] != inputs["frame_sha256"]
-        ):
+        if revision != inputs["frame_manifest_revision"]:
             raise ValueError("Admitted frame changed")
-        check_frame(inputs, plane)
-        # Reads and hashes the stored pixels; they are not returned here.
-        frames.frame(inputs["frame_source_id"], inputs["plane"], inputs["frame_index"])
+        # One entry, or one per plane of an operator-declared pair.
+        for entry in bound_planes(inputs):
+            plane, frame = find_frame(manifest, entry["plane"], entry["frame_index"])
+            if frame["sha256"] != entry["frame_sha256"]:
+                raise ValueError("Admitted frame changed")
+            check_frame(entry, plane)
+            # Reads and hashes the stored pixels; they are not returned here.
+            frames.frame(inputs["frame_source_id"], entry["plane"], entry["frame_index"])
 
     def read_once(case_id):
         identity, grid = bound(case_id)
@@ -253,7 +255,16 @@ def register_projection_registration_routes(app, db_path, sources, read_case, fr
             raise HTTPException(409, "Case changed; reload") from None
         except HTTPException:
             raise
-        except (sqlite3.Error, ValueError, TypeError, KeyError, OSError, OverflowError) as exc:
+        except (
+            sqlite3.Error,
+            ValueError,
+            TypeError,
+            KeyError,
+            OSError,
+            OverflowError,
+            # A stored row nested too deeply to decode.
+            RecursionError,
+        ) as exc:
             raise HTTPException(503, "Projection registration is unavailable; reload") from exc
 
     def save(case_id, payload):
@@ -293,7 +304,15 @@ def register_projection_registration_routes(app, db_path, sources, read_case, fr
             ) from None
         except HTTPException:
             raise
-        except (sqlite3.Error, ValueError, TypeError, KeyError, OSError, OverflowError) as exc:
+        except (
+            sqlite3.Error,
+            ValueError,
+            TypeError,
+            KeyError,
+            OSError,
+            OverflowError,
+            RecursionError,
+        ) as exc:
             raise HTTPException(
                 503, "Projection registration save could not be confirmed; reload"
             ) from exc

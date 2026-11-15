@@ -1,6 +1,6 @@
-# Angiogram overlay and 2D-to-3D registration proposal (fusion Step C1)
+# Angiogram overlay and 2D-to-3D registration proposal (fusion Steps C1 and C2)
 
-Step C1 lays the accepted 3D vessel mask of a case over one acquired angiographic frame. It adds four things:
+Step C1 lays the accepted 3D vessel mask of a case over one acquired angiographic frame. Step C2 adds a proposal that fits one pose to a frame from each plane of a pair, described under [Two planes](#two-planes). Step C1 adds four things:
 
 1. Admission of a few angiographic pixel frames as their own bounded, hash-bound store.
 2. A browser engine that proposes a rigid pose for the volume under the Step A camera.
@@ -9,7 +9,7 @@ Step C1 lays the accepted 3D vessel mask of a case over one acquired angiographi
 
 Everything here is retrospective. No live video is read. A proposal is not a validated registration and no accuracy is claimed for it. The angle convention is the one Step A declares (`dicom_xa_patient_longitude_latitude_ras_v1`), which has not been verified against a vendor system, a detector rotation or an image flip.
 
-Step C2 will add the vessel-presence report, joint refinement across two planes, a brief section and an evaluation against data with a known pose. None of that is in C1.
+Step C2 added joint refinement across two planes and an evaluation against public data with a known pose. The vessel-presence report and the brief section are left for Step C3.
 
 ## Frame admission
 
@@ -42,7 +42,7 @@ Redaction rectangles are blanked first, in source pixel coordinates, and the cro
 
 A DICOM plane keeps its acquisition geometry only when Step A's converter calls it calibrated and no crop was applied, because a crop moves the image center off the central ray. Every other plane has no geometry, and the operator enters it in the studio, where it is labelled assumed.
 
-Two planes in one bundle are linked by operator declaration only. C1 registers one plane at a time.
+Two planes in one bundle are linked by operator declaration only. Either plane can be registered on its own, or both together with one pose.
 
 ### Commands
 
@@ -113,6 +113,20 @@ Detector pixels must be square. A pose that leaves fewer than half the points in
 
 The studio reports the mean capped distance from projected 3D points to 2D crests, the share of points within 2 mm of a crest, the share inside the frame, and the share of 2D crest samples whose coarse neighborhood has no projected point. This last fraction is not a physical 2 mm test: a coverage cell is `max(1, round(cap / 3))` working pixels wide and each projected point covers its own cell and the eight adjacent cells. The reverse-coverage term is an approximate search heuristic, not a vessel-presence measurement. It must not be interpreted as the fraction of vessels absent from either image. Millimeters are at the isocenter plane of the proposed geometry, so they use the fitted field size when one was fitted. These compare two automatically extracted line sets. They are not a registration accuracy, and on the one real case tried they did not separate plausible from implausible poses (see the [verification record](verification/step-c1-angiogram-overlay.md)).
 
+## Two planes
+
+`web/src/biplaneRegistration.ts`, method ID `centerline_distance_compass_biplane_v1`, proposes one rigid pose against one frame from each plane of a declared pair.
+
+- **Why.** A second plane far enough from the first sees the first plane's depth as an in-plane shift. One pose scored against both frames then has its depth set by the second plane's evidence, so the search carries no pull toward the starting pose. Whether the answer it reaches is right is a separate question, taken up under "What was measured".
+- **Score.** Each plane is scored the way the single-plane method scores it. The joint cost is the mean of the two. The single-plane method is unchanged, so a saved single-plane record still replays to the same numbers.
+- **Search.** A scan over shifts at the starting rotation, then a compass search from the best four shifts and the start, each also from a 7 degree turn either way about each axis, then refinement of the best three. The range is 60 mm along and 15 degrees about each of plane A's camera axes, within 60,000 evaluations. An evaluation scores both planes, or stops at the first plane that leaves too few points inside its frame. A last refinement caps distances at 2 mm instead of 8 mm, so a point with no partner costs the same wherever it lands and stops pulling the pose toward an unrelated line.
+- **Plane angle.** The central rays must be at least 30 degrees apart. Closer planes add too little to determine depth, and the engine, the saved-record parser and the server all refuse them.
+- **Detector scale.** Each uncalibrated plane can have its own field size fitted. On public clinical frames the fit was unreliable (see below), and the studio says so.
+
+**Same patient position.** The two frames must show the same anatomy in the same position: acquired together, or with no patient or table movement between them. Nothing in the software can check that. The operator attests to it before a two-plane proposal can be saved, and the record says the position was attested and not checked.
+
+**What was measured.** On a synthetic phantom, from about 10 mm and 10 degrees off, the two-plane proposal comes back within 1 mm and 1 degree in three dimensions. On ten public clinical subjects with a reference pose it was better than either single plane at the median, its worst runs were worse, and it was more than 1 mm from the reference in about three runs out of four. Started at the reference pose it moved away, and its score did not mark the reference as a good pose. Fitting the detector size did not work on that data. The protocol and the aggregate numbers are in [docs/research](research/ljubljana-known-pose-results.md). A two-plane proposal is therefore a starting point for an operator to correct, and its score is not a sign that it is right.
+
 ## The studio
 
 **Angiogram overlay** appears for a case with a verified millimeter source.
@@ -123,19 +137,30 @@ The studio reports the mean capped distance from projected 3D points to 2D crest
 4. Set vessel polarity and sensitivity, and select **Propose overlay**. The projected mask is drawn in cyan and the extracted 2D lines in amber. **Larger view** enlarges the figure, and the projected vessels can be hidden to see the frame beneath.
 5. Tick the review box and select **Save confirmed proposal**, or discard.
 
-A proposal belongs to the exact frame, mask, geometry, isocenter and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A bundle's manifest request is released before the first-frame fetch starts, giving the frame its own full deadline. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
+For a bundle with two planes:
+
+1. Choose each plane in turn and set its frame, geometry, polarity and sensitivity. Each plane keeps its own values. Plane B starts at a primary angle of 90 degrees.
+2. Tick **Fit one pose to both planes**. The studio names the frame chosen on each plane and the angle between the central rays.
+3. Select **Propose two-plane overlay**. Both frames are drawn side by side with the one pose projected over each.
+4. Tick the review box and the box stating that both frames show the patient in the same position, then save. Both ticks belong to the proposal on screen and do not carry over to another.
+
+A proposal belongs to the exact frame or pair of frames, mask, geometry, isocenter and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A bundle's manifest request is released before the first-frame fetch starts, giving the frame its own full deadline. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
 
 ## The saved record
 
-One record per case is current. It binds the matrix to the case revision, the source revision, the accepted vessel mask (candidate ID and SHA-256) and the frame (bundle ID, manifest revision, plane, index and SHA-256). It stores `validated: false`, the status `operator_confirmed_proposal`, the geometry source (`frame_manifest` or `operator_entered`), and the browser-reported scores labelled `browser_reported_not_recomputed`. The server derives the rotation and the isocenter shift from the matrix itself.
+One record per case is current, single-plane or two-plane. A single-plane record (`step-c1-projection-registration-v1`) binds the matrix to the case revision, the source revision, the accepted vessel mask (candidate ID and SHA-256) and the frame (bundle ID, manifest revision, plane, index and SHA-256). It stores `validated: false`, the status `operator_confirmed_proposal`, the geometry source (`frame_manifest` or `operator_entered`), and the browser-reported scores labelled `browser_reported_not_recomputed`. The server derives the rotation and the isocenter shift from the matrix itself.
 
-Records are append-only. A later case revision makes the record stale, and a stale record is not shown or reused. On every read the server checks that the frame and the mask are still installed with the recorded hashes and reports `verified` or `unavailable`. The studio redraws a saved overlay only after repeating those checks itself.
+A two-plane record (`step-c2-biplane-registration-v2`) binds one matrix and one isocenter to plane A's frame and plane B's frame of one bundle, in that order. Each plane carries its own view, geometry source, detector scale, filter settings and browser-reported scores. The record stores `same_position_attested: true`, and the server's summary reads `same_position: operator_attested_not_checked` and gives the angle between the central rays, which it derives from the two views. A record's version must be the one its method belongs to. Single-plane records written before Step C2 read unchanged.
+
+Records are append-only. A later case revision makes the record stale, and a stale record is not shown or reused. On every read the server checks that every frame the record names and the mask are still installed with the recorded hashes and reports `verified` or `unavailable`. The studio redraws a saved overlay only after repeating those checks itself.
 
 ## Limits
 
-- Rigid, single plane, single frame. No vessel deformation, cardiac or respiratory motion, or table movement.
-- Depth along the beam is not determined, and a turn about an in-plane axis only weakly. On the synthetic phantoms the total rotation error reached 7.7 degrees while the in-plane error stayed under 1 degree.
+- Rigid, and one frame per plane. No vessel deformation, cardiac or respiratory motion, or table movement.
+- A two-plane proposal assumes both frames show one patient position. That is attested by the operator and not checked.
+- On public clinical frames with a reference pose, most two-plane proposals were more than 1 mm from the reference, some were tens of millimeters away, and the score did not tell them apart.
+- With one plane, depth along the beam is not determined, and a turn about an in-plane axis only weakly. On the synthetic phantoms the total rotation error reached 7.7 degrees while the in-plane error stayed under 1 degree.
 - The search is local. A start more than about 15 degrees from the true view, or a mirrored image, is outside its range.
-- A whole-head vessel mask against a single-vessel injection leaves most of each line set without a partner. The capped score tolerates that but does not resolve it. C2's vessel-presence report addresses it.
+- A whole-head vessel mask against a single-vessel injection leaves most of each line set without a partner. The capped score tolerates that but does not resolve it. The vessel-presence report planned for Step C3 addresses it.
 - TAIR-style screen captures have no DICOM geometry. Their angles come from burned-in text and their pixel aspect is not declared.
 - Not for live guidance, diagnosis or treatment decisions.

@@ -95,7 +95,7 @@ export type ProjectionRegistrationJob = {
 const rad = Math.PI / 180;
 
 /** Rotation by `rx`, `ry`, `rz` degrees about fixed axes x, y, z, row-major. */
-function rotation(rx: number, ry: number, rz: number): number[] {
+export function rotation(rx: number, ry: number, rz: number): number[] {
   const ca = Math.cos(rx * rad),
     sa = Math.sin(rx * rad),
     cb = Math.cos(ry * rad),
@@ -115,7 +115,7 @@ function rotation(rx: number, ry: number, rz: number): number[] {
   ];
 }
 
-function finiteView(
+export function finiteView(
   view: ViewNumbers,
   size: { width: number; height: number },
 ) {
@@ -535,7 +535,7 @@ function* solve(
 }
 
 /** Nearest rotation by Gram-Schmidt, rounded to nine digits. */
-function orthonormal(rows: number[][]): number[][] {
+export function orthonormal(rows: number[][]): number[][] {
   const col = (j: number) => [rows[0][j], rows[1][j], rows[2][j]],
     dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2],
     unit = (a: number[]) => {

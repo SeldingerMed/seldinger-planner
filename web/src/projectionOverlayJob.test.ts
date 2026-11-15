@@ -3,13 +3,21 @@ import { applyRigid } from "./__fixtures__/angioPhantom";
 import {
   gray,
   medial,
+  pairGray,
+  pairTruth,
   phantom,
   pivot,
   SIDE,
   truth,
   VIEW,
+  VIEW_B,
 } from "./__fixtures__/overlayCase";
-import { createOverlayJob, type OverlayJobInput } from "./projectionOverlayJob";
+import {
+  createBiplaneOverlayJob,
+  createOverlayJob,
+  type BiplaneOverlayJobInput,
+  type OverlayJobInput,
+} from "./projectionOverlayJob";
 import { projectRegistered } from "./projectionRegistration";
 
 const input: OverlayJobInput = {
@@ -96,5 +104,100 @@ describe("overlay job", () => {
       },
     });
     expect(() => blank.advance(() => false)).toThrow();
+  });
+});
+
+const plane = (k: number) => ({
+  frame: { gray: pairGray[k], width: SIDE, height: SIDE },
+  view: k ? VIEW_B : VIEW,
+  polarity: "dark" as const,
+  sensitivity: 0.5,
+  fit_detector_scale: false,
+});
+const pair: BiplaneOverlayJobInput = {
+  mask: phantom.mask,
+  shape: phantom.shape,
+  affine: phantom.affine,
+  planes: [plane(0), plane(1)],
+  isocenter: null,
+  search: true,
+};
+/** Mean 3D distance between where two poses put the vessel points. */
+function pointError(found: number[][], want: number[][]) {
+  const points = medial.points;
+  let sum = 0;
+  for (let k = 0; k < points.length; k += 3) {
+    const x: [number, number, number] = [
+        points[k],
+        points[k + 1],
+        points[k + 2],
+      ],
+      a = applyRigid(found, x),
+      b = applyRigid(want, x);
+    sum += Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+  }
+  return sum / (points.length / 3);
+}
+
+describe("two-plane overlay job", () => {
+  it("proposes one pose that is right in three dimensions", () => {
+    const job = createBiplaneOverlayJob(pair);
+    expect(() => job.result()).toThrow("not complete");
+    let slices = 0;
+    while (!job.advance(() => true)) slices++;
+    expect(slices).toBeGreaterThan(1000);
+    const result = job.result(),
+      proposal = result.proposal!;
+    expect(result.points).toEqual(medial.points);
+    result.isocenter.forEach((x, i) => expect(x).toBeCloseTo(pivot[i], 6));
+    expect(result.targets).toHaveLength(2);
+    expect(proposal.method).toBe("centerline_distance_compass_biplane_v1");
+    expect(proposal.plane_angle_deg).toBeCloseTo(90);
+    // The start, the volume's own position, is several millimeters off.
+    const identity = [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+    ];
+    expect(pointError(identity, pairTruth)).toBeGreaterThan(5);
+    expect(pointError(proposal.matrix, pairTruth)).toBeLessThan(1);
+    proposal.planes.forEach((found, k) => {
+      expect(found.view).toEqual(k ? VIEW_B : VIEW);
+      expect(found.detector_scale).toBe(1);
+      expect(found.score.mean_distance_mm).toBeLessThan(
+        found.start_score.mean_distance_mm,
+      );
+    });
+    // The same answer whatever the slicing.
+    const whole = createBiplaneOverlayJob(pair);
+    expect(whole.advance(() => false)).toBe(true);
+    expect(whole.result().proposal!.matrix).toEqual(proposal.matrix);
+  }, 60000);
+
+  it("only extracts points for a redraw, at an entered isocenter", () => {
+    const job = createBiplaneOverlayJob({
+      ...pair,
+      isocenter: [1, 2, 3],
+      search: false,
+    });
+    expect(job.advance(() => false)).toBe(true);
+    expect(job.result()).toMatchObject({
+      isocenter: [1, 2, 3],
+      targets: null,
+      proposal: null,
+    });
+    expect(job.result().points).toEqual(medial.points);
+  });
+
+  it("keeps failing once it has failed", () => {
+    // Two planes at one angle cannot be fitted together.
+    const job = createBiplaneOverlayJob({
+      ...pair,
+      planes: [plane(0), { ...plane(1), view: VIEW }],
+    });
+    expect(() => job.advance(() => false)).toThrow("too close to parallel");
+    expect(() => job.advance(() => false)).toThrow("too close to parallel");
+    expect(() => job.result()).toThrow("not complete");
   });
 });
