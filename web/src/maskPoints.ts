@@ -36,7 +36,7 @@ export type MedialPoints = {
   pooling: number;
 };
 
-function spacingOf(affine: number[][]): [number, number, number] {
+export function spacingOf(affine: number[][]): [number, number, number] {
   if (
     affine.length !== 4 ||
     affine.some(
