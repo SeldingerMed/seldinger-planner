@@ -234,7 +234,9 @@ export default function VesselPresencePanel({
     [reviewedOutcome, setReviewedOutcome] = useState<Outcome | null>(null),
     [notice, setNotice] = useState("");
   const controllers = useRef(new Set<AbortController>());
-  /** One request with a deadline. `release` is idempotent. */
+  /** One request with a deadline. `release` is idempotent. `answered` ends
+   * the deadline and keeps the request open: what follows an answer is local
+   * work, which no deadline is for. */
   const begin = () => {
     const controller = new AbortController(),
       deadline = setTimeout(
@@ -246,6 +248,7 @@ export default function VesselPresencePanel({
     let released = false;
     return {
       signal: controller.signal,
+      answered: () => clearTimeout(deadline),
       release: () => {
         if (released) return;
         released = true;
@@ -352,7 +355,7 @@ export default function VesselPresencePanel({
     if (saved.status !== "current" || !mask || !grid || !key) return;
     const inputs = saved.inputs,
       owned = key,
-      { release, signal } = begin();
+      { release, signal, answered } = begin();
     setOutcome(null);
     setNotice("");
     try {
@@ -377,11 +380,12 @@ export default function VesselPresencePanel({
         if (one.sha256 !== entry.frame_sha256) throw new Error("frame");
         frames.push(one);
       }
-      const voxels = await decodeVesselMask(
-        await loadSegmentationMask(mask, binding, signal),
-        grid.shape,
-        grid.affine,
-      );
+      const stored = await loadSegmentationMask(mask, binding, signal);
+      // Everything is fetched. Decoding a large mask can take longer than a
+      // request may, in a background tab above all, and is not a request.
+      answered();
+      const voxels = await decodeVesselMask(stored, grid.shape, grid.affine);
+      // Only a new registration or leaving the panel ends it from here.
       if (signal.aborted || live.current !== owned) return;
       const job = createPresenceJob({
         mask: voxels,

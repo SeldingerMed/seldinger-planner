@@ -33,6 +33,7 @@ import {
   VIEW,
   VIEW_B,
 } from "./__fixtures__/overlayCase";
+import * as frameModule from "./projectionFrames";
 import { parseSavedRegistration } from "./projectionFrames";
 import { reportInputs, type PresenceReportInputs } from "./presenceReport";
 import type { SegmentationEntry } from "./segmentation";
@@ -856,6 +857,49 @@ test("a request that does not answer is given up after its deadline", async () =
     /could not be loaded/,
   );
   expect(requests).toHaveBeenLastCalledWith(false);
+});
+
+// The deadline is for requests. Reading a large mask in a background tab can
+// take longer than any request may, and is not a request.
+test("decoding the mask is not held to the request deadline", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  server();
+  const decode = frameModule.decodeVesselMask;
+  const slow = vi
+    .spyOn(frameModule, "decodeVesselMask")
+    .mockImplementation(async (...given) => {
+      await new Promise((resolve) =>
+        setTimeout(resolve, PRESENCE_REQUEST_TIMEOUT_MS + 5000),
+      );
+      return decode(...given);
+    });
+  // Hashing and decoding answer outside the faked timers.
+  const until = async (met: () => boolean) => {
+    for (let k = 0; k < 5000 && !met(); k++) {
+      await vi.advanceTimersByTimeAsync(1);
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    expect(met()).toBe(true);
+  };
+  render(<Panel />);
+  await until(() => !!screen.queryByRole("button"));
+  fireEvent.click(button("Compute vessel presence"));
+  await until(() => slow.mock.calls.length === 1);
+  await vi.advanceTimersByTimeAsync(PRESENCE_REQUEST_TIMEOUT_MS + 5001);
+  // It ends with a report, or with the button offered again and nothing said.
+  await until(
+    () =>
+      !!screen.queryByRole("status", { name: "Vessel presence summary" }) ||
+      (
+        screen.queryByRole("button", {
+          name: "Compute vessel presence",
+        }) as HTMLButtonElement | null
+      )?.disabled === false,
+  );
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(status("Vessel presence summary").textContent).toMatch(
+    /^Unsaved report/,
+  );
 });
 
 test("a report belongs to one registration: a new one starts over", async () => {

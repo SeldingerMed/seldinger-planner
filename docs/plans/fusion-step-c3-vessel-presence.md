@@ -73,3 +73,7 @@ Written 2026-11-15, after reading the dataset's file sizes and per-frame text ta
 - 00132 (0:11:23), 00151 (0:14:17), 00161 (0:01:08) and 00146 (0:20:03): the first run pair at 30% shows filled arteries in both planes and is used. In 00132 the lateral frame is late arterial, and in 00161 the lateral frame already shows some venous filling.
 - No case is excluded.
 
+### Found on the first TAIR case, 2026-11-15
+
+- Computing the report on a real 200-voxel-cube mask in a background tab ended with the button offered again and nothing shown. Reading the mask took about 50 s there, longer than the 30 s request deadline, and the panel treated the passed deadline as a cancel. The deadline now ends when the last request is answered; decoding is not a request. Test: "decoding the mask is not held to the request deadline", which fails without the change.
+
