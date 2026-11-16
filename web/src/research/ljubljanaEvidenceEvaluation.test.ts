@@ -87,7 +87,9 @@ describe("vessel evidence evaluation on a phantom stored the same way", () => {
     expect(one.subjects).toEqual([2]);
     expect(one.arms.biplane.runs).toBe(2);
     expect(one.arms.biplane.subjects_with_every_run_under).toEqual([1, 1, 1]);
-  });
+    // 44 registrations. A shared CI runner takes about three times as long
+    // as a desktop.
+  }, 60_000);
 
   it("keeps the development subjects those of the diagnostics", () => {
     expect(EVIDENCE_PROTOCOL.development).toEqual(

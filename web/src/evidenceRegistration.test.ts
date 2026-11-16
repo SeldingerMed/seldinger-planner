@@ -63,6 +63,10 @@ type Options = {
   a?: PlaneOptions;
   b?: PlaneOptions;
 };
+/** For the few tests that run many registrations or a large frame. A shared
+ * CI runner takes about three times as long as a desktop. */
+const SLOW_MS = 30_000;
+
 const masks = new Map<string, Float32Array>();
 function setup(
   views: ViewNumbers[],
@@ -278,26 +282,30 @@ describe("two-plane vessel evidence registration", () => {
     expect(proposal.translation_mm).toBeGreaterThan(35);
   });
 
-  it("holds the same gate on poses drawn from a fixed generator", () => {
-    // Twelve poses, each freedom within 10 mm or 10 degrees, on orthogonal
-    // planes and on planes 60 degrees apart.
-    let state = 20261116;
-    const draw = () => {
-      state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-      return Math.round((state / 2 ** 32) * 200 - 100) / 10;
-    };
-    const worst = { point_mm: 0, rotation_deg: 0 };
-    for (let k = 0; k < 12; k++) {
-      const degrees: Vec3 = [draw(), draw(), draw()],
-        shift: Vec3 = [draw(), draw(), draw()],
-        s = setup(k % 2 ? [LAO30, RAO30] : [AP, LATERAL], degrees, shift),
-        e = errors(s, proposeEvidenceRegistration(s.input));
-      worst.point_mm = Math.max(worst.point_mm, e.point_mm);
-      worst.rotation_deg = Math.max(worst.rotation_deg, e.rotation_deg);
-    }
-    expect(worst.point_mm).toBeLessThan(1);
-    expect(worst.rotation_deg).toBeLessThan(1);
-  });
+  it(
+    "holds the same gate on poses drawn from a fixed generator",
+    () => {
+      // Twelve poses, each freedom within 10 mm or 10 degrees, on orthogonal
+      // planes and on planes 60 degrees apart.
+      let state = 20261116;
+      const draw = () => {
+        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+        return Math.round((state / 2 ** 32) * 200 - 100) / 10;
+      };
+      const worst = { point_mm: 0, rotation_deg: 0 };
+      for (let k = 0; k < 12; k++) {
+        const degrees: Vec3 = [draw(), draw(), draw()],
+          shift: Vec3 = [draw(), draw(), draw()],
+          s = setup(k % 2 ? [LAO30, RAO30] : [AP, LATERAL], degrees, shift),
+          e = errors(s, proposeEvidenceRegistration(s.input));
+        worst.point_mm = Math.max(worst.point_mm, e.point_mm);
+        worst.rotation_deg = Math.max(worst.rotation_deg, e.rotation_deg);
+      }
+      expect(worst.point_mm).toBeLessThan(1);
+      expect(worst.rotation_deg).toBeLessThan(1);
+    },
+    SLOW_MS,
+  );
 
   // The partial-filling gate. The older method turned by more than a degree
   // here, drawn toward unrelated lines by the points with no partner.
@@ -523,6 +531,7 @@ describe("one-plane vessel evidence registration", () => {
       expect(proposal.translation_mm).toBeGreaterThan(4);
       expect(proposal.rotation_deg).toBeGreaterThan(3);
     },
+    SLOW_MS,
   );
 
   it("keeps depth near the start, which one plane cannot see", () => {
