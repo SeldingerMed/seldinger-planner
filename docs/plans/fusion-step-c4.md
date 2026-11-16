@@ -49,11 +49,30 @@ The ten subjects were run once in Step C2 and the per-run detail was read. Part 
 
 - [x] 1.1 Baseline suites on the branch point, recorded. On `5f8b9c6`, 2026-11-16: backend 1363 passed and 127 skipped, lint and format clean; frontend 1096 tests in 94 files, build and dependency audit clean; native ingestion 171; physics 239.
 - [x] 1.2 Diagnostic protocol committed (`ffcdb42`), then run on subjects 01 to 05 (`278e234`). Aggregate findings in `docs/research/ljubljana-reference-diagnostics-results.md`.
-- [ ] 1.3 Method design from the findings and the literature scan, written here before code.
+- [x] 1.3 Method design from the findings and the literature scan, written below before code.
 - [ ] 1.4 New method, test first, with the synthetic gates.
 - [ ] 1.5 New Ljubljana protocol committed, then one run.
 - [ ] 1.6 TAIR five-case review.
 - [ ] 1.7 Studio, docs, verification record, mutation pass, independent review, automated review.
+
+### Design
+
+Written on 2026-11-16 after the diagnostics, a literature scan and one design probe, and before any method code.
+
+What the published work says. The Ljubljana group's most robust method on this data matches a 3D vessel model to the intensity gradients of the 2D image, not to extracted lines (Mitrovic and others, IEEE TMI 2013, doi 10.1109/TMI.2013.2259844). Their ten-method comparison found intensity-based methods the most accurate and one-plane registration much less robust than two-plane (Int J CARS 2018, doi 10.1007/s11548-017-1678-2). Both agree with the diagnostics: use the image, not a thresholded line set.
+
+The method.
+
+1. **2D target: vessel evidence.** A multi-scale ridge response on a working grid of up to 768 pixels a side (the old target used 384), with no threshold. It is compressed between its own 75th and 99.5th percentile with a square root, so a faint small vessel counts for a useful share of what the carotid trunk counts for. The map is then blurred to five widths, 16, 8, 4, 2 and 1 working pixels.
+2. **Cost.** For each plane, one minus the mean evidence under the projected 3D points. A point outside the frame counts as zero evidence. A 3D point with no vessel under it therefore costs the same wherever it lands, which is what the diagnostics asked for: four in five 3D points had no 2D partner.
+3. **Coverage term.** The share of strong-evidence pixels with no projected point nearby, added at a fixed weight. It bounds what unexplained 2D lines can cost and resists a pose that gathers the points onto the densest evidence. Whether it earns its place is decided on subjects 01 to 05 and the synthetic gates and recorded in the decisions log.
+4. **Search.** A translation scan at the widest blur, then a compass descent through the five widths from widest to narrowest. One implementation serves one plane and two. With one plane the weak pull toward the start in depth and in out-of-plane turns is kept from the old method, because one plane does not determine them.
+5. **Identifiers.** `vessel_evidence_compass_v1` for one plane and `vessel_evidence_compass_biplane_v1` for two. The old methods, their targets and their saved records are untouched.
+6. **What the score is.** The mean vessel evidence under the projected points, from 0 to 1. It says how much of the projected model lies on line-like structure in the frame. It is not registration accuracy, and the studio says so. This replaces the wording of acceptance criterion 7, which was written before the design and assumed two extracted line sets.
+
+Design probe (subjects 01 to 05, development evidence, added after the diagnostics protocol; code in `web/src/research/evidenceProbe.eval.ts`). A bare version of items 1, 2 and 4 with no scan and no bounds, from the 25 protocol starts (6.6 to 16.7 mm off): the two-plane cost ended under 1 mm from the reference in 25 of 25 runs, median 0.4 mm, and moved 0.1 to 0.4 mm when started on the reference. With one plane and no pull toward the start it ran off in depth, as expected.
+
+Not taken up now: an orientation term (projected vessel direction against the 2D line direction) and dropping non-vessel 3D points. Both stay available if the Ljubljana run or the TAIR review shows the need.
 
 ## Parts 2 to 6
 
