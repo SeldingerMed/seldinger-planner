@@ -82,7 +82,11 @@ export function stretched(raw: Float32Array): Uint8Array {
 export function levels(gray: Uint8Array): number {
   const seen = new Uint8Array(256);
   let count = 0;
-  for (const value of gray) if (!seen[value]++) count++;
+  for (const value of gray)
+    if (!seen[value]) {
+      seen[value] = 1;
+      count++;
+    }
   return count;
 }
 

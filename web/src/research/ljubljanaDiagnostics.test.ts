@@ -93,6 +93,10 @@ describe("frame conversion", () => {
 
   it("counts distinct gray levels", () => {
     expect(levels(Uint8Array.from([3, 3, 4, 250, 4]))).toBe(3);
+    // A level used more often than a byte can count is still one level.
+    const many = new Uint8Array(600).fill(9);
+    many[0] = 1;
+    expect(levels(many)).toBe(2);
   });
 });
 
