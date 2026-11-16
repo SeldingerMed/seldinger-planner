@@ -5,8 +5,11 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import type { Vec3 } from "../obliqueSlice";
 import { writeSubject } from "./__fixtures__/preparedPhantom";
+import { DIAGNOSTICS_PROTOCOL } from "./ljubljanaDiagnostics";
+import { LJUBLJANA_PROTOCOL } from "./ljubljanaProtocol";
 import {
   ARMS,
+  EVIDENCE_PROTOCOL,
   evaluateEvidence,
   summarizeEvidence,
 } from "./ljubljanaEvidenceEvaluation";
@@ -84,6 +87,19 @@ describe("vessel evidence evaluation on a phantom stored the same way", () => {
     expect(one.subjects).toEqual([2]);
     expect(one.arms.biplane.runs).toBe(2);
     expect(one.arms.biplane.subjects_with_every_run_under).toEqual([1, 1, 1]);
+  });
+
+  it("keeps the development subjects those of the diagnostics", () => {
+    expect(EVIDENCE_PROTOCOL.development).toEqual(
+      DIAGNOSTICS_PROTOCOL.subjects,
+    );
+    expect(
+      [...EVIDENCE_PROTOCOL.development, ...EVIDENCE_PROTOCOL.held_back].sort(
+        (a, b) => a - b,
+      ),
+    ).toEqual(
+      Array.from({ length: LJUBLJANA_PROTOCOL.subjects }, (_, k) => k + 1),
+    );
   });
 
   it("refuses a subject that was not prepared", () => {

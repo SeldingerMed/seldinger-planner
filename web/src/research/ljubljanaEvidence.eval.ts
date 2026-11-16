@@ -11,8 +11,8 @@
  * LJUBLJANA_RESULTS. */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { it } from "vitest";
-import { DIAGNOSTICS_PROTOCOL } from "./ljubljanaDiagnostics";
 import {
+  EVIDENCE_PROTOCOL,
   evaluateEvidence,
   summarizeEvidence,
 } from "./ljubljanaEvidenceEvaluation";
@@ -30,8 +30,8 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
     const prepared = outsideRepository(PREPARED!),
       results = outsideRepository(RESULTS!);
     mkdirSync(results, { recursive: true });
-    const development = [...DIAGNOSTICS_PROTOCOL.subjects],
-      held = [6, 7, 8, 9, 10],
+    const development = [...EVIDENCE_PROTOCOL.development],
+      held = [...EVIDENCE_PROTOCOL.held_back],
       subjects = SET === "protocol" ? [...development, ...held] : development;
     const { arms } = evaluateEvidence(
       prepared,
@@ -40,6 +40,7 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
       console.log,
     );
     const summary = {
+      protocol: EVIDENCE_PROTOCOL.id,
       set: SET,
       development: summarizeEvidence(arms, development),
       held_back: SET === "protocol" ? summarizeEvidence(arms, held) : undefined,

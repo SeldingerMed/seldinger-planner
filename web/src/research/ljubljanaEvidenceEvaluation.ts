@@ -35,6 +35,16 @@ import {
   type Perturbation,
 } from "./ljubljanaProtocol";
 
+/** The written protocol is docs/research/ljubljana-evidence-protocol.md; a
+ * change here after its run is a new protocol, not a correction. */
+export const EVIDENCE_PROTOCOL = {
+  id: "ljubljana-evidence-v1",
+  /** Subjects the methods were built against, and subjects no diagnostic
+   * or development run opened. */
+  development: [1, 2, 3, 4, 5],
+  held_back: [6, 7, 8, 9, 10],
+} as const;
+
 /** The arms of the first protocol, and three in which the entered detector
  * sizes are right and a fit is requested all the same. */
 export const ARMS = [
