@@ -718,3 +718,208 @@ def test_a_stored_row_that_is_not_a_record_fails_closed(tmp_path, monkeypatch, p
     response = client.get(route)
     assert response.status_code == 503, response.text
     assert response.json()["detail"] == "Projection registration is unavailable; reload"
+
+
+# Vessel evidence methods (Step C4). The same records with another score, no
+# sensitivity (the 2D target has no threshold) and what became of a requested
+# detector-size fit.
+
+EVIDENCE_METHOD = "vessel_evidence_compass_v1"
+EVIDENCE_VERSION = "step-c4-evidence-registration-v3"
+EVIDENCE_PAIR_METHOD = "vessel_evidence_compass_biplane_v1"
+EVIDENCE_PAIR_VERSION = "step-c4-evidence-biplane-registration-v4"
+EVIDENCE = {"mean_evidence": 0.21, "in_field_fraction": 1.0, "uncovered_fraction": 0.1}
+EVIDENCE_START = {**EVIDENCE, "mean_evidence": 0.12}
+
+
+def evidence_inputs(mask, listed, **change):
+    value = inputs(
+        mask,
+        listed,
+        method=EVIDENCE_METHOD,
+        detector_fit="not_requested",
+        reported_score=dict(EVIDENCE),
+        reported_start_score=dict(EVIDENCE_START),
+    )
+    del value["sensitivity"]
+    return {**value, **change}
+
+
+def evidence_pair_inputs(mask, listed, a=None, b=None, **change):
+    value = pair_inputs(mask, listed, method=EVIDENCE_PAIR_METHOD, detector_fit="not_requested")
+    for entry, edits in zip(value["planes"], (a, b), strict=True):
+        del entry["sensitivity"]
+        entry["reported_score"] = dict(EVIDENCE)
+        entry["reported_start_score"] = dict(EVIDENCE_START)
+        entry.update(edits or {})
+    return {**value, **change}
+
+
+def request_for(case, reference, value, revision=0):
+    return {
+        "artifact_version": case["artifact_version"],
+        "reference_revision": reference,
+        "registration_revision": revision,
+        "inputs": value,
+    }
+
+
+def test_single_plane_evidence_registration_roundtrips(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    request = request_for(case, reference, evidence_inputs(mask, listed))
+    response = client.put(route, json=request)
+    assert response.status_code == 200, response.text
+    current = response.json()["current"]
+    assert current["status"] == "current" and current["evidence"] == "verified"
+    assert current["inputs"] == request["inputs"]
+    assert current["dependencies"]["version"] == EVIDENCE_VERSION
+    assert current["result"] == {
+        "version": EVIDENCE_VERSION,
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "method": EVIDENCE_METHOD,
+        "status": "operator_confirmed_proposal",
+        "validated": False,
+        "geometry_source": "operator_entered",
+        "rotation_deg": 90.0,
+        "isocenter_shift_mm": pytest.approx(math.hypot(-29, 4), abs=1e-3),
+        "detector_fit": "not_requested",
+        "score_source": "browser_reported_not_recomputed",
+        "score_kind": "mean_vessel_evidence_under_projected_points",
+        "reported_score": EVIDENCE,
+        "reported_start_score": EVIDENCE_START,
+    }
+    assert client.get(route).json() == response.json()
+    # A record of the older method follows it as the next revision, and reads back.
+    older = client.put(route, json=body(case, reference, mask, listed, 1))
+    assert older.status_code == 200, older.text
+    assert older.json()["current"]["result"]["method"] == "centerline_distance_compass_v1"
+
+
+def test_two_plane_evidence_registration_roundtrips(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    kept = {"fit_detector_scale": True, "detector_scale": 1.18}
+    request = request_for(
+        case, reference, evidence_pair_inputs(mask, listed, b=kept, detector_fit="kept")
+    )
+    response = client.put(route, json=request)
+    assert response.status_code == 200, response.text
+    current = response.json()["current"]
+    assert current["status"] == "current" and current["evidence"] == "verified"
+    assert current["inputs"] == request["inputs"]
+    assert current["dependencies"]["version"] == EVIDENCE_PAIR_VERSION
+    result = current["result"]
+    assert result["version"] == EVIDENCE_PAIR_VERSION and result["method"] == EVIDENCE_PAIR_METHOD
+    assert result["validated"] is False
+    assert result["same_position"] == "operator_attested_not_checked"
+    assert result["plane_angle_deg"] == 90.0
+    assert result["detector_fit"] == "kept"
+    assert result["score_kind"] == "mean_vessel_evidence_under_projected_points"
+    assert [entry["plane"] for entry in result["planes"]] == ["a", "b"]
+    assert result["planes"][1]["reported_score"] == EVIDENCE
+    assert result["planes"][1]["reported_start_score"] == EVIDENCE_START
+    assert client.get(route).json() == response.json()
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        # Each method keeps its own score.
+        {"reported_score": dict(SCORE)},
+        {"reported_start_score": dict(SCORE)},
+        {"reported_score": {**EVIDENCE, "mean_distance_mm": 0.4}},
+        {"reported_score": {**EVIDENCE, "mean_evidence": 1.2}},
+        {"reported_score": {**EVIDENCE, "mean_evidence": -0.1}},
+        {"reported_score": {**EVIDENCE, "accuracy_mm": 1.0}},
+        {"reported_score": {k: v for k, v in EVIDENCE.items() if k != "mean_evidence"}},
+        # The evidence target has no threshold to record.
+        {"sensitivity": 0.5},
+        # What became of a fit has to agree with what was requested and stored.
+        {"detector_fit": "guessed"},
+        {"detector_fit": None},
+        {"detector_fit": "kept"},  # nothing was requested
+        {"detector_fit": "dropped"},  # nothing was requested
+        {"fit_detector_scale": True},  # requested, and reported as not requested
+        {"fit_detector_scale": True, "detector_fit": "dropped", "detector_scale": 1.1},
+        {"fit_detector_scale": True, "detector_fit": "kept", "detector_scale": 1.46},
+        {"detector_scale": 1.1},
+        {"fit_detector_scale": True, "detector_fit": "kept", "geometry_source": "frame_manifest"},
+        {"confirmed": False},
+        {"same_position_attested": True},  # a two-plane field
+        {"note": "validated"},
+    ],
+)
+def test_single_plane_evidence_rejections_do_not_store(tmp_path, monkeypatch, change):
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    value = evidence_inputs(mask, listed, **change)
+    response = client.put(route, json=request_for(case, reference, value))
+    assert response.status_code == 422, response.text
+    assert client.get(route).json()["registration_revision"] == 0
+
+
+def test_a_fit_that_was_kept_or_dropped_is_stored_as_such(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    kept = evidence_inputs(
+        mask, listed, fit_detector_scale=True, detector_fit="kept", detector_scale=0.9
+    )
+    first = client.put(route, json=request_for(case, reference, kept))
+    assert first.status_code == 200, first.text
+    assert first.json()["current"]["result"]["detector_fit"] == "kept"
+    dropped = evidence_inputs(
+        mask, listed, fit_detector_scale=True, detector_fit="dropped", detector_scale=1.0
+    )
+    second = client.put(route, json=request_for(case, reference, dropped, 1))
+    assert second.status_code == 200, second.text
+    assert second.json()["current"]["result"]["detector_fit"] == "dropped"
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"same_position_attested": False},
+        {"detector_fit": "kept"},  # no plane requested a fit
+        {"sensitivity": 0.5},
+        {"b": {"sensitivity": 0.5}},
+        {"b": {"reported_score": dict(SCORE)}},
+        {"b": {"reported_score": {**EVIDENCE, "mean_evidence": 1.2}}},
+        {"b": {"fit_detector_scale": True}},  # requested, and reported as not requested
+        # A dropped fit leaves every plane at its entered size.
+        {"detector_fit": "dropped", "b": {"fit_detector_scale": True, "detector_scale": 1.1}},
+        # A kept fit changes only the planes that asked for one.
+        {
+            "detector_fit": "kept",
+            "a": {"detector_scale": 1.1},
+            "b": {"fit_detector_scale": True, "detector_scale": 1.1},
+        },
+        {"b": {"view": {**FRONTAL, "primary_deg": 29.0}}},
+        {"b": {"frame_sha256": "SAME_AS_A"}},
+        {"a": {"plane": "b"}, "b": {"plane": "a"}},
+        {"method": PAIR_METHOD},  # the older method with this record's fields
+    ],
+)
+def test_two_plane_evidence_rejections_do_not_store(tmp_path, monkeypatch, change):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    if change.get("b", {}).get("frame_sha256") == "SAME_AS_A":
+        change = {"b": {"frame_sha256": listed["manifest"]["planes"][0]["frames"][0]["sha256"]}}
+    value = evidence_pair_inputs(mask, listed, **change)
+    response = client.put(route, json=request_for(case, reference, value))
+    assert response.status_code == 422, response.text
+    assert client.get(route).json()["registration_revision"] == 0
+
+
+def test_an_evidence_record_relabelled_as_the_older_method_fails_closed(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    saved = client.put(route, json=request_for(case, reference, evidence_inputs(mask, listed)))
+    assert saved.status_code == 200, saved.text
+    with closing(sqlite3.connect(tmp_path.resolve() / "case.sqlite3")) as conn, conn:
+        stored = json.loads(
+            conn.execute("SELECT dependencies FROM projection_registrations").fetchone()[0]
+        )
+        stored["version"] = "step-c1-projection-registration-v1"
+        conn.execute("UPDATE projection_registrations SET dependencies=?", (json.dumps(stored),))
+    assert client.get(route).status_code == 503
