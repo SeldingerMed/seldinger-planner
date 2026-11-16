@@ -47,8 +47,8 @@ The ten subjects were run once in Step C2 and the per-run detail was read. Part 
 
 ### Phases
 
-- [ ] 1.1 Baseline suites on the branch point, recorded.
-- [ ] 1.2 Diagnostic protocol committed, then run on subjects 01 to 05. Aggregate findings in `docs/research/ljubljana-reference-diagnostics-results.md`.
+- [x] 1.1 Baseline suites on the branch point, recorded. On `5f8b9c6`, 2026-11-16: backend 1363 passed and 127 skipped, lint and format clean; frontend 1096 tests in 94 files, build and dependency audit clean; native ingestion 171; physics 239.
+- [x] 1.2 Diagnostic protocol committed (`ffcdb42`), then run on subjects 01 to 05 (`278e234`). Aggregate findings in `docs/research/ljubljana-reference-diagnostics-results.md`.
 - [ ] 1.3 Method design from the findings and the literature scan, written here before code.
 - [ ] 1.4 New method, test first, with the synthetic gates.
 - [ ] 1.5 New Ljubljana protocol committed, then one run.
@@ -70,3 +70,4 @@ Each gets its own acceptance criteria here when it starts. Known inputs:
 - 2026-11-16. Step created by Colin with the six parts above. The original Ljubljana data will not be requested.
 - 2026-11-16. Branch `feat/step-c4-score-rework` cut from `5f8b9c6`, the Step C3 merge commit.
 - 2026-11-16. Ljubljana subjects split by number, 01 to 05 for diagnosis and design and 06 to 10 held back from both, before any diagnostic was run.
+- 2026-11-16. Diagnostics, subjects 01 to 05: the reference pose agrees with the image in every frame; the 2D extraction marks vessels correctly and misses most of them; the 3D points follow the vessels and include non-vessel points; a plain two-way distance ranks the reference above the perturbed starts. The rework therefore keeps the reference as its development target and changes the 2D target and the cost, not the camera reading.
