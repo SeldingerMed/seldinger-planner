@@ -469,6 +469,20 @@ describe("two-plane vessel evidence registration", () => {
     }
   });
 
+  it("never lets a fitted search end worse than the entered size", () => {
+    // From this pose the fitted search on its own ends at a higher cost than
+    // the search at the entered sizes. It is also handed that search's
+    // result, so the gain it reports cannot be negative.
+    const s = setup([AP, LATERAL], [12, -12, 12], [10, -10, 8], {
+        a: { fit: true },
+        b: { fit: true },
+      }),
+      proposal = proposeEvidenceRegistration(s.input);
+    expect(proposal.fit_gain).toBeGreaterThanOrEqual(0);
+    expect(proposal.detector_fit).toBe("dropped");
+    expect(errors(s, proposal).point_mm).toBeLessThan(1);
+  });
+
   it("refuses planes too close to parallel, and reports their angle", () => {
     const near = setup([AP, { ...AP, primary_deg: 20 }], [0, 0, 0], [3, 0, 0]);
     expect(() => proposeEvidenceRegistration(near.input)).toThrow(
