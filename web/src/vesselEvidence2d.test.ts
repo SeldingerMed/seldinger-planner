@@ -61,6 +61,16 @@ describe("vessel evidence", () => {
     }
   });
 
+  it("marks only the crest of a wide line", () => {
+    // A line about 14 pixels wide: the evidence is its middle, not its width.
+    const side = 200,
+      e = vesselEvidence(lines(side, [[100, 6, 80]]), side, side, "dark"),
+      map = finest(e);
+    expect(columnMean(map, side, 100)).toBeGreaterThan(0.8);
+    for (const x of [94, 96, 104, 106])
+      expect(columnMean(map, side, x)).toBeLessThan(0.05);
+  });
+
   it("keeps a faint line that is an eighth as deep as a strong one", () => {
     // The thresholded target of the older methods drops a line like this.
     const side = 240,
@@ -214,8 +224,9 @@ describe("vessel evidence", () => {
       count++;
       next = steps.next();
     }
-    expect(count).toBeGreaterThanOrEqual(
-      LIMITS.ridge_scales_px.length + LIMITS.blur_px.length,
+    // One step for the working copy, one per ridge scale, one per blur.
+    expect(count).toBe(
+      1 + LIMITS.ridge_scales_px.length + LIMITS.blur_px.length,
     );
     expect(next.value).toEqual(vesselEvidence(gray, side, side, "dark"));
   });

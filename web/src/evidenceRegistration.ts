@@ -53,7 +53,9 @@ export const EVIDENCE_REGISTRATION_LIMITS = {
    * sizes the view model accepts. */
   detector_scale: [0.7, 1.45],
   /** A fitted detector scale is kept only when it lowers the cost by at
-   * least this much against the same search at the entered size. */
+   * least this much against the same search at the entered size. When no
+   * pose at the entered size can be scored there is nothing to compare
+   * with, and the fit is kept. */
   min_fit_gain: 0.02,
   /** Spacing of the translation scan that opens the search. */
   scan_step_mm: 8,
@@ -119,7 +121,8 @@ export type EvidenceRegistrationProposal = {
   plane_angle_deg: number | null;
   /** What became of a requested detector-scale fit. A fit is `kept` when it
    * lowered the cost by at least `min_fit_gain` against the entered size,
-   * and otherwise `dropped`: every plane then keeps its entered size. */
+   * or when no pose at the entered size could be scored. Otherwise it is
+   * `dropped`: every plane then keeps its entered size. */
   detector_fit: "not_requested" | "kept" | "dropped";
   /** Cost at the entered size less cost with the fitted scale. Null when no
    * fit was requested, or when no pose at the entered size could be

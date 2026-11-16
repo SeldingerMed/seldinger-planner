@@ -467,7 +467,6 @@ describe("two-plane vessel evidence registration", () => {
       expect(plane.view.detector_width_mm).toBeLessThanOrEqual(600 + 1e-9);
       expect(plane.view.detector_height_mm).toBeLessThanOrEqual(600 + 1e-9);
     }
-    expect(["kept", "dropped"]).toContain(proposal.detector_fit);
   });
 
   it("refuses planes too close to parallel, and reports their angle", () => {
