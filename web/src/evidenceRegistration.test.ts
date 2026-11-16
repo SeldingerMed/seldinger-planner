@@ -268,6 +268,16 @@ describe("two-plane vessel evidence registration", () => {
     },
   );
 
+  it("finds a pose that a descent from the start does not reach", () => {
+    // 41 mm and 17 degrees off. The translation scan is what gets there.
+    const s = setup([AP, LATERAL], [10, -10, 10], [25, -20, 25]),
+      proposal = proposeEvidenceRegistration(s.input),
+      e = errors(s, proposal);
+    expect(e.point_mm).toBeLessThan(1);
+    expect(e.rotation_deg).toBeLessThan(1);
+    expect(proposal.translation_mm).toBeGreaterThan(35);
+  });
+
   it("holds the same gate on poses drawn from a fixed generator", () => {
     // Twelve poses, each freedom within 10 mm or 10 degrees, on orthogonal
     // planes and on planes 60 degrees apart.
@@ -432,6 +442,9 @@ describe("two-plane vessel evidence registration", () => {
       proposal = proposeEvidenceRegistration(s.input),
       e = errors(s, proposal);
     expect(proposal.detector_fit).toBe("dropped");
+    // The fitted search starts from the entered-size result, so it never
+    // costs more.
+    expect(proposal.fit_gain).toBeGreaterThanOrEqual(0);
     expect(proposal.fit_gain).toBeLessThan(LIMITS.min_fit_gain);
     proposal.planes.forEach((plane, k) => {
       expect(plane.detector_scale).toBe(1);
@@ -577,18 +590,21 @@ describe("vessel evidence registration, either way", () => {
     expect(job.result()).toEqual(proposeEvidenceRegistration(s.input));
   });
 
-  it("stays inside its search range", () => {
-    // The true pose is 30 degrees about the viewing axis: twice the range.
-    const s = setup([AP, LATERAL], [0, 30, 0], [0, 0, 0]),
-      proposal = proposeEvidenceRegistration(s.input);
-    expect(proposal.rotation_deg).toBeLessThanOrEqual(
-      Math.sqrt(3) * LIMITS.rotation_deg + 1e-9,
-    );
-    expect(proposal.translation_mm).toBeLessThanOrEqual(
-      Math.sqrt(3) * LIMITS.translation_mm + 1e-9,
-    );
-    expect(errors(s, proposal).rotation_deg).toBeGreaterThan(4);
-  });
+  it.each([[[30, 0, 0]], [[0, 30, 0]], [[0, 0, 30]]] as [Vec3][])(
+    "stays inside its search range: true turn %j",
+    (degrees) => {
+      // The true pose is turned 30 degrees about one axis: twice the range.
+      const s = setup([AP, LATERAL], degrees, [0, 0, 0]),
+        proposal = proposeEvidenceRegistration(s.input);
+      expect(proposal.rotation_deg).toBeLessThanOrEqual(
+        Math.sqrt(3) * LIMITS.rotation_deg + 1e-9,
+      );
+      expect(proposal.translation_mm).toBeLessThanOrEqual(
+        Math.sqrt(3) * LIMITS.translation_mm + 1e-9,
+      );
+      expect(errors(s, proposal).rotation_deg).toBeGreaterThan(4);
+    },
+  );
 
   it("refuses when no pose in range keeps the vessels in the frame", () => {
     const s = setup([AP], [0, 0, 0], [0, 0, 0]);

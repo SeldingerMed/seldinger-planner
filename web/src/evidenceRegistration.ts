@@ -516,38 +516,32 @@ function* solve(
         seeds.push(candidate);
     }
     seeds.push({ p: zero, cost: 0 });
-    // Each seed is also searched from a turn either way: about every axis
-    // with two planes, and about the viewing axis with one, where that turn
-    // changes the picture most.
-    const turns = two
-      ? [
-          [0, 0, 0],
-          [7, 0, 0],
-          [-7, 0, 0],
-          [0, 7, 0],
-          [0, -7, 0],
-          [0, 0, 7],
-          [0, 0, -7],
-        ]
-      : [
-          [0, 0, 0],
-          [0, 0, 7],
-          [0, 0, -7],
-        ];
     const found: Found[] = [];
     for (const seed of seeds)
-      for (const turn of turns) {
-        const from = seed.p.slice();
-        for (let i = 0; i < 3; i++) from[3 + i] = turn[i];
-        found.push(yield* descend(coarse, from, 0, 4, 1, 300));
-      }
+      found.push(yield* descend(coarse, seed.p.slice(), 0, 4, 1, 300));
     found.sort((a, b) => a.cost - b.cost);
     // The best few, each taken through the narrower blurs in turn. The step
     // at each level starts at that level's blur width in millimeters.
     let best: Found | null = null;
+    const refine = function* (from: Found, first: number) {
+      let result = from;
+      for (let level = first; level < levels; level++) {
+        const width = EVIDENCE.blur_px[level] * mm;
+        result = yield* descend(fine, result.p, level, width, width / 8, 1500);
+      }
+      if (!best || result.cost < best.cost) best = result;
+    };
+    // The pose handed in is already refined. Taken through the narrowest
+    // blur alone it cannot end worse than it came, so the search it joins
+    // never costs more than the one that found it. It is also taken through
+    // every blur like the rest, which can move it further.
+    if (also) {
+      yield* refine(also, narrowest);
+      yield* refine(also, 1);
+    }
     const refined: number[][] = [];
-    for (const candidate of also ? [also, ...found] : found) {
-      if (refined.length === (also ? 4 : 3)) break;
+    for (const candidate of found) {
+      if (refined.length === 3) break;
       if (
         refined.some(
           (p) =>
@@ -567,14 +561,10 @@ function* solve(
       )
         continue;
       refined.push(candidate.p);
-      let result: Found = candidate;
-      for (let level = 1; level < levels; level++) {
-        const width = EVIDENCE.blur_px[level] * mm;
-        result = yield* descend(fine, result.p, level, width, width / 8, 1500);
-      }
-      if (!best || result.cost < best.cost) best = result;
+      yield* refine(candidate, 1);
     }
-    return best && best.cost < 2 ? best : null;
+    const result = best as Found | null;
+    return result && result.cost < 2 ? result : null;
   }
 
   let best: Found | null,
