@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyRigid,
   renderFrame,
@@ -129,6 +129,11 @@ function errors(
     depth_mm: dot(offset, cam.d),
   };
 }
+
+// Every search in this file is bounded by its limits, not by the clock, and
+// a CI runner takes two to three times as long as a workstation. The default
+// 5 s is a matter of the machine, so the file states its own limit.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("projectRegistered", () => {
   it("matches the independently derived pixel vectors", () => {

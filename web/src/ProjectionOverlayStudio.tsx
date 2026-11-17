@@ -252,6 +252,17 @@ function savedSummary(
   return `Saved operator-confirmed proposal${by}, revision ${revision}, not a validated registration: frame ${inputs.frame_index} of plane ${inputs.plane} in ${inputs.frame_source_id}, ${geometryWords(inputs.geometry_source)}, ${moved}. Its frame and vessel mask are ${evidence === "verified" ? "installed and unchanged" : "no longer available unchanged"}.${fitted}`;
 }
 
+/** A field size as a multiple of the entered one, to two decimals. A size
+ * that moved is never written as 1.00: it gets the digits that show the
+ * move, so the number and the statement that it moved agree. */
+function scaleWords(scale: number): string {
+  for (let digits = 2; digits < 8; digits++) {
+    const text = scale.toFixed(digits);
+    if (scale === 1 || Number(text) !== 1) return text;
+  }
+  return String(scale);
+}
+
 /** What became of a requested fit in a saved vessel evidence record. A fit
  * can be kept for the pose it found with every size where it was, so a kept
  * fit names each field that moved, or says that none did. */
@@ -264,7 +275,7 @@ function savedFitWords(
       .filter((plane) => plane.detector_scale !== 1)
       .map(
         (plane) =>
-          `${pair ? `plane ${plane.plane}'s` : "the"} field at ${plane.detector_scale.toFixed(2)} times the entered width`,
+          `${pair ? `plane ${plane.plane}'s` : "the"} field at ${scaleWords(plane.detector_scale)} times the entered width`,
       );
   return moved.length
     ? ` A fit of the field size was kept: ${moved.join(" and ")}.`
@@ -277,7 +288,7 @@ function evidenceWords(found: EvidenceRegistrationProposal): string {
   const moved = `moved the vessel points ${found.translation_mm.toFixed(1)} mm and ${found.rotation_deg.toFixed(1)}° from the starting pose`,
     plane = (k: number, is = "") => {
       const one = found.planes[k];
-      return `mean vessel evidence under the projected 3D vessel points ${is}${one.score.mean_evidence.toFixed(2)} on a scale from 0 to 1 (starting pose ${one.start_score.mean_evidence.toFixed(2)}), ${percent(one.score.in_field_fraction)} of points inside the frame, ${percent(one.score.uncovered_fraction)} of the strong line-like structure in the frame with no projected point near it${found.detector_fit === "kept" && one.detector_scale !== 1 ? `, field size fitted at ${one.detector_scale.toFixed(2)} times the entered width` : ""}`;
+      return `mean vessel evidence under the projected 3D vessel points ${is}${one.score.mean_evidence.toFixed(2)} on a scale from 0 to 1 (starting pose ${one.start_score.mean_evidence.toFixed(2)}), ${percent(one.score.in_field_fraction)} of points inside the frame, ${percent(one.score.uncovered_fraction)} of the strong line-like structure in the frame with no projected point near it${found.detector_fit === "kept" && one.detector_scale !== 1 ? `, field size fitted at ${scaleWords(one.detector_scale)} times the entered width` : ""}`;
     },
     fitted = fitWords(found.detector_fit),
     caution =

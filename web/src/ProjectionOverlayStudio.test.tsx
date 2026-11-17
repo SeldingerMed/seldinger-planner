@@ -2355,6 +2355,24 @@ test("a saved record says which plane's size a kept fit moved, or that none did"
   expect(await words(pair, currentPairAnswer)).toMatch(
     /A fit of the field size was kept: plane a's field at 1\.04 times the entered width and plane b's field at 0\.90 times the entered width\.$/,
   );
+  // A size that moved a little is not written as 1.00, and is not called
+  // unmoved either: it gets the digits that show the move.
+  expect(
+    await words(
+      savedEvidenceInputs({
+        fit_detector_scale: true,
+        detector_fit: "kept",
+        detector_scale: 1.004,
+      }),
+    ),
+  ).toMatch(
+    /A fit of the field size was kept: the field at 1\.004 times the entered width\.$/,
+  );
+  pair.planes[0] = { ...pair.planes[0], detector_scale: 1 };
+  pair.planes[1] = { ...pair.planes[1], detector_scale: 0.99996 };
+  expect(await words(pair, currentPairAnswer)).toMatch(
+    /A fit of the field size was kept: plane b's field at 0\.99996 times the entered width\.$/,
+  );
 });
 
 test("a saved two-plane vessel evidence record is redrawn on both frames", async () => {

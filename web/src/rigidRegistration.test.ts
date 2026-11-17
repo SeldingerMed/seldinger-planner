@@ -1,5 +1,5 @@
 import type { NVImage } from "@niivue/niivue";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import {
   makeVolume,
   phantomPair,
@@ -38,6 +38,11 @@ const proposal = proposeRigidRegistration(
   pair.secondary,
   identity,
 );
+
+// Every search in this file is bounded by its limits, not by the clock, and
+// a CI runner takes two to three times as long as a workstation. The default
+// 5 s is a matter of the machine, so the file states its own limit.
+vi.setConfig({ testTimeout: 30_000 });
 
 test("a known rigid offset is recovered from the identity across contrasts", () => {
   // Truth is 14° and about 117 mm from the identity; the secondary has

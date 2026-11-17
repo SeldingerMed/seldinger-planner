@@ -22,7 +22,7 @@ Not changed in this pull request: `web/src/evidenceRegistration.ts` and `web/src
 
 | Criterion | Check |
 | --- | --- |
-| A saved record of a Step C1 or C2 method validates, summarizes and reads back as before | The earlier tests in `tests/test_projection_registration_server.py` and `web/src/projectionFrames.test.ts` pass with none of them changed, and the Step C3 records of five real cases were redrawn by this code (below) |
+| A saved record of a Step C1 or C2 method validates, summarizes and reads back as before | The earlier tests in `tests/test_projection_registration_server.py` and `web/src/projectionFrames.test.ts` pass with no assertion of theirs changed or removed (one gained two more malformed rows to refuse), and the Step C3 records of five real cases were redrawn by this code (below) |
 | A vessel evidence record has its own version, its own score, no sensitivity and a fit outcome | `tests/test_projection_registration_server.py`, section "Vessel evidence methods (Step C4)", and `web/src/evidenceRecords.test.ts` |
 | A record of one kind is never accepted as the other, on either side | The rejection tables in the same two files: a sensitivity on an evidence record, an evidence method under an older version, a centerline distance score under an evidence method, an accuracy field in the score |
 | The fit outcome cannot contradict the request, and a dropped fit cannot change a size | Same two files, both sides |
@@ -144,7 +144,7 @@ Three existing tests were found to depend on timing and were corrected, each aft
 - `aneurysm-integration.test.tsx`, "requires explicit saved-state reload after a revision conflict", failed once in CI on the first pull request. The test typed and clicked while the worksheet was still locked during the reload. It now waits for the reload to finish, as an operator has to. With every read delayed by 40 ms the old test fails and the new one passes.
 - `VesselPresencePanel.test.tsx`, "computes, shows and saves exactly the report the operator reviewed", failed once in a full local run. The panel reports the end of a computation or a request to its host one step after the result is on screen, and the test read that report in the same step. With the machine heavily loaded the first such place failed within 12 runs of the file, and once it was corrected a second failed in 2 of 80. The three places that read it that way now wait for it, and 80 further runs under the same load passed. The panel is unchanged.
 
-Under that artificial load three older registration tests (two in `rigidRegistration.test.ts`, one in `biplaneRegistration.test.ts`) passed the 5 second default limit. They have not failed in CI and were left as they are.
+Under that artificial load three older registration tests (two in `rigidRegistration.test.ts`, one in `biplaneRegistration.test.ts`) passed the 5 second default limit, and were at first left as they were. One of them, "holds the same gate on poses drawn after the method was fixed", then timed out in CI on this pull request at 5.8 s; it takes 2.5 s on the workstation. The searches in these files are bounded by their limits, not by the clock, so `rigidRegistration.test.ts`, `biplaneRegistration.test.ts` and `projectionRegistration.test.ts` now each state a limit of 30 s for their tests. No assertion in them is changed.
 
 ## Independent review
 
@@ -159,6 +159,8 @@ The repository's automated review raised two points of wording, both in the stud
 A second round raised two points of upkeep, both applied with no change in behavior. A two-plane centerline distance save no longer has a fallback sensitivity of zero: a proposal with no stated sensitivity is not saved. No path produces one today. And what a vessel evidence proposal belongs to no longer includes the sensitivity, which that method does not read.
 
 A third round found a fault in the server. The method of a stored record picks its model and its version, and a stored row whose method had been rewritten to a list or an object raised a type error in that lookup, where every other malformed row is an invalid record. The registration route already answered 503 for it; the reading function itself now refuses it as invalid, for any caller. Test: `test_a_method_that_is_not_a_name_is_refused_as_invalid`, which fails without the change, and two more stored rows in `test_a_stored_row_that_is_not_a_record_fails_closed`. It also noted that this record and the pull request text gave different frontend counts, one written before the last tests were added; both now give the count of the final run.
+
+A fourth round noted that a kept fit which moved a field by less than half a percent was named as moved and written as 1.00. Its suggestion, to call such a field unmoved, was not taken, because the stored size did move. The number now gets the digits that show the move (1.004), in the words for a saved record and for an unsaved proposal alike. The test of the saved words covers it; no proposal on the test phantom moves a field that little, so the unsaved sentence is covered only for its ordinary case.
 
 ## Limits
 
