@@ -32,15 +32,15 @@ import {
   type Perturbation,
 } from "./ljubljanaProtocol";
 
-const u16 = (path: string) => {
+export const u16 = (path: string) => {
   const bytes = readFileSync(path);
   return new Uint16Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 2);
 };
-const f32 = (path: string) => {
+export const f32 = (path: string) => {
   const bytes = readFileSync(path);
   return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4);
 };
-const applied = (m: number[][], x: ArrayLike<number>, k: number): Vec3 =>
+export const applied = (m: number[][], x: ArrayLike<number>, k: number): Vec3 =>
   [0, 1, 2].map(
     (i) => m[i][0] * x[k] + m[i][1] * x[k + 1] + m[i][2] * x[k + 2] + m[i][3],
   ) as Vec3;
@@ -49,7 +49,7 @@ const applied = (m: number[][], x: ArrayLike<number>, k: number): Vec3 =>
  * plane's detector, in millimeters at that plane's isocenter. `view` is the
  * view the estimate was scored in, which differs from the reference view
  * when a detector scale was fitted. */
-function inPlaneError(
+export function inPlaneError(
   points: Float32Array,
   plane: ReferencePlane,
   reference: number[][],

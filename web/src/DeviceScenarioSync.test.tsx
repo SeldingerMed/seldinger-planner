@@ -188,13 +188,15 @@ describe("DeviceScenarioSync", () => {
     apiMock.mockResolvedValueOnce(JSON.parse(JSON.stringify(STALE_ENVELOPE)));
     const { props } = setup({ rows: draft });
     await screen.findByText(/No saved scenario set yet/);
-    expect(props.onDirtyChange).toHaveBeenLastCalledWith(true);
+    // The dirty state is reported from an effect, which can run after the
+    // text is on screen.
+    await waitFor(() => expect(props.onDirtyChange).toHaveBeenLastCalledWith(true));
     fireEvent.click(screen.getByRole("button", { name: "Save scenario set" }));
     await screen.findByText(/Saved revision 1/);
-    expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect(props.onDirtyChange).toHaveBeenLastCalledWith(false));
     fireEvent.click(screen.getByRole("button", { name: "Reload saved scenarios" }));
     await screen.findByText(/Saved set is stale/);
-    expect(props.onDirtyChange).toHaveBeenLastCalledWith(false);
+    await waitFor(() => expect(props.onDirtyChange).toHaveBeenLastCalledWith(false));
   });
 
   it("loads the saved set on mount, echoes an independent clone, and round-trips an explicit save", async () => {
