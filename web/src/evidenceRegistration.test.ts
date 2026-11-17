@@ -75,7 +75,8 @@ function setup(
   o: Options = {},
 ) {
   const tree = o.maskTree ?? TREE,
-    key = `${o.spacing ?? 1}/${tree.length}`;
+    // Keyed on the tree itself, so two trees of one length never share points.
+    key = `${o.spacing ?? 1}/${JSON.stringify(tree)}`;
   if (!masks.has(key)) {
     const { mask, shape, affine } = treeMask(o.spacing ?? 1, tree);
     masks.set(key, medialPoints(mask, shape, affine).points);

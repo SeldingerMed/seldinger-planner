@@ -258,15 +258,18 @@ export function summarizeEvidence(
             ),
             // Starts on one subject are not independent runs, so the same
             // thresholds are also counted over whole subjects.
+            // A subject with no run in the arm is not counted.
             subjects_with_every_run_under: P.success_mm.map(
               (limit) =>
-                subjects.filter((subject) =>
-                  runs
-                    .filter((run) => run.subject === subject)
-                    .every(
+                subjects.filter((subject) => {
+                  const own = runs.filter((run) => run.subject === subject);
+                  return (
+                    own.length > 0 &&
+                    own.every(
                       (run) => run.error_mm !== null && run.error_mm < limit,
-                    ),
-                ).length,
+                    )
+                  );
+                }).length,
             ),
             in_plane_error_mm: summarize(
               flat(runs, planes, (run) => run.in_plane_mm),

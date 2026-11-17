@@ -173,6 +173,8 @@ export function* vesselEvidenceSteps(
       }
     yield;
   }
+  // `sorted` holds every pixel of the working grid, at least `min_side_px`
+  // squared, so the pixel `peak_rank` from the top always exists.
   const sorted = Float32Array.from(response).sort(),
     low = quantile(sorted, L.floor_quantile),
     high = Math.max(

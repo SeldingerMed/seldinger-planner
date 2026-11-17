@@ -122,9 +122,15 @@ export type EvidenceRegistrationProposal = {
   /** What became of a requested detector-scale fit. A fit is `kept` when it
    * lowered the cost by at least `min_fit_gain` against the entered size,
    * or when no pose at the entered size could be scored. Otherwise it is
-   * `dropped`: every plane then keeps its entered size. */
+   * `dropped`: every plane then keeps its entered size.
+   *
+   * `kept` says the result of the fitted search was kept. It does not say
+   * the size moved: that search also refines the pose, and the gain can
+   * come from the pose alone. Each plane's `detector_scale` says what
+   * became of its size. */
   detector_fit: "not_requested" | "kept" | "dropped";
-  /** Cost at the entered size less cost with the fitted scale. Null when no
+  /** Cost of the search at the entered size less cost of the search with
+   * the scale free, whatever that search moved. Null when no
    * fit was requested, or when no pose at the entered size could be
    * scored. */
   fit_gain: number | null;
@@ -356,6 +362,11 @@ function* solve(
     let sum = 0;
     for (let k = 0; k < scorers.length; k++) {
       const m = scorers[k].measure(set, r, p, p[6 + k], level);
+      // Known limit of version 1: for two planes no scored pose reaches 2,
+      // but for one plane a pose at the far end of the depth range with no
+      // evidence under it can cost up to about 2.5, and is then treated as
+      // not scored. The methods are frozen as run under
+      // ljubljana-evidence-v1, so this stands until the next version.
       if (m.inside < L.min_in_field) return 2;
       sum += 1 - m.evidence + L.coverage_weight * m.uncovered;
     }
@@ -370,6 +381,8 @@ function* solve(
           ((p[3] / L.rotation_deg) ** 2 + (p[4] / L.rotation_deg) ** 2);
     return sum;
   };
+  // Not counted in `evaluations`: it runs once before the search and once
+  // after, outside every budget.
   const report = (p: number[]): EvidenceScore[] => {
     const r = rotation(p[3], p[4], p[5]);
     return scorers.map((scorer, k) => {

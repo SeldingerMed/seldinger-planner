@@ -95,6 +95,8 @@ For the older methods the same arms had no two-plane run under 5 mm in either gr
 | Development | `frontal_fit_right_size` | 0 of 25 | identical |
 | Development | `lateral_fit_right_size` | 1 of 25 | one run differs; fitted scale off by less than 0.005 |
 
+A kept fit says that the result of the fitted search was kept, not that the size moved, since that search also refines the pose. Read from the stored runs, with nothing run again: in the arms with wrong entered sizes every kept fit moved the size of at least one plane by 0.005 or more. Of the two fits kept in the arms above, the one on the development subjects left the size within 0.005 of the entered one.
+
 ## Time
 
 Median time per registration: 0.3 seconds for two planes and 0.1 for one, on a 768 pixel working grid, and 1.2 and 0.3 seconds when a fit is requested, since that runs the search twice.

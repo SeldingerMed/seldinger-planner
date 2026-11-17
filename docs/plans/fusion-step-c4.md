@@ -43,7 +43,7 @@ The ten subjects were run once in Step C2 and the per-run detail was read. Part 
 4. A new Ljubljana protocol is committed before the new methods run on subjects 06 to 10.
 5. Reported, not gated: target error by arm, the share of runs under 1, 2 and 5 mm, how far the method moves when started at the reference pose, and whether its score ranks the reference pose above the perturbed starts.
 6. Reported, not gated: the five Step C3 TAIR cases reviewed again with the new method, as operator review.
-7. The studio offers the new methods and labels the result a proposal. The score is shown as agreement between two extracted line sets, as now.
+7. The studio offers the new methods and labels the result a proposal. The score is shown as the mean vessel evidence under the projected points, and the studio says it is not registration accuracy.
 
 ### Phases
 
@@ -68,7 +68,7 @@ The method.
 3. **Coverage term.** The share of strong-evidence pixels with no projected point nearby, added at a fixed weight. It bounds what unexplained 2D lines can cost and resists a pose that gathers the points onto the densest evidence. Whether it earns its place is decided on subjects 01 to 05 and the synthetic gates and recorded in the decisions log.
 4. **Search.** A translation scan at the widest blur, then a compass descent through the five widths from widest to narrowest. One implementation serves one plane and two. With one plane the weak pull toward the start in depth and in out-of-plane turns is kept from the old method, because one plane does not determine them.
 5. **Identifiers.** `vessel_evidence_compass_v1` for one plane and `vessel_evidence_compass_biplane_v1` for two. The old methods, their targets and their saved records are untouched.
-6. **What the score is.** The mean vessel evidence under the projected points, from 0 to 1. It says how much of the projected model lies on line-like structure in the frame. It is not registration accuracy, and the studio says so. This replaces the wording of acceptance criterion 7, which was written before the design and assumed two extracted line sets.
+6. **What the score is.** The mean vessel evidence under the projected points, from 0 to 1. It says how much of the projected model lies on line-like structure in the frame. It is not registration accuracy, and the studio says so. Acceptance criterion 7 was written before the design, assumed two extracted line sets, and now carries this wording.
 
 Design probe (subjects 01 to 05, development evidence, added after the diagnostics protocol; code in `web/src/research/evidenceProbe.eval.ts`). A bare version of items 1, 2 and 4 with no scan and no bounds, from the 25 protocol starts (6.6 to 16.7 mm off): the two-plane cost ended under 1 mm from the reference in 25 of 25 runs, median 0.4 mm, and moved 0.1 to 0.4 mm when started on the reference. With one plane and no pull toward the start it ran off in depth, as expected.
 
@@ -97,3 +97,4 @@ Each gets its own acceptance criteria here when it starts. Known inputs:
 - 2026-11-16. The extra descents from turned poses were removed before the protocol run. No gate and no arm on subjects 01 to 05 needed them.
 - 2026-11-16. Protocol `ljubljana-evidence-v1` run once at `c0e2ee1`. The held-back group is clearly worse than the development group: one of its five subjects fails in every arm, and the detector-size fit recovers a wrong entered size in two of five. The methods stay at version 1 and no setting is changed in response. The failing subject was not opened; opening it would make it development data.
 - 2026-11-16. Part 1 lands as two pull requests. The first holds the methods, the diagnostics and the Ljubljana evaluation, with nothing offered in the studio. The second holds the studio, the TAIR review and the verification record.
+- 2026-11-16. Review of the first pull request, after the protocol run. The methods are frozen as run, so findings that would change what either method computes are recorded here for the next version and not applied: (a) the value 2 that marks a pose as not scored can be reached by a scored one-plane pose at the far end of the depth range with no evidence under it, which then reads as not scored; (b) `detector_fit: kept` says the fitted search's result was kept, not that the size moved, and a next version should report the two apart. Comments in the code now say both. Findings on the tests, the evaluation summary and this page were applied; the built code of the two method files is unchanged.

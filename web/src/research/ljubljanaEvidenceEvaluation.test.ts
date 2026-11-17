@@ -87,6 +87,33 @@ describe("vessel evidence evaluation on a phantom stored the same way", () => {
     expect(one.subjects).toEqual([2]);
     expect(one.arms.biplane.runs).toBe(2);
     expect(one.arms.biplane.subjects_with_every_run_under).toEqual([1, 1, 1]);
+
+    // A subject with no runs is not counted as passing, and an arm in which
+    // no run returned a proposal has no median evidence.
+    const absent = summarizeEvidence(arms, [2, 9]);
+    expect(absent.arms.biplane.runs).toBe(2);
+    expect(absent.arms.biplane.subjects_with_every_run_under).toEqual([
+      1, 1, 1,
+    ]);
+    const failed = summarizeEvidence(
+      {
+        ...arms,
+        biplane: arms.biplane.map((run) => ({
+          ...run,
+          error_mm: null,
+          score: undefined,
+          start_score: undefined,
+        })),
+      },
+      [2],
+    );
+    expect(failed.arms.biplane.median_mean_evidence).toEqual({
+      at_start: null,
+      at_result: null,
+    });
+    expect(failed.arms.biplane.subjects_with_every_run_under).toEqual([
+      0, 0, 0,
+    ]);
     // 44 registrations. A shared CI runner takes about three times as long
     // as a desktop.
   }, 60_000);
