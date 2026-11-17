@@ -12,6 +12,7 @@ import type { Vec3 } from "./obliqueSlice";
 import {
   decodeVesselMask,
   isBiplane,
+  isEvidence,
   loadFrameBundle,
   loadVerifiedFrame,
   type SavedRegistration,
@@ -315,7 +316,11 @@ export default function VesselPresencePanel({
       !!mask &&
       mask.candidate_id === saved.inputs.mask_candidate_id &&
       mask.mask_sha256 === saved.inputs.mask_sha256,
-    ready = !!key && !!current && evidence && matchingMask && !!grid,
+    // The report reads the line set the registration was matched to, at
+    // the sensitivity its record states. A vessel evidence record has
+    // neither.
+    lineSet = saved.status === "current" && !isEvidence(saved.inputs),
+    ready = !!key && !!current && evidence && lineSet && matchingMask && !!grid,
     idle = !disabled && !busy && !active;
   const computing = !!active;
   useEffect(() => {
@@ -363,8 +368,9 @@ export default function VesselPresencePanel({
 
   const compute = useCallback(async () => {
     if (saved.status !== "current" || !mask || !grid || !key) return;
-    const inputs = saved.inputs,
-      owned = key,
+    const inputs = saved.inputs;
+    if (isEvidence(inputs)) return;
+    const owned = key,
       { release, signal, answered } = begin();
     setOutcome(null);
     setNotice("");
@@ -559,6 +565,13 @@ export default function VesselPresencePanel({
         <p role="status">
           The saved proposal's frames or vessel mask are no longer available
           unchanged. A report cannot be computed.
+        </p>
+      )}
+      {!lineSet && (
+        <p role="status">
+          The saved proposal was made by vessel evidence. A vessel presence
+          report reads the 2D centerlines of a centerline distance proposal, and
+          is not available for this one.
         </p>
       )}
       {ready && !active && (

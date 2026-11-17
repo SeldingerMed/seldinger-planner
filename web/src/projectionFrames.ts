@@ -1,5 +1,6 @@
 /** Admitted angiographic pixel frames and the saved 2D-to-3D registration
- * proposal, single-plane or two-plane: strict parsing of what the server
+ * proposal, single-plane or two-plane, by centerline distance or by vessel
+ * evidence: strict parsing of what the server
  * returns, and verification of
  * every pixel buffer against its manifest digest before anything is drawn.
  * Nothing here sends pixels anywhere. */
@@ -10,6 +11,12 @@ import {
 } from "./biplaneRegistration";
 import { sha256Hex } from "./browserCrypto";
 import { validateView, type ViewNumbers } from "./carmGeometry";
+import {
+  EVIDENCE_BIPLANE_REGISTRATION_METHOD,
+  EVIDENCE_REGISTRATION_METHOD,
+  type EvidenceRegistrationProposal,
+  type EvidenceScore,
+} from "./evidenceRegistration";
 import type { Vec3 } from "./obliqueSlice";
 import {
   PROJECTION_REGISTRATION_LIMITS,
@@ -29,6 +36,9 @@ export const FRAME_LIMITS = {
 } as const;
 export const REGISTRATION_VERSION = "step-c1-projection-registration-v1";
 export const BIPLANE_REGISTRATION_VERSION = "step-c2-biplane-registration-v2";
+export const EVIDENCE_REGISTRATION_VERSION = "step-c4-evidence-registration-v3";
+export const EVIDENCE_BIPLANE_REGISTRATION_VERSION =
+  "step-c4-evidence-biplane-registration-v4";
 export const FRAME_SOURCE_ID = /^[a-z0-9][a-z0-9_-]{1,63}$/;
 const SHA = /^[a-f0-9]{64}$/;
 const VIEW_KEYS = [
@@ -487,11 +497,56 @@ export type BiplaneRegistrationInputs = SharedFields & {
   method: typeof BIPLANE_REGISTRATION_METHOD;
   planes: [BiplanePlaneInputs, BiplanePlaneInputs];
 };
-export type SavedInputs = RegistrationInputs | BiplaneRegistrationInputs;
+/** A plane of a vessel evidence record. Its 2D target has no threshold, so
+ * there is no sensitivity, and its score is the method's own. */
+type EvidencePlaneFields = Omit<
+  PlaneFields,
+  "sensitivity" | "reported_score" | "reported_start_score"
+> & {
+  reported_score: EvidenceScore;
+  reported_start_score: EvidenceScore;
+};
+/** What became of a requested detector-size fit. */
+export type DetectorFit = EvidenceRegistrationProposal["detector_fit"];
+/** Version 3: one pose against one frame, by vessel evidence. */
+export type EvidenceRegistrationInputs = SharedFields &
+  EvidencePlaneFields & {
+    plane: PlaneLabel;
+    method: typeof EVIDENCE_REGISTRATION_METHOD;
+    detector_fit: DetectorFit;
+  };
+export type EvidenceBiplanePlaneInputs = EvidencePlaneFields & {
+  plane: "a" | "b";
+};
+/** Version 4: one pose against one frame from each plane, by vessel
+ * evidence. One fit outcome covers both planes. */
+export type EvidenceBiplaneRegistrationInputs = SharedFields & {
+  same_position_attested: true;
+  method: typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+  detector_fit: DetectorFit;
+  planes: [EvidenceBiplanePlaneInputs, EvidenceBiplanePlaneInputs];
+};
+export type SavedInputs =
+  | RegistrationInputs
+  | BiplaneRegistrationInputs
+  | EvidenceRegistrationInputs
+  | EvidenceBiplaneRegistrationInputs;
 export const isBiplane = (
   inputs: SavedInputs,
-): inputs is BiplaneRegistrationInputs =>
-  inputs.method === BIPLANE_REGISTRATION_METHOD;
+): inputs is BiplaneRegistrationInputs | EvidenceBiplaneRegistrationInputs =>
+  inputs.method === BIPLANE_REGISTRATION_METHOD ||
+  inputs.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+export const isEvidence = (
+  inputs: SavedInputs,
+): inputs is EvidenceRegistrationInputs | EvidenceBiplaneRegistrationInputs =>
+  inputs.method === EVIDENCE_REGISTRATION_METHOD ||
+  inputs.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+const VERSIONS: Record<SavedInputs["method"], string> = {
+  [PROJECTION_REGISTRATION_METHOD]: REGISTRATION_VERSION,
+  [BIPLANE_REGISTRATION_METHOD]: BIPLANE_REGISTRATION_VERSION,
+  [EVIDENCE_REGISTRATION_METHOD]: EVIDENCE_REGISTRATION_VERSION,
+  [EVIDENCE_BIPLANE_REGISTRATION_METHOD]: EVIDENCE_BIPLANE_REGISTRATION_VERSION,
+};
 export type RegistrationResult = {
   status: "operator_confirmed_proposal";
   validated: false;
@@ -534,6 +589,17 @@ function parseScore(value: unknown): RegistrationScore {
     throw new Error("Invalid score");
   return value as RegistrationScore;
 }
+function parseEvidenceScore(value: unknown): EvidenceScore {
+  if (
+    !isObject(value) ||
+    Object.keys(value).length !== 3 ||
+    !fraction(value.mean_evidence) ||
+    !fraction(value.in_field_fraction) ||
+    !fraction(value.uncovered_fraction)
+  )
+    throw new Error("Invalid score");
+  return value as EvidenceScore;
+}
 
 const SHARED_KEYS = [
   "confirmed",
@@ -558,6 +624,20 @@ const PLANE_KEYS = [
   "reported_score",
   "reported_start_score",
 ] as const;
+const EVIDENCE_PLANE_KEYS = PLANE_KEYS.filter((key) => key !== "sensitivity");
+const DETECTOR_FITS = ["not_requested", "kept", "dropped"];
+/** A stored fit outcome agrees with what was requested and what was kept. */
+function checkFit(outcome: unknown, planes: Record<string, unknown>[]) {
+  const requested = planes.some((plane) => plane.fit_detector_scale === true);
+  if (
+    !DETECTOR_FITS.includes(outcome as string) ||
+    (outcome === "not_requested") === requested ||
+    // A dropped fit leaves every plane at its entered size.
+    (outcome === "dropped" &&
+      planes.some((plane) => plane.detector_scale !== 1))
+  )
+    throw new Error("Invalid registration");
+}
 
 function checkShared(value: Record<string, unknown>) {
   if (
@@ -582,6 +662,7 @@ function checkShared(value: Record<string, unknown>) {
 function checkPlane(
   value: Record<string, unknown>,
   labels: string[],
+  evidence = false,
 ): ViewNumbers {
   const [low, high] = PROJECTION_REGISTRATION_LIMITS.detector_scale;
   if (
@@ -598,53 +679,70 @@ function checkPlane(
     (value.fit_detector_scale &&
       value.geometry_source !== "operator_entered") ||
     !["dark", "bright"].includes(value.polarity as string) ||
-    !fraction(value.sensitivity)
+    (!evidence && !fraction(value.sensitivity))
   )
     throw new Error("Invalid registration");
   integer(value.frame_index, 0, FRAME_LIMITS.max_frame_index);
-  parseScore(value.reported_score);
-  parseScore(value.reported_start_score);
+  const score = evidence ? parseEvidenceScore : parseScore;
+  score(value.reported_score);
+  score(value.reported_start_score);
   return parseView(value.view);
 }
 
 function parseInputs(value: unknown): SavedInputs {
   if (!isObject(value)) throw new Error("Invalid registration");
-  if (value.method === BIPLANE_REGISTRATION_METHOD) {
+  const evidence =
+      value.method === EVIDENCE_REGISTRATION_METHOD ||
+      value.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD,
+    planeKeys = evidence ? EVIDENCE_PLANE_KEYS : PLANE_KEYS,
+    // A vessel evidence record also states what became of a requested fit.
+    sharedKeys = evidence ? [...SHARED_KEYS, "detector_fit"] : SHARED_KEYS;
+  if (
+    value.method === BIPLANE_REGISTRATION_METHOD ||
+    value.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD
+  ) {
     const planes = value.planes;
     if (
-      !exact(value, [...SHARED_KEYS, "same_position_attested", "planes"]) ||
+      !exact(value, [...sharedKeys, "same_position_attested", "planes"]) ||
       value.same_position_attested !== true ||
       !Array.isArray(planes) ||
       planes.length !== 2 ||
-      !planes.every((plane) => exact(plane, [...PLANE_KEYS]))
+      !planes.every((plane) => exact(plane, [...planeKeys]))
     )
       throw new Error("Invalid registration");
     checkShared(value);
-    const first = checkPlane(planes[0], ["a"]),
-      second = checkPlane(planes[1], ["b"]);
+    const first = checkPlane(planes[0], ["a"], evidence),
+      second = checkPlane(planes[1], ["b"], evidence);
     if (
       !planesFarEnough(planeAngleDeg(first, second)) ||
       // One image admitted under both planes.
       planes[0].frame_sha256 === planes[1].frame_sha256
     )
       throw new Error("Invalid registration");
-    return value as BiplaneRegistrationInputs;
+    if (evidence) checkFit(value.detector_fit, planes);
+    return value as
+      BiplaneRegistrationInputs | EvidenceBiplaneRegistrationInputs;
   }
   if (
-    !exact(value, [...SHARED_KEYS, ...PLANE_KEYS]) ||
-    value.method !== PROJECTION_REGISTRATION_METHOD
+    !exact(value, [...sharedKeys, ...planeKeys]) ||
+    (value.method !== PROJECTION_REGISTRATION_METHOD &&
+      value.method !== EVIDENCE_REGISTRATION_METHOD)
   )
     throw new Error("Invalid registration");
   checkShared(value);
-  checkPlane(value, ["single", "a", "b"]);
-  return value as RegistrationInputs;
+  checkPlane(value, ["single", "a", "b"], evidence);
+  if (evidence) checkFit(value.detector_fit, [value]);
+  return value as RegistrationInputs | EvidenceRegistrationInputs;
 }
 
-const sameScore = (reported: unknown, expected: RegistrationScore) => {
-  const score = parseScore(reported);
-  return (Object.keys(expected) as (keyof RegistrationScore)[]).every(
-    (key) => score[key] === expected[key],
-  );
+const sameScore = (
+  reported: unknown,
+  expected: RegistrationScore | EvidenceScore,
+) => {
+  const score = ("mean_evidence" in expected ? parseEvidenceScore : parseScore)(
+    reported,
+  ) as Record<string, number>;
+  return Object.entries(expected).every(([key, value]) => score[key] === value);
 };
 
 /** Parses `GET` and `PUT /api/cases/{id}/projection-registration` and binds
@@ -726,8 +824,9 @@ export function parseSavedRegistration(
     throw new Error("Invalid registration");
   const inputs = parseInputs(current.inputs),
     pair = isBiplane(inputs),
+    evidence = isEvidence(inputs),
     // A record's version is the one its method belongs to.
-    version = pair ? BIPLANE_REGISTRATION_VERSION : REGISTRATION_VERSION;
+    version = VERSIONS[inputs.method];
   const result = current.result;
   if (
     current.status !== "current" ||
@@ -742,6 +841,7 @@ export function parseSavedRegistration(
       "rotation_deg",
       "isocenter_shift_mm",
       "score_source",
+      ...(evidence ? ["detector_fit", "score_kind"] : []),
       ...(pair
         ? ["same_position", "plane_angle_deg", "planes"]
         : ["geometry_source", "reported_score", "reported_start_score"]),
@@ -749,6 +849,9 @@ export function parseSavedRegistration(
     result.convention !== "dicom_xa_patient_longitude_latitude_ras_v1" ||
     result.method !== inputs.method ||
     result.score_source !== "browser_reported_not_recomputed" ||
+    (evidence &&
+      (result.detector_fit !== inputs.detector_fit ||
+        result.score_kind !== "mean_vessel_evidence_under_projected_points")) ||
     result.version !== version ||
     result.status !== "operator_confirmed_proposal" ||
     result.validated !== false ||

@@ -6,6 +6,7 @@ import json
 import math
 import sqlite3
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 from test_frame_source import ROWS, dicom_plane, install, manifest, pixels, png_plane
@@ -14,7 +15,13 @@ from test_territory_workflow_server import configured
 from planner import frame_source
 from planner.frame_source import frame_filename
 from planner.projection_plan import PlanConflict
-from planner.projection_registration import RegistrationLedger, plane_angle_deg
+from planner.projection_registration import (
+    RegistrationLedger,
+    plane_angle_deg,
+    record_version,
+    summarize,
+    validate_registration,
+)
 from planner.segmentation_state import SegmentationLedger
 
 SQUARE = {"rows": ROWS, "columns": ROWS}
@@ -923,3 +930,34 @@ def test_an_evidence_record_relabelled_as_the_older_method_fails_closed(tmp_path
         stored["version"] = "step-c1-projection-registration-v1"
         conn.execute("UPDATE projection_registrations SET dependencies=?", (json.dumps(stored),))
     assert client.get(route).status_code == 503
+
+
+EVIDENCE_RECORDS = json.loads(
+    (
+        Path(__file__).resolve().parents[1]
+        / "web"
+        / "src"
+        / "__fixtures__"
+        / "evidence-registration-records.json"
+    ).read_text()
+)["cases"]
+
+
+@pytest.mark.parametrize("case", EVIDENCE_RECORDS, ids=lambda case: case["name"])
+def test_the_studio_s_own_vessel_evidence_records_are_accepted_as_sent(case):
+    """Records the studio saved on the phantom, and this module's summary of each.
+
+    The browser tests read the same file, so the two sides cannot drift apart
+    on a field name, a version or a fit outcome without one of them failing.
+    """
+    value = validate_registration(case["inputs"])
+    assert value == case["inputs"]
+    assert summarize(value) == case["result"]
+    assert case["result"]["version"] == record_version(value)
+    assert case["result"]["validated"] is False
+
+
+def test_the_shared_records_cover_both_methods_and_every_fit_outcome():
+    seen = {(case["inputs"]["method"], case["inputs"]["detector_fit"]) for case in EVIDENCE_RECORDS}
+    assert {method for method, _ in seen} == {EVIDENCE_METHOD, EVIDENCE_PAIR_METHOD}
+    assert {outcome for _, outcome in seen} == {"not_requested", "kept", "dropped"}
