@@ -2,12 +2,16 @@
 
 One record binds a rigid volume-to-C-arm matrix to the case source, the
 accepted vessel mask it was computed from, and either one admitted
-angiographic frame (version 1) or one frame from each plane of an
-operator-declared pair (version 2). The matrix is a browser proposal that
-an operator reviewed on the overlay and confirmed. It is not a validated
-registration: nothing here measures its accuracy, and the scores stored
-with it are the browser's own report of how well two automatically
-extracted line sets agree.
+angiographic frame (versions 1 and 3) or one frame from each plane of an
+operator-declared pair (versions 2 and 4). The matrix is a browser proposal
+that an operator reviewed on the overlay and confirmed. It is not a
+validated registration: nothing here measures its accuracy, and the scores
+stored with it are the browser's own report.
+
+Versions 1 and 2 hold the centerline distance methods, whose score says how
+well two automatically extracted line sets agree. Versions 3 and 4 hold the
+vessel evidence methods, whose score is the mean vessel evidence under the
+projected points. A record of one kind is never read as the other.
 
 A two-plane record also carries the operator's attestation that both frames
 show the patient in the same position. Nothing here can check that.
@@ -42,6 +46,16 @@ VERSION = "step-c1-projection-registration-v1"
 METHOD = "centerline_distance_compass_v1"
 BIPLANE_VERSION = "step-c2-biplane-registration-v2"
 BIPLANE_METHOD = "centerline_distance_compass_biplane_v1"
+EVIDENCE_VERSION = "step-c4-evidence-registration-v3"
+EVIDENCE_METHOD = "vessel_evidence_compass_v1"
+EVIDENCE_BIPLANE_VERSION = "step-c4-evidence-biplane-registration-v4"
+EVIDENCE_BIPLANE_METHOD = "vessel_evidence_compass_biplane_v1"
+VERSIONS = {
+    METHOD: VERSION,
+    BIPLANE_METHOD: BIPLANE_VERSION,
+    EVIDENCE_METHOD: EVIDENCE_VERSION,
+    EVIDENCE_BIPLANE_METHOD: EVIDENCE_BIPLANE_VERSION,
+}
 # Mirrors the browser engine: closer planes add too little to determine depth.
 MIN_PLANE_ANGLE_DEG = 30.0
 DETECTOR_SCALE_RANGE = (0.7, 1.45)
@@ -64,6 +78,19 @@ class Score(StrictModel):
     matched_fraction: Fraction
     in_field_fraction: Fraction
     uncovered_fraction: Fraction
+
+
+class EvidenceScore(StrictModel):
+    """Mean vessel evidence under the projected points. Not an accuracy."""
+
+    mean_evidence: Fraction
+    in_field_fraction: Fraction
+    uncovered_fraction: Fraction
+
+
+# What became of a requested detector-size fit: kept when it beat the entered
+# sizes, dropped when it did not.
+DetectorFit = Literal["not_requested", "kept", "dropped"]
 
 
 class RegistrationInputs(StrictModel):
@@ -138,15 +165,115 @@ class BiplaneRegistrationInputs(StrictModel):
     planes: list[BiplanePlane] = Field(min_length=2, max_length=2)
 
 
+class EvidenceRegistrationInputs(StrictModel):
+    """Version 3. The 2D target has no threshold, so there is no sensitivity."""
+
+    confirmed: Literal[True]
+
+    @field_validator("confirmed", mode="before")
+    @classmethod
+    def require_actual_confirmation(cls, value):
+        if value is not True:
+            raise ValueError("Explicit operator confirmation required")
+        return value
+
+    frame_source_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
+    frame_manifest_revision: str = Field(pattern=_SHA)
+    plane: Literal["single", "a", "b"]
+    frame_index: StrictInt = Field(ge=0, le=MAX_FRAME_INDEX)
+    frame_sha256: str = Field(pattern=_SHA)
+    mask_candidate_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,100}$")
+    mask_sha256: str = Field(pattern=_SHA)
+    geometry_source: Literal["frame_manifest", "operator_entered"]
+    view: RegistrationView
+    fit_detector_scale: StrictBool
+    detector_scale: Annotated[
+        StrictFloat,
+        Field(ge=DETECTOR_SCALE_RANGE[0], le=DETECTOR_SCALE_RANGE[1], allow_inf_nan=False),
+    ]
+    detector_fit: DetectorFit
+    isocenter: Point
+    volume_to_carm_ras: list[list[Finite]] = Field(min_length=4, max_length=4)
+    method: Literal["vessel_evidence_compass_v1"]
+    polarity: Literal["dark", "bright"]
+    reported_score: EvidenceScore
+    reported_start_score: EvidenceScore
+
+
+class EvidenceBiplanePlane(StrictModel):
+    plane: Literal["a", "b"]
+    frame_index: StrictInt = Field(ge=0, le=MAX_FRAME_INDEX)
+    frame_sha256: str = Field(pattern=_SHA)
+    geometry_source: Literal["frame_manifest", "operator_entered"]
+    view: RegistrationView
+    fit_detector_scale: StrictBool
+    detector_scale: Annotated[
+        StrictFloat,
+        Field(ge=DETECTOR_SCALE_RANGE[0], le=DETECTOR_SCALE_RANGE[1], allow_inf_nan=False),
+    ]
+    polarity: Literal["dark", "bright"]
+    reported_score: EvidenceScore
+    reported_start_score: EvidenceScore
+
+
+class EvidenceBiplaneRegistrationInputs(StrictModel):
+    """Version 4. One fit decision covers both planes."""
+
+    confirmed: Literal[True]
+    # Both frames show the patient in the same position. Attested, not checked.
+    same_position_attested: Literal[True]
+
+    @field_validator("confirmed", "same_position_attested", mode="before")
+    @classmethod
+    def require_actual_confirmation(cls, value):
+        if value is not True:
+            raise ValueError("Explicit operator confirmation required")
+        return value
+
+    frame_source_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
+    frame_manifest_revision: str = Field(pattern=_SHA)
+    mask_candidate_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,100}$")
+    mask_sha256: str = Field(pattern=_SHA)
+    isocenter: Point
+    volume_to_carm_ras: list[list[Finite]] = Field(min_length=4, max_length=4)
+    method: Literal["vessel_evidence_compass_biplane_v1"]
+    detector_fit: DetectorFit
+    planes: list[EvidenceBiplanePlane] = Field(min_length=2, max_length=2)
+
+
+_MODELS = {
+    METHOD: RegistrationInputs,
+    BIPLANE_METHOD: BiplaneRegistrationInputs,
+    EVIDENCE_METHOD: EvidenceRegistrationInputs,
+    EVIDENCE_BIPLANE_METHOD: EvidenceBiplaneRegistrationInputs,
+}
+
+
 class RegistrationRequest(StrictModel):
     artifact_version: str = Field(pattern=r"^[0-9]{1,20}$")
     reference_revision: str = Field(pattern=_SHA)
     registration_revision: StrictInt = Field(ge=0, le=1_000_000_000)
-    inputs: Annotated[RegistrationInputs | BiplaneRegistrationInputs, Field(discriminator="method")]
+    inputs: Annotated[
+        RegistrationInputs
+        | BiplaneRegistrationInputs
+        | EvidenceRegistrationInputs
+        | EvidenceBiplaneRegistrationInputs,
+        Field(discriminator="method"),
+    ]
+
+
+def _method(inputs):
+    # A stored row can hold anything here. Only a name is looked up by.
+    value = inputs.get("method") if isinstance(inputs, dict) else None
+    return value if isinstance(value, str) else None
+
+
+def is_evidence(inputs):
+    return _method(inputs) in (EVIDENCE_METHOD, EVIDENCE_BIPLANE_METHOD)
 
 
 def is_biplane(inputs):
-    return isinstance(inputs, dict) and inputs.get("method") == BIPLANE_METHOD
+    return _method(inputs) in (BIPLANE_METHOD, EVIDENCE_BIPLANE_METHOD)
 
 
 def bound_planes(inputs):
@@ -170,9 +297,23 @@ def _check_scale(entry):
         raise ValueError("Detector scale without a fit must be one")
 
 
+def _check_fit(value):
+    """A stored fit outcome agrees with what was requested and what was kept."""
+    planes = bound_planes(value)
+    requested = [entry["fit_detector_scale"] for entry in planes]
+    outcome = value["detector_fit"]
+    if (outcome == "not_requested") == any(requested):
+        raise ValueError("Detector fit outcome contradicts what was requested")
+    # A dropped fit leaves every plane at its entered size.
+    if outcome == "dropped" and any(entry["detector_scale"] != 1 for entry in planes):
+        raise ValueError("A dropped detector fit leaves the scale at one")
+
+
 def validate_registration(inputs):
+    # An unknown method fails in the older single-plane model, as before.
+    model = _MODELS.get(_method(inputs), RegistrationInputs)
     if is_biplane(inputs):
-        value = BiplaneRegistrationInputs.model_validate(inputs).model_dump(mode="json")
+        value = model.model_validate(inputs).model_dump(mode="json")
         if [entry["plane"] for entry in value["planes"]] != ["a", "b"]:
             raise ValueError("A two-plane registration names plane a, then plane b")
         # Two views this far apart cannot show the same picture. Identical
@@ -184,11 +325,13 @@ def validate_registration(inputs):
         if plane_angle_deg(first, second) < MIN_PLANE_ANGLE_DEG - 1e-9:
             raise ValueError("The two planes are too close to determine depth")
     else:
-        value = RegistrationInputs.model_validate(inputs).model_dump(mode="json")
+        value = model.model_validate(inputs).model_dump(mode="json")
     validate_rigid(value["volume_to_carm_ras"])
     for entry in bound_planes(value):
         camera(entry["view"], value["isocenter"])
         _check_scale(entry)
+    if is_evidence(value):
+        _check_fit(value)
     return value
 
 
@@ -208,7 +351,48 @@ def check_frame(inputs, plane):
 
 
 def record_version(inputs):
-    return BIPLANE_VERSION if is_biplane(inputs) else VERSION
+    return VERSIONS.get(_method(inputs), VERSION)
+
+
+def _summarize_evidence(inputs, rotation, shift):
+    head = {
+        "version": record_version(inputs),
+        "convention": CONVENTION,
+        "method": inputs["method"],
+        "status": "operator_confirmed_proposal",
+        "validated": False,
+    }
+    tail = {
+        "rotation_deg": rotation,
+        "isocenter_shift_mm": shift,
+        "detector_fit": inputs["detector_fit"],
+        "score_source": "browser_reported_not_recomputed",
+        "score_kind": "mean_vessel_evidence_under_projected_points",
+    }
+    if not is_biplane(inputs):
+        return {
+            **head,
+            "geometry_source": inputs["geometry_source"],
+            **tail,
+            "reported_score": inputs["reported_score"],
+            "reported_start_score": inputs["reported_start_score"],
+        }
+    first, second = inputs["planes"]
+    return {
+        **head,
+        "same_position": "operator_attested_not_checked",
+        "plane_angle_deg": round(plane_angle_deg(first["view"], second["view"]), 3),
+        **tail,
+        "planes": [
+            {
+                "plane": entry["plane"],
+                "geometry_source": entry["geometry_source"],
+                "reported_score": entry["reported_score"],
+                "reported_start_score": entry["reported_start_score"],
+            }
+            for entry in inputs["planes"]
+        ],
+    }
 
 
 def summarize(inputs):
@@ -218,6 +402,8 @@ def summarize(inputs):
     moved = [sum(matrix[i][j] * iso[j] for j in range(3)) + matrix[i][3] for i in range(3)]
     rotation = round(math.degrees(math.acos(max(-1.0, min(1.0, (trace - 1) / 2)))), 3)
     shift = round(math.dist(moved, iso), 3)
+    if is_evidence(inputs):
+        return _summarize_evidence(inputs, rotation, shift)
     if is_biplane(inputs):
         first, second = inputs["planes"]
         return {
@@ -296,7 +482,7 @@ class RegistrationLedger:
         stored = json.loads(row["dependencies"])
         version = stored.get("version") if isinstance(stored, dict) else None
         deps = {**identity, "version": version}
-        if version not in (VERSION, BIPLANE_VERSION) or stored != deps:
+        if version not in VERSIONS.values() or stored != deps:
             return revision, {
                 "status": "stale",
                 "registration_id": row["registration_id"],

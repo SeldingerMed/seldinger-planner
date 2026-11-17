@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   applyRigid,
   renderFrame,
@@ -164,6 +164,11 @@ const CASES: [string, [ViewNumbers, ViewNumbers], Vec3, Vec3, Options?][] = [
   ],
   ["14 mm and 14 degrees off", [AP, LATERAL], [8, -8, 8], [10, -10, 0]],
 ];
+
+// Every search in this file is bounded by its limits, not by the clock, and
+// a CI runner takes two to three times as long as a workstation. The default
+// 5 s is a matter of the machine, so the file states its own limit.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("biplane registration proposal", () => {
   // The synthetic known-pose gate for two planes sharing one patient pose.

@@ -1,0 +1,455 @@
+{
+  "cases": [
+    {
+      "name": "single_no_fit",
+      "inputs": {
+        "confirmed": true,
+        "frame_source_id": "phantom-run",
+        "frame_manifest_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plane": "single",
+        "frame_index": 12,
+        "frame_sha256": "79d0614142ce8dea4173e643fea97a01966a5ffa7f067d21e851504824793945",
+        "mask_candidate_id": "vessel-candidate-1",
+        "mask_sha256": "3907637905ff135d7526fa21489ece217617293a9f97ffa9cfd9c8137c75efa1",
+        "geometry_source": "operator_entered",
+        "view": {
+          "primary_deg": 0,
+          "secondary_deg": 0,
+          "source_detector_mm": 1200,
+          "source_isocenter_mm": 800,
+          "detector_width_mm": 180,
+          "detector_height_mm": 180
+        },
+        "fit_detector_scale": false,
+        "detector_scale": 1,
+        "detector_fit": "not_requested",
+        "isocenter": [
+          2.910569105691057, 3.886178861788618, -3.0813008130081303
+        ],
+        "volume_to_carm_ras": [
+          [0.998187313, -0.060165019, 0.001502782, 5.193718],
+          [0.060177479, 0.998132962, -0.010452806, 1.399897],
+          [-0.000871083, 0.010524292, 0.999944239, -4.088536],
+          [0, 0, 0, 1]
+        ],
+        "method": "vessel_evidence_compass_v1",
+        "polarity": "dark",
+        "reported_score": {
+          "mean_evidence": 0.6027827795306133,
+          "in_field_fraction": 1,
+          "uncovered_fraction": 0
+        },
+        "reported_start_score": {
+          "mean_evidence": 0.060344948613191604,
+          "in_field_fraction": 1,
+          "uncovered_fraction": 0.7590361445783133
+        }
+      },
+      "result": {
+        "version": "step-c4-evidence-registration-v3",
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "method": "vessel_evidence_compass_v1",
+        "status": "operator_confirmed_proposal",
+        "validated": false,
+        "geometry_source": "operator_entered",
+        "rotation_deg": 3.502,
+        "isocenter_shift_mm": 6.593,
+        "detector_fit": "not_requested",
+        "score_source": "browser_reported_not_recomputed",
+        "score_kind": "mean_vessel_evidence_under_projected_points",
+        "reported_score": {
+          "mean_evidence": 0.6027827795306133,
+          "in_field_fraction": 1.0,
+          "uncovered_fraction": 0.0
+        },
+        "reported_start_score": {
+          "mean_evidence": 0.060344948613191604,
+          "in_field_fraction": 1.0,
+          "uncovered_fraction": 0.7590361445783133
+        }
+      }
+    },
+    {
+      "name": "single_fit_entered_right",
+      "inputs": {
+        "confirmed": true,
+        "frame_source_id": "phantom-run",
+        "frame_manifest_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plane": "single",
+        "frame_index": 12,
+        "frame_sha256": "79d0614142ce8dea4173e643fea97a01966a5ffa7f067d21e851504824793945",
+        "mask_candidate_id": "vessel-candidate-1",
+        "mask_sha256": "3907637905ff135d7526fa21489ece217617293a9f97ffa9cfd9c8137c75efa1",
+        "geometry_source": "operator_entered",
+        "view": {
+          "primary_deg": 0,
+          "secondary_deg": 0,
+          "source_detector_mm": 1200,
+          "source_isocenter_mm": 800,
+          "detector_width_mm": 180,
+          "detector_height_mm": 180
+        },
+        "fit_detector_scale": true,
+        "detector_scale": 1,
+        "detector_fit": "dropped",
+        "isocenter": [
+          2.910569105691057, 3.886178861788618, -3.0813008130081303
+        ],
+        "volume_to_carm_ras": [
+          [0.998187313, -0.060165019, 0.001502782, 5.193718],
+          [0.060177479, 0.998132962, -0.010452806, 1.399897],
+          [-0.000871083, 0.010524292, 0.999944239, -4.088536],
+          [0, 0, 0, 1]
+        ],
+        "method": "vessel_evidence_compass_v1",
+        "polarity": "dark",
+        "reported_score": {
+          "mean_evidence": 0.6027827795306133,
+          "in_field_fraction": 1,
+          "uncovered_fraction": 0
+        },
+        "reported_start_score": {
+          "mean_evidence": 0.060344948613191604,
+          "in_field_fraction": 1,
+          "uncovered_fraction": 0.7590361445783133
+        }
+      },
+      "result": {
+        "version": "step-c4-evidence-registration-v3",
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "method": "vessel_evidence_compass_v1",
+        "status": "operator_confirmed_proposal",
+        "validated": false,
+        "geometry_source": "operator_entered",
+        "rotation_deg": 3.502,
+        "isocenter_shift_mm": 6.593,
+        "detector_fit": "dropped",
+        "score_source": "browser_reported_not_recomputed",
+        "score_kind": "mean_vessel_evidence_under_projected_points",
+        "reported_score": {
+          "mean_evidence": 0.6027827795306133,
+          "in_field_fraction": 1.0,
+          "uncovered_fraction": 0.0
+        },
+        "reported_start_score": {
+          "mean_evidence": 0.060344948613191604,
+          "in_field_fraction": 1.0,
+          "uncovered_fraction": 0.7590361445783133
+        }
+      }
+    },
+    {
+      "name": "single_fit_entered_wide",
+      "inputs": {
+        "confirmed": true,
+        "frame_source_id": "phantom-run",
+        "frame_manifest_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "plane": "single",
+        "frame_index": 12,
+        "frame_sha256": "79d0614142ce8dea4173e643fea97a01966a5ffa7f067d21e851504824793945",
+        "mask_candidate_id": "vessel-candidate-1",
+        "mask_sha256": "3907637905ff135d7526fa21489ece217617293a9f97ffa9cfd9c8137c75efa1",
+        "geometry_source": "operator_entered",
+        "view": {
+          "primary_deg": 0,
+          "secondary_deg": 0,
+          "source_detector_mm": 1200,
+          "source_isocenter_mm": 800,
+          "detector_width_mm": 183.48282937892535,
+          "detector_height_mm": 183.48282937892535
+        },
+        "fit_detector_scale": true,
+        "detector_scale": 0.8950381920923187,
+        "detector_fit": "kept",
+        "isocenter": [
+          2.910569105691057, 3.886178861788618, -3.0813008130081303
+        ],
+        "volume_to_carm_ras": [
+          [0.997578645, -0.069416228, -0.004270269, 5.459487],
+          [0.069200285, 0.99685348, -0.038658254, -0.308302],
+          [0.006940343, 0.038269145, 0.999243366, -4.171253],
+          [0, 0, 0, 1]
+        ],
+        "method": "vessel_evidence_compass_v1",
+        "polarity": "dark",
+        "reported_score": {
+          "mean_evidence": 0.6076599326415297,
+          "in_field_fraction": 1,
+          "uncovered_fraction": 0
+        },
+        "reported_start_score": {
+          "mean_evidence": 0.05137796320184567,
+          "in_field_fraction": 1,
+          "uncovered_fraction": 0.7725903614457831
+        }
+      },
+      "result": {
+        "version": "step-c4-evidence-registration-v3",
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "method": "vessel_evidence_compass_v1",
+        "status": "operator_confirmed_proposal",
+        "validated": false,
+        "geometry_source": "operator_entered",
+        "rotation_deg": 4.558,
+        "isocenter_shift_mm": 6.557,
+        "detector_fit": "kept",
+        "score_source": "browser_reported_not_recomputed",
+        "score_kind": "mean_vessel_evidence_under_projected_points",
+        "reported_score": {
+          "mean_evidence": 0.6076599326415297,
+          "in_field_fraction": 1.0,
+          "uncovered_fraction": 0.0
+        },
+        "reported_start_score": {
+          "mean_evidence": 0.05137796320184567,
+          "in_field_fraction": 1.0,
+          "uncovered_fraction": 0.7725903614457831
+        }
+      }
+    },
+    {
+      "name": "pair_no_fit",
+      "inputs": {
+        "confirmed": true,
+        "same_position_attested": true,
+        "frame_source_id": "phantom-run",
+        "frame_manifest_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mask_candidate_id": "vessel-candidate-1",
+        "mask_sha256": "3907637905ff135d7526fa21489ece217617293a9f97ffa9cfd9c8137c75efa1",
+        "isocenter": [
+          2.910569105691057, 3.886178861788618, -3.0813008130081303
+        ],
+        "volume_to_carm_ras": [
+          [0.995242547, -0.069349007, -0.068432361, 5.172489],
+          [0.065403129, 0.996153784, -0.058310108, 5.644916],
+          [0.072212903, 0.05355701, 0.995950271, -4.480791],
+          [0, 0, 0, 1]
+        ],
+        "method": "vessel_evidence_compass_biplane_v1",
+        "detector_fit": "not_requested",
+        "planes": [
+          {
+            "plane": "a",
+            "frame_index": 12,
+            "frame_sha256": "2c0cef9f808bae754e1c4e37fd4784cff555a840a66a55a2a33efd96bd824b0b",
+            "geometry_source": "operator_entered",
+            "view": {
+              "primary_deg": 0,
+              "secondary_deg": 0,
+              "source_detector_mm": 1200,
+              "source_isocenter_mm": 800,
+              "detector_width_mm": 180,
+              "detector_height_mm": 180
+            },
+            "fit_detector_scale": false,
+            "detector_scale": 1,
+            "polarity": "dark",
+            "reported_score": {
+              "mean_evidence": 0.6250111485520395,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.06621391578635723,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0.6819444444444445
+            }
+          },
+          {
+            "plane": "b",
+            "frame_index": 12,
+            "frame_sha256": "ce7170d29180e9e9386d89771599050fbed56d6e7ef30c509da82a5f904cfb16",
+            "geometry_source": "operator_entered",
+            "view": {
+              "primary_deg": 90,
+              "secondary_deg": 0,
+              "source_detector_mm": 1200,
+              "source_isocenter_mm": 800,
+              "detector_width_mm": 180,
+              "detector_height_mm": 180
+            },
+            "fit_detector_scale": false,
+            "detector_scale": 1,
+            "polarity": "dark",
+            "reported_score": {
+              "mean_evidence": 0.6472181858335672,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.07823048900508194,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0.7487179487179487
+            }
+          }
+        ]
+      },
+      "result": {
+        "version": "step-c4-evidence-biplane-registration-v4",
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "method": "vessel_evidence_compass_biplane_v1",
+        "status": "operator_confirmed_proposal",
+        "validated": false,
+        "same_position": "operator_attested_not_checked",
+        "plane_angle_deg": 90.0,
+        "rotation_deg": 6.448,
+        "isocenter_shift_mm": 8.855,
+        "detector_fit": "not_requested",
+        "score_source": "browser_reported_not_recomputed",
+        "score_kind": "mean_vessel_evidence_under_projected_points",
+        "planes": [
+          {
+            "plane": "a",
+            "geometry_source": "operator_entered",
+            "reported_score": {
+              "mean_evidence": 0.6250111485520395,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.06621391578635723,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.6819444444444445
+            }
+          },
+          {
+            "plane": "b",
+            "geometry_source": "operator_entered",
+            "reported_score": {
+              "mean_evidence": 0.6472181858335672,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.07823048900508194,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.7487179487179487
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pair_fit_plane_b_entered_wide",
+      "inputs": {
+        "confirmed": true,
+        "same_position_attested": true,
+        "frame_source_id": "phantom-run",
+        "frame_manifest_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mask_candidate_id": "vessel-candidate-1",
+        "mask_sha256": "3907637905ff135d7526fa21489ece217617293a9f97ffa9cfd9c8137c75efa1",
+        "isocenter": [
+          2.910569105691057, 3.886178861788618, -3.0813008130081303
+        ],
+        "volume_to_carm_ras": [
+          [0.99494997, -0.075439803, -0.066207196, 5.203867],
+          [0.071497444, 0.995633114, -0.060023472, 5.673922],
+          [0.070446236, 0.054986707, 0.995998891, -4.381055],
+          [0, 0, 0, 1]
+        ],
+        "method": "vessel_evidence_compass_biplane_v1",
+        "detector_fit": "kept",
+        "planes": [
+          {
+            "plane": "a",
+            "frame_index": 12,
+            "frame_sha256": "2c0cef9f808bae754e1c4e37fd4784cff555a840a66a55a2a33efd96bd824b0b",
+            "geometry_source": "operator_entered",
+            "view": {
+              "primary_deg": 0,
+              "secondary_deg": 0,
+              "source_detector_mm": 1200,
+              "source_isocenter_mm": 800,
+              "detector_width_mm": 180,
+              "detector_height_mm": 180
+            },
+            "fit_detector_scale": false,
+            "detector_scale": 1,
+            "polarity": "dark",
+            "reported_score": {
+              "mean_evidence": 0.6229135493054423,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.06621391578635723,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0.6819444444444445
+            }
+          },
+          {
+            "plane": "b",
+            "frame_index": 12,
+            "frame_sha256": "ce7170d29180e9e9386d89771599050fbed56d6e7ef30c509da82a5f904cfb16",
+            "geometry_source": "operator_entered",
+            "view": {
+              "primary_deg": 90,
+              "secondary_deg": 0,
+              "source_detector_mm": 1200,
+              "source_isocenter_mm": 800,
+              "detector_width_mm": 182.00059915619974,
+              "detector_height_mm": 182.00059915619974
+            },
+            "fit_detector_scale": true,
+            "detector_scale": 0.88780780076195,
+            "polarity": "dark",
+            "reported_score": {
+              "mean_evidence": 0.6544674455943937,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.08875930245267172,
+              "in_field_fraction": 1,
+              "uncovered_fraction": 0.7743589743589744
+            }
+          }
+        ]
+      },
+      "result": {
+        "version": "step-c4-evidence-biplane-registration-v4",
+        "convention": "dicom_xa_patient_longitude_latitude_ras_v1",
+        "method": "vessel_evidence_compass_biplane_v1",
+        "status": "operator_confirmed_proposal",
+        "validated": false,
+        "same_position": "operator_attested_not_checked",
+        "plane_angle_deg": 90.0,
+        "rotation_deg": 6.641,
+        "isocenter_shift_mm": 8.844,
+        "detector_fit": "kept",
+        "score_source": "browser_reported_not_recomputed",
+        "score_kind": "mean_vessel_evidence_under_projected_points",
+        "planes": [
+          {
+            "plane": "a",
+            "geometry_source": "operator_entered",
+            "reported_score": {
+              "mean_evidence": 0.6229135493054423,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.06621391578635723,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.6819444444444445
+            }
+          },
+          {
+            "plane": "b",
+            "geometry_source": "operator_entered",
+            "reported_score": {
+              "mean_evidence": 0.6544674455943937,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.0
+            },
+            "reported_start_score": {
+              "mean_evidence": 0.08875930245267172,
+              "in_field_fraction": 1.0,
+              "uncovered_fraction": 0.7743589743589744
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

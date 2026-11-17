@@ -201,3 +201,152 @@ describe("two-plane overlay job", () => {
     expect(() => job.result()).toThrow("not complete");
   });
 });
+
+describe("overlay jobs by vessel evidence", () => {
+  const evidence = {
+    ...input,
+    search: { ...input.search!, method: "vessel_evidence" as const },
+  };
+
+  it("proposes one plane's pose with no line set and no sensitivity", () => {
+    const job = createOverlayJob(evidence);
+    let slices = 0;
+    while (!job.advance(() => true)) slices++;
+    expect(slices).toBeGreaterThan(100);
+    const result = job.result(),
+      found = result.evidence!;
+    // One kind of proposal, never both, and no extracted lines.
+    expect(result.proposal).toBeNull();
+    expect(result.target).toBeNull();
+    expect(found.method).toBe("vessel_evidence_compass_v1");
+    expect(found.detector_fit).toBe("not_requested");
+    expect(found.planes).toHaveLength(1);
+    expect(found.planes[0].view).toEqual(VIEW);
+    expect(found.planes[0].score.mean_evidence).toBeGreaterThan(
+      found.planes[0].start_score.mean_evidence,
+    );
+    const got = projectRegistered(
+        found.planes[0].view,
+        result.isocenter,
+        found.matrix,
+        result.points,
+        size,
+      ),
+      want = projectRegistered(VIEW, pivot, truth, medial.points, size);
+    let sum = 0;
+    for (let k = 0; k < got.length; k += 2)
+      sum += Math.hypot(got[k] - want[k], got[k + 1] - want[k + 1]);
+    expect(
+      (sum / (got.length / 2)) * (((180 / SIDE) * 800) / 1200),
+    ).toBeLessThan(1);
+    // The sensitivity is not read: another value gives the same pose.
+    const other = createOverlayJob({
+      ...evidence,
+      search: { ...evidence.search, sensitivity: 0.05 },
+    });
+    expect(other.advance(() => false)).toBe(true);
+    expect(other.result().evidence!.matrix).toEqual(found.matrix);
+  }, 60000);
+
+  it("proposes one pose for two planes that is right in three dimensions", () => {
+    const job = createBiplaneOverlayJob({ ...pair, method: "vessel_evidence" });
+    expect(job.advance(() => false)).toBe(true);
+    const result = job.result(),
+      found = result.evidence!;
+    expect(result.proposal).toBeNull();
+    expect(result.targets).toBeNull();
+    expect(found.method).toBe("vessel_evidence_compass_biplane_v1");
+    expect(found.plane_angle_deg).toBeCloseTo(90);
+    expect(found.planes.map((one) => one.view)).toEqual([VIEW, VIEW_B]);
+    expect(pointError(found.matrix, pairTruth)).toBeLessThan(1);
+  }, 60000);
+
+  it("reports the outcome of a requested fit of the field size", () => {
+    const job = createOverlayJob({
+      ...evidence,
+      search: { ...evidence.search, fit_detector_scale: true },
+    });
+    expect(job.advance(() => false)).toBe(true);
+    const found = job.result().evidence!;
+    expect(["kept", "dropped"]).toContain(found.detector_fit);
+    // A fit that was not kept leaves the entered size.
+    if (found.detector_fit === "dropped")
+      expect(found.planes[0].detector_scale).toBe(1);
+  }, 60000);
+
+  it("reads bright vessels when the frame is declared bright", () => {
+    // The same frames with the gray scale reversed.
+    const reversed = (frame: Uint8Array) => frame.map((value) => 255 - value);
+    const one = createOverlayJob({
+      ...evidence,
+      frame: { ...evidence.frame, gray: reversed(gray) },
+      search: { ...evidence.search, polarity: "bright" },
+    });
+    expect(one.advance(() => false)).toBe(true);
+    const found = one.result().evidence!,
+      got = projectRegistered(
+        found.planes[0].view,
+        one.result().isocenter,
+        found.matrix,
+        medial.points,
+        size,
+      ),
+      want = projectRegistered(VIEW, pivot, truth, medial.points, size);
+    let sum = 0;
+    for (let k = 0; k < got.length; k += 2)
+      sum += Math.hypot(got[k] - want[k], got[k + 1] - want[k + 1]);
+    expect(
+      (sum / (got.length / 2)) * (((180 / SIDE) * 800) / 1200),
+    ).toBeLessThan(1);
+    expect(found.planes[0].score.mean_evidence).toBeGreaterThan(0.4);
+    const two = createBiplaneOverlayJob({
+      ...pair,
+      method: "vessel_evidence",
+      planes: [
+        {
+          ...pair.planes[0],
+          polarity: "bright",
+          frame: { ...pair.planes[0].frame, gray: reversed(pairGray[0]) },
+        },
+        {
+          ...pair.planes[1],
+          polarity: "bright",
+          frame: { ...pair.planes[1].frame, gray: reversed(pairGray[1]) },
+        },
+      ],
+    });
+    expect(two.advance(() => false)).toBe(true);
+    const both = two.result().evidence!;
+    expect(pointError(both.matrix, pairTruth)).toBeLessThan(1);
+    both.planes.forEach((plane) =>
+      expect(plane.score.mean_evidence).toBeGreaterThan(0.4),
+    );
+  }, 60000);
+
+  it("only redraws when no search is asked for, whatever the method", () => {
+    const job = createBiplaneOverlayJob({
+      ...pair,
+      search: false,
+      method: "vessel_evidence",
+    });
+    expect(job.advance(() => false)).toBe(true);
+    expect(job.result()).toMatchObject({
+      targets: null,
+      proposal: null,
+      evidence: null,
+    });
+  });
+
+  it("fails on a frame with nothing line-like, as the other method does", () => {
+    const blank = createOverlayJob({
+      ...evidence,
+      frame: {
+        gray: new Uint8Array(SIDE * SIDE).fill(128),
+        width: SIDE,
+        height: SIDE,
+      },
+    });
+    expect(() => blank.advance(() => false)).toThrow();
+    expect(() => blank.result()).toThrow("not complete");
+  });
+});

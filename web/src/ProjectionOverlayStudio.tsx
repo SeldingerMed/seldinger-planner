@@ -14,17 +14,27 @@ import {
   type BiplaneRegistrationProposal,
 } from "./biplaneRegistration";
 import { angleLabel, validateView, type ViewNumbers } from "./carmGeometry";
+import {
+  EVIDENCE_BIPLANE_REGISTRATION_METHOD,
+  EVIDENCE_REGISTRATION_LIMITS as EVIDENCE_LIMITS,
+  EVIDENCE_REGISTRATION_METHOD,
+  type EvidenceRegistrationProposal,
+} from "./evidenceRegistration";
 import { createNativeSampler } from "./nativeSampling";
 import type { Vec3 } from "./obliqueSlice";
 import {
   decodeVesselMask,
   FRAME_SOURCE_ID,
   isBiplane,
+  isEvidence,
   loadFrameBundle,
   FRAME_INTEGRITY_FAILURE,
   loadVerifiedFrame,
   parseSavedRegistration,
   type BiplaneRegistrationInputs,
+  type DetectorFit,
+  type EvidenceBiplaneRegistrationInputs,
+  type EvidenceRegistrationInputs,
   type FrameBundle,
   type FramePlane,
   type PlaneLabel,
@@ -37,6 +47,7 @@ import {
   createBiplaneOverlayJob,
   createOverlayJob,
   type OverlayJobResult,
+  type OverlayMethod,
 } from "./projectionOverlayJob";
 import {
   projectRegistered,
@@ -85,13 +96,17 @@ type PairOutcome = {
   isocenter: Vec3;
   pooling: number;
   matrix: number[][];
-  /** Null when a saved record is redrawn. */
+  /** By centerline distance. Null when a saved record is redrawn, and for
+   * a vessel evidence proposal. */
   proposal: BiplaneRegistrationProposal | null;
-  /** What each plane's search was given, for the record. */
-  searched: Pick<
+  /** By vessel evidence, or null. */
+  evidence: EvidenceRegistrationProposal | null;
+  /** What each plane's search was given, for the record. A vessel evidence
+   * record has no sensitivity. */
+  searched: (Pick<
     BiplaneRegistrationInputs["planes"][number],
-    "geometry_source" | "fit_detector_scale" | "polarity" | "sensitivity"
-  >[];
+    "geometry_source" | "fit_detector_scale" | "polarity"
+  > & { sensitivity?: number })[];
 };
 type Outcome = {
   scope: string;
@@ -146,8 +161,7 @@ function settingsOf(
     | "fit_detector_scale"
     | "detector_scale"
     | "polarity"
-    | "sensitivity"
-  >,
+  > & { sensitivity?: number },
 ): PlaneSettings {
   const entered = entry.geometry_source === "operator_entered",
     text = (value: number) => String(Number(value.toFixed(6)));
@@ -164,9 +178,17 @@ function settingsOf(
     entered,
     fitScale: entered ? entry.fit_detector_scale : true,
     polarity: entry.polarity,
-    sensitivity: entry.sensitivity,
+    // A vessel evidence record has none; the control keeps its default.
+    sensitivity: entry.sensitivity ?? defaults("single").sensitivity,
   };
 }
+/** What became of a requested fit of the field size, in words. */
+const fitWords = (outcome: DetectorFit) =>
+  outcome === "kept"
+    ? " A fit of the field size was kept."
+    : outcome === "dropped"
+      ? " A fit of the field size was tried and not kept: it did not improve on the entered size."
+      : "";
 /** Only bytes that fail their length or digest are an integrity failure. A
  * frame that could not be fetched is reported as that. */
 const frameFailure = (error: unknown) =>
@@ -215,17 +237,65 @@ function savedSummary(
   },
   evidence: "verified" | "unavailable",
 ): string {
-  const moved = `turned ${result.rotation_deg.toFixed(1)}° and moved the isocenter ${result.isocenter_shift_mm.toFixed(1)} mm from the volume's own position`;
+  const moved = `turned ${result.rotation_deg.toFixed(1)}° and moved the isocenter ${result.isocenter_shift_mm.toFixed(1)} mm from the volume's own position`,
+    by = isEvidence(inputs) ? " by vessel evidence" : "",
+    fitted = isEvidence(inputs) ? savedFitWords(inputs) : "";
   if (isBiplane(inputs))
-    return `Saved operator-confirmed two-plane proposal, revision ${revision}, not a validated registration: ${inputs.planes
+    return `Saved operator-confirmed two-plane proposal${by}, revision ${revision}, not a validated registration: ${inputs.planes
       .map(
         (entry) =>
           `frame ${entry.frame_index} of plane ${entry.plane} with ${geometryWords(entry.geometry_source)}`,
       )
       .join(
         " and ",
-      )} in ${inputs.frame_source_id}, central rays ${(result.plane_angle_deg ?? 0).toFixed(0)}° apart, one pose for both, ${moved}. The operator attested that both frames show the patient in the same position; that was not checked. Its frames and vessel mask are ${evidence === "verified" ? "installed and unchanged" : "no longer available unchanged"}.`;
-  return `Saved operator-confirmed proposal, revision ${revision}, not a validated registration: frame ${inputs.frame_index} of plane ${inputs.plane} in ${inputs.frame_source_id}, ${geometryWords(inputs.geometry_source)}, ${moved}. Its frame and vessel mask are ${evidence === "verified" ? "installed and unchanged" : "no longer available unchanged"}.`;
+      )} in ${inputs.frame_source_id}, central rays ${(result.plane_angle_deg ?? 0).toFixed(0)}° apart, one pose for both, ${moved}. The operator attested that both frames show the patient in the same position; that was not checked. Its frames and vessel mask are ${evidence === "verified" ? "installed and unchanged" : "no longer available unchanged"}.${fitted}`;
+  return `Saved operator-confirmed proposal${by}, revision ${revision}, not a validated registration: frame ${inputs.frame_index} of plane ${inputs.plane} in ${inputs.frame_source_id}, ${geometryWords(inputs.geometry_source)}, ${moved}. Its frame and vessel mask are ${evidence === "verified" ? "installed and unchanged" : "no longer available unchanged"}.${fitted}`;
+}
+
+/** A field size as a multiple of the entered one, to two decimals. A size
+ * that moved is never written as 1.00: it gets the digits that show the
+ * move, so the number and the statement that it moved agree. */
+function scaleWords(scale: number): string {
+  for (let digits = 2; digits < 8; digits++) {
+    const text = scale.toFixed(digits);
+    if (scale === 1 || Number(text) !== 1) return text;
+  }
+  return String(scale);
+}
+
+/** What became of a requested fit in a saved vessel evidence record. A fit
+ * can be kept for the pose it found with every size where it was, so a kept
+ * fit names each field that moved, or says that none did. */
+function savedFitWords(
+  inputs: EvidenceRegistrationInputs | EvidenceBiplaneRegistrationInputs,
+): string {
+  if (inputs.detector_fit !== "kept") return fitWords(inputs.detector_fit);
+  const pair = isBiplane(inputs),
+    moved = (pair ? inputs.planes : [inputs])
+      .filter((plane) => plane.detector_scale !== 1)
+      .map(
+        (plane) =>
+          `${pair ? `plane ${plane.plane}'s` : "the"} field at ${scaleWords(plane.detector_scale)} times the entered width`,
+      );
+  return moved.length
+    ? ` A fit of the field size was kept: ${moved.join(" and ")}.`
+    : ` A fit of the field size was kept, with ${pair ? "both fields at their entered sizes" : "the field at its entered size"}.`;
+}
+
+/** An unsaved vessel evidence proposal in words. Its score is not an
+ * accuracy, and the sentence says so. */
+function evidenceWords(found: EvidenceRegistrationProposal): string {
+  const moved = `moved the vessel points ${found.translation_mm.toFixed(1)} mm and ${found.rotation_deg.toFixed(1)}° from the starting pose`,
+    plane = (k: number, is = "") => {
+      const one = found.planes[k];
+      return `mean vessel evidence under the projected 3D vessel points ${is}${one.score.mean_evidence.toFixed(2)} on a scale from 0 to 1 (starting pose ${one.start_score.mean_evidence.toFixed(2)}), ${percent(one.score.in_field_fraction)} of points inside the frame, ${percent(one.score.uncovered_fraction)} of the strong line-like structure in the frame with no projected point near it${found.detector_fit === "kept" && one.detector_scale !== 1 ? `, field size fitted at ${scaleWords(one.detector_scale)} times the entered width` : ""}`;
+    },
+    fitted = fitWords(found.detector_fit),
+    caution =
+      "Vessel evidence is high on any line-like structure, a catheter or a bone edge included. It is not a registration accuracy, and a wrong pose can score as well as a right one.";
+  if (found.planes.length === 2)
+    return `Unsaved two-plane proposal by vessel evidence: ${moved}, with central rays ${(found.plane_angle_deg ?? 0).toFixed(0)}° apart. Plane A: ${plane(0)}. Plane B: ${plane(1)}.${fitted} ${caution} Review both overlays before confirming.`;
+  return `Unsaved proposal by vessel evidence: ${moved}. Its ${plane(0, "is ")}.${fitted} ${caution} Review the overlay before confirming.`;
 }
 
 /** One verified frame with, optionally, the lines extracted from it and the
@@ -348,6 +418,7 @@ export default function ProjectionOverlayStudio({
     [picks, setPicks] = useState<Partial<Record<PlaneLabel, number>>>({}),
     [paired, setPaired] = useState(false),
     [isocenter, setIsocenter] = useState<Vec3 | null>(null),
+    [method, setMethod] = useState<OverlayMethod>("centerline_distance"),
     [showTarget, setShowTarget] = useState(true),
     [showPoints, setShowPoints] = useState(true),
     [enlarged, setEnlarged] = useState(false),
@@ -608,7 +679,9 @@ export default function ProjectionOverlayStudio({
           fit,
           isocenter,
           polarity,
-          sensitivity,
+          // Vessel evidence does not read the sensitivity.
+          sensitivity: method === "vessel_evidence" ? null : sensitivity,
+          method,
         })
       : "";
   const pairScope =
@@ -618,8 +691,12 @@ export default function ProjectionOverlayStudio({
           source: frames.source_id,
           revision: frames.manifest_revision,
           mask: mask.mask_sha256,
-          planes: pairSetup,
+          planes:
+            method === "vessel_evidence"
+              ? pairSetup.map(({ sensitivity: _unread, ...plane }) => plane)
+              : pairSetup,
           isocenter,
+          method,
         })
       : "";
   const scope = pairOn ? pairScope : singleScope;
@@ -683,7 +760,15 @@ export default function ProjectionOverlayStudio({
         : null,
     proposal = shown?.kind === "proposal" ? shown.result?.proposal : null,
     pairProposal = shown?.kind === "proposal" ? shown.pair?.proposal : null,
-    dirty = !!proposal || !!pairProposal || !!active,
+    // A vessel evidence proposal, for one plane or for the pair.
+    evidenceProposal =
+      shown?.kind === "proposal"
+        ? (shown.result?.evidence ?? shown.pair?.evidence ?? null)
+        : null,
+    // An unsaved proposal for two planes, by either method.
+    pairPending = !!pairProposal || (!!evidenceProposal && !!shown?.pair),
+    unsaved = !!proposal || !!pairProposal || !!evidenceProposal,
+    dirty = unsaved || !!active,
     reviewed = !!shown && reviewedOutcome === shown,
     attested = !!shown && attestedOutcome === shown;
   // Dropped for good: an outcome describes the exact inputs it was computed
@@ -832,6 +917,7 @@ export default function ProjectionOverlayStudio({
         ],
         isocenter,
         search: true,
+        method,
       });
     setRun({
       scope: started,
@@ -839,7 +925,7 @@ export default function ProjectionOverlayStudio({
       job,
       finish: () => {
         const result = job.result(),
-          found = result.proposal;
+          found = result.proposal ?? result.evidence;
         if (!found) throw new Error("No proposal was computed");
         return {
           pair: {
@@ -850,7 +936,8 @@ export default function ProjectionOverlayStudio({
             isocenter: result.isocenter,
             pooling: result.pooling,
             matrix: found.matrix,
-            proposal: found,
+            proposal: result.proposal,
+            evidence: result.evidence,
             searched: pairSetup,
           },
         };
@@ -893,7 +980,7 @@ export default function ProjectionOverlayStudio({
       frame: shownFrame,
       view,
       isocenter,
-      search: { polarity, sensitivity, fit_detector_scale: fit },
+      search: { method, polarity, sensitivity, fit_detector_scale: fit },
     });
     setRun({
       scope: started,
@@ -903,8 +990,9 @@ export default function ProjectionOverlayStudio({
         const result = job.result();
         return {
           result,
-          matrix: result.proposal?.matrix,
-          view: result.proposal?.view ?? view,
+          matrix: (result.proposal ?? result.evidence)?.matrix,
+          view:
+            result.proposal?.view ?? result.evidence?.planes[0].view ?? view,
         };
       },
     });
@@ -956,6 +1044,9 @@ export default function ProjectionOverlayStudio({
         Object.fromEntries(verified.map((one) => [one.plane, one.index])),
       );
       setPaired(isBiplane(savedInputs));
+      setMethod(
+        isEvidence(savedInputs) ? "vessel_evidence" : "centerline_distance",
+      );
       // The controls show what the record was computed with, not what was
       // last typed, so they cannot contradict the overlay beside them.
       setSettings(
@@ -969,9 +1060,10 @@ export default function ProjectionOverlayStudio({
         const [a, b] = savedInputs.planes,
           job = createBiplaneOverlayJob({
             ...common,
+            // A redraw extracts nothing, so the sensitivity is not read.
             planes: [
-              { ...a, frame: verified[0] },
-              { ...b, frame: verified[1] },
+              { ...a, sensitivity: 0, frame: verified[0] },
+              { ...b, sensitivity: 0, frame: verified[1] },
             ],
             search: false,
           });
@@ -991,6 +1083,7 @@ export default function ProjectionOverlayStudio({
                 pooling: result.pooling,
                 matrix: savedInputs.volume_to_carm_ras,
                 proposal: null,
+                evidence: null,
                 searched: [a, b],
               },
             };
@@ -1029,10 +1122,67 @@ export default function ProjectionOverlayStudio({
       pair = shown.pair;
     let inputs: SavedInputs,
       kept: Pick<Outcome, "result" | "matrix" | "view" | "pair">;
-    if (pairProposal && pair) {
+    if (evidenceProposal && pair) {
+      if (!attested) return;
+      const found = evidenceProposal;
+      inputs = {
+        confirmed: true,
+        same_position_attested: true,
+        frame_source_id: pair.frames[0].source_id,
+        frame_manifest_revision: pair.frames[0].manifest_revision,
+        mask_candidate_id: mask.candidate_id,
+        mask_sha256: mask.mask_sha256,
+        isocenter: pair.isocenter,
+        volume_to_carm_ras: found.matrix,
+        method: EVIDENCE_BIPLANE_REGISTRATION_METHOD,
+        detector_fit: found.detector_fit,
+        planes: [0, 1].map((k) => ({
+          plane: pair.frames[k].plane as "a" | "b",
+          frame_index: pair.frames[k].index,
+          frame_sha256: pair.frames[k].sha256,
+          geometry_source: pair.searched[k].geometry_source,
+          view: found.planes[k].view,
+          fit_detector_scale: pair.searched[k].fit_detector_scale,
+          detector_scale: found.planes[k].detector_scale,
+          polarity: pair.searched[k].polarity,
+          reported_score: found.planes[k].score,
+          reported_start_score: found.planes[k].start_score,
+        })) as EvidenceBiplaneRegistrationInputs["planes"],
+      };
+      kept = { pair };
+    } else if (evidenceProposal && result && shownFrame) {
+      const found = evidenceProposal,
+        single: EvidenceRegistrationInputs = {
+          confirmed: true,
+          frame_source_id: shownFrame.source_id,
+          frame_manifest_revision: shownFrame.manifest_revision,
+          plane: shownFrame.plane,
+          frame_index: shownFrame.index,
+          frame_sha256: shownFrame.sha256,
+          mask_candidate_id: mask.candidate_id,
+          mask_sha256: mask.mask_sha256,
+          geometry_source: useEntered ? "operator_entered" : "frame_manifest",
+          view: found.planes[0].view,
+          fit_detector_scale: fit,
+          detector_scale: found.planes[0].detector_scale,
+          detector_fit: found.detector_fit,
+          isocenter: result.isocenter,
+          volume_to_carm_ras: found.matrix,
+          method: EVIDENCE_REGISTRATION_METHOD,
+          polarity,
+          reported_score: found.planes[0].score,
+          reported_start_score: found.planes[0].start_score,
+        };
+      inputs = single;
+      kept = { result, matrix: found.matrix, view: found.planes[0].view };
+    } else if (pairProposal && pair) {
       // A two-plane record also needs the operator's word that both frames
       // show the patient in one position.
       if (!attested) return;
+      // A centerline distance proposal was searched at a stated sensitivity.
+      // Without it there is no record of what was reviewed, so none is made.
+      const sensitivities = pair.searched.map((plane) => plane.sensitivity);
+      if (sensitivities.some((value) => value === undefined)) return;
       inputs = {
         confirmed: true,
         same_position_attested: true,
@@ -1052,7 +1202,7 @@ export default function ProjectionOverlayStudio({
           fit_detector_scale: pair.searched[k].fit_detector_scale,
           detector_scale: pairProposal.planes[k].detector_scale,
           polarity: pair.searched[k].polarity,
-          sensitivity: pair.searched[k].sensitivity,
+          sensitivity: sensitivities[k],
           reported_score: pairProposal.planes[k].score,
           reported_start_score: pairProposal.planes[k].start_score,
         })) as BiplaneRegistrationInputs["planes"],
@@ -1421,6 +1571,18 @@ export default function ProjectionOverlayStudio({
               <legend>Proposal{planeWords && pairOn ? "" : planeWords}</legend>
               <div className="native-view-controls">
                 <label>
+                  Method
+                  <select
+                    value={method}
+                    onChange={(e) => setMethod(e.target.value as OverlayMethod)}
+                  >
+                    <option value="centerline_distance">
+                      Centerline distance
+                    </option>
+                    <option value="vessel_evidence">Vessel evidence</option>
+                  </select>
+                </label>
+                <label>
                   {planeWords
                     ? `Vessels in plane ${editing.toUpperCase()}'s frame are`
                     : "Vessels in this frame are"}
@@ -1432,26 +1594,32 @@ export default function ProjectionOverlayStudio({
                     <option value="bright">brighter than background</option>
                   </select>
                 </label>
-                <label>
-                  2D vessel sensitivity{planeWords}
-                  <input
-                    type="range"
-                    aria-valuetext={sensitivity.toFixed(2)}
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={sensitivity}
-                    onChange={(e) => setSensitivity(Number(e.target.value))}
-                  />
-                </label>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={showTarget}
-                    onChange={(e) => setShowTarget(e.target.checked)}
-                  />{" "}
-                  Show extracted 2D centerlines
-                </label>
+                {/* Vessel evidence reads the frame with no threshold and
+                    extracts no line set. */}
+                {method === "centerline_distance" && (
+                  <>
+                    <label>
+                      2D vessel sensitivity{planeWords}
+                      <input
+                        type="range"
+                        aria-valuetext={sensitivity.toFixed(2)}
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={sensitivity}
+                        onChange={(e) => setSensitivity(Number(e.target.value))}
+                      />
+                    </label>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={showTarget}
+                        onChange={(e) => setShowTarget(e.target.checked)}
+                      />{" "}
+                      Show extracted 2D centerlines
+                    </label>
+                  </>
+                )}
               </div>
               {!active && (
                 <div className="native-actions">
@@ -1469,9 +1637,11 @@ export default function ProjectionOverlayStudio({
                 </div>
               )}
               <p className="carm-note">
-                {pairOn
-                  ? `Fits one rigid pose to both frames at once, searching up to ${PAIR_LIMITS.translation_mm} mm along and ${PAIR_LIMITS.rotation_deg}° about each axis from the entered geometry. Both frames must show the patient in the same position: acquired together, or with no patient or table movement between them. Nothing here can check that.`
-                  : `Searches up to ${LIMITS.in_plane_mm} mm in the image plane and ${LIMITS.rotation_deg}° about each axis from the entered geometry, matching projected 3D vessel points to lines found in the frame.`}{" "}
+                {method === "vessel_evidence"
+                  ? `${pairOn ? "Fits one rigid pose to both frames at once, searching" : "Searches"} up to ${EVIDENCE_LIMITS.translation_mm} mm along and ${EVIDENCE_LIMITS.rotation_deg}° about each axis from the entered geometry, matching projected 3D vessel points to line-like structure in the frame with no threshold.${pairOn ? " Both frames must show the patient in the same position: acquired together, or with no patient or table movement between them. Nothing here can check that." : " One plane fixes depth only weakly."}`
+                  : pairOn
+                    ? `Fits one rigid pose to both frames at once, searching up to ${PAIR_LIMITS.translation_mm} mm along and ${PAIR_LIMITS.rotation_deg}° about each axis from the entered geometry. Both frames must show the patient in the same position: acquired together, or with no patient or table movement between them. Nothing here can check that.`
+                    : `Searches up to ${LIMITS.in_plane_mm} mm in the image plane and ${LIMITS.rotation_deg}° about each axis from the entered geometry, matching projected 3D vessel points to lines found in the frame.`}{" "}
                 Catheters, bone edges and vessels absent from either image can
                 mislead it.
               </p>
@@ -1485,20 +1655,22 @@ export default function ProjectionOverlayStudio({
           <p role="status" aria-label="Overlay status">
             {active
               ? "Computing… This waits while the tab is in the background."
-              : proposal
-                ? `Unsaved proposal: moved the vessel points ${proposal.translation_mm.toFixed(1)} mm and ${proposal.rotation_deg.toFixed(1)}° from the starting pose${fit ? `, with the field size fitted at ${proposal.detector_scale.toFixed(2)} times the entered width` : ""}. Mean distance from projected 3D vessel points to extracted 2D centerlines ${proposal.score.mean_distance_mm.toFixed(1)} mm at the isocenter plane, capped at ${(LIMITS.truncation_mm * proposal.detector_scale).toFixed(1)} mm per point (starting pose ${proposal.start_score.mean_distance_mm.toFixed(1)} mm). ${percent(proposal.score.matched_fraction)} of points lie within ${LIMITS.match_mm} mm of a 2D centerline, ${percent(proposal.score.in_field_fraction)} project inside the frame, and ${percent(proposal.score.uncovered_fraction)} of 2D centerline samples have no projected point in their coarse 3-by-3-cell neighborhood (not a 2 mm distance test). These compare two automatically extracted line sets. They are not a registration accuracy. Review the overlay before confirming.`
-                : pairProposal
-                  ? `Unsaved two-plane proposal: moved the vessel points ${pairProposal.translation_mm.toFixed(1)} mm and ${pairProposal.rotation_deg.toFixed(1)}° from the starting pose, with central rays ${pairProposal.plane_angle_deg.toFixed(0)}° apart. ${pairProposal.planes
-                      .map(
-                        (found, k) =>
-                          `Plane ${"AB"[k]}: mean distance from projected 3D vessel points to extracted 2D centerlines ${found.score.mean_distance_mm.toFixed(1)} mm at the isocenter plane (starting pose ${found.start_score.mean_distance_mm.toFixed(1)} mm), ${percent(found.score.matched_fraction)} of points within ${LIMITS.match_mm} mm of a 2D centerline, ${percent(found.score.in_field_fraction)} inside the frame${shown?.pair?.searched[k].fit_detector_scale ? `, field size fitted at ${found.detector_scale.toFixed(2)} times the entered width` : ""}.`,
-                      )
-                      .join(
-                        " ",
-                      )} These compare automatically extracted line sets. They are not a registration accuracy, and a wrong pose can score as well as a right one. Review both overlays before confirming.`
-                  : shown?.kind === "saved" && (shown.result || shown.pair)
-                    ? `Showing the saved operator-confirmed ${shown.pair ? "two-plane " : ""}proposal. It is not a validated registration.`
-                    : ""}
+              : evidenceProposal
+                ? evidenceWords(evidenceProposal)
+                : proposal
+                  ? `Unsaved proposal: moved the vessel points ${proposal.translation_mm.toFixed(1)} mm and ${proposal.rotation_deg.toFixed(1)}° from the starting pose${fit ? `, with the field size fitted at ${proposal.detector_scale.toFixed(2)} times the entered width` : ""}. Mean distance from projected 3D vessel points to extracted 2D centerlines ${proposal.score.mean_distance_mm.toFixed(1)} mm at the isocenter plane, capped at ${(LIMITS.truncation_mm * proposal.detector_scale).toFixed(1)} mm per point (starting pose ${proposal.start_score.mean_distance_mm.toFixed(1)} mm). ${percent(proposal.score.matched_fraction)} of points lie within ${LIMITS.match_mm} mm of a 2D centerline, ${percent(proposal.score.in_field_fraction)} project inside the frame, and ${percent(proposal.score.uncovered_fraction)} of 2D centerline samples have no projected point in their coarse 3-by-3-cell neighborhood (not a 2 mm distance test). These compare two automatically extracted line sets. They are not a registration accuracy. Review the overlay before confirming.`
+                  : pairProposal
+                    ? `Unsaved two-plane proposal: moved the vessel points ${pairProposal.translation_mm.toFixed(1)} mm and ${pairProposal.rotation_deg.toFixed(1)}° from the starting pose, with central rays ${pairProposal.plane_angle_deg.toFixed(0)}° apart. ${pairProposal.planes
+                        .map(
+                          (found, k) =>
+                            `Plane ${"AB"[k]}: mean distance from projected 3D vessel points to extracted 2D centerlines ${found.score.mean_distance_mm.toFixed(1)} mm at the isocenter plane (starting pose ${found.start_score.mean_distance_mm.toFixed(1)} mm), ${percent(found.score.matched_fraction)} of points within ${LIMITS.match_mm} mm of a 2D centerline, ${percent(found.score.in_field_fraction)} inside the frame${shown?.pair?.searched[k].fit_detector_scale ? `, field size fitted at ${found.detector_scale.toFixed(2)} times the entered width` : ""}.`,
+                        )
+                        .join(
+                          " ",
+                        )} These compare automatically extracted line sets. They are not a registration accuracy, and a wrong pose can score as well as a right one. Review both overlays before confirming.`
+                    : shown?.kind === "saved" && (shown.result || shown.pair)
+                      ? `Showing the saved operator-confirmed ${shown.pair ? "two-plane " : ""}proposal. It is not a validated registration.`
+                      : ""}
           </p>
           {((shown?.result ?? shown?.pair)?.pooling ?? 1) > 1 && (
             <p role="status">
@@ -1622,7 +1794,7 @@ export default function ProjectionOverlayStudio({
               </figure>
             )
           )}
-          {(proposal || pairProposal) && (
+          {unsaved && (
             <fieldset disabled={!editable}>
               <legend>Confirm</legend>
               <label>
@@ -1633,11 +1805,11 @@ export default function ProjectionOverlayStudio({
                     setReviewedOutcome(e.target.checked ? shown : null)
                   }
                 />{" "}
-                {pairProposal
+                {pairPending
                   ? "I reviewed both overlays and confirm this pose as an unvalidated working proposal"
                   : "I reviewed the overlay and confirm this pose as an unvalidated working proposal"}
               </label>
-              {pairProposal && (
+              {pairPending && (
                 <label>
                   <input
                     type="checkbox"
@@ -1653,7 +1825,7 @@ export default function ProjectionOverlayStudio({
               <div className="native-actions">
                 <button
                   type="button"
-                  disabled={!reviewed || (!!pairProposal && !attested)}
+                  disabled={!reviewed || (pairPending && !attested)}
                   onClick={() => void save()}
                 >
                   Save confirmed proposal

@@ -32,6 +32,8 @@ import {
   presenceCurrent,
   registrationAnswer,
   REVISION,
+  savedEvidenceInputs,
+  savedEvidencePairInputs,
   savedInputs,
   savedPairInputs,
   SIDE,
@@ -2107,4 +2109,495 @@ test("no report is computed while a proposal is unsaved, and a new proposal star
     api.keys().filter((key) => key === `GET ${presenceRoute}`).length,
   ).toBeGreaterThanOrEqual(2);
   expect(compute().disabled).toBe(false);
+}, 90000);
+
+const chooseMethod = (value: string) =>
+  fireEvent.change(screen.getByRole("combobox", { name: "Method" }), {
+    target: { value },
+  });
+
+test("proposes by vessel evidence and saves a record with its own score and no sensitivity", async () => {
+  let saved: any = null;
+  const api = server({
+    put: (body) => {
+      saved = body;
+      return json(currentAnswer(body.inputs));
+    },
+  });
+  render(<Harness />);
+  await openFrames();
+  enterGeometry();
+  // The line-set controls belong to the centerline distance method.
+  expect(screen.getByRole("slider")).toBeTruthy();
+  chooseMethod("vessel_evidence");
+  expect(screen.queryByRole("slider")).toBeNull();
+  expect(
+    screen.queryByRole("checkbox", { name: /Show extracted 2D centerlines/ }),
+  ).toBeNull();
+  expect(screen.getByText(/with no threshold/).textContent).toMatch(
+    /One plane fixes depth only weakly/,
+  );
+  click("Propose overlay");
+  await proposed();
+  const text = status("Overlay status").textContent!;
+  expect(text).toMatch(/^Unsaved proposal by vessel evidence: /);
+  expect(text).toMatch(
+    /from the starting pose\. Its mean vessel evidence under the projected 3D vessel points is 0\.\d\d on a scale from 0 to 1/,
+  );
+  expect(text).toMatch(
+    /a catheter or a bone edge included\. It is not a registration accuracy, and a wrong pose can score as well as a right one/,
+  );
+  // No distance is reported, and no fit was asked for.
+  expect(text).not.toMatch(/ mm from the extracted|field size/);
+  expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+    "Admitted frame 12, plane single, with projected 3D vessels",
+  );
+  const save = screen.getByRole("button", { name: "Save confirmed proposal" });
+  expect(save).toHaveProperty("disabled", true);
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed the overlay/ }),
+  );
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed proposal by vessel evidence, revision 1, not a validated registration/,
+  );
+  expect(Object.keys(saved.inputs).sort()).toEqual(
+    Object.keys(savedEvidenceInputs()).sort(),
+  );
+  expect(saved.inputs).toMatchObject({
+    confirmed: true,
+    plane: "single",
+    frame_index: 12,
+    frame_sha256: hex(gray),
+    mask_sha256: maskEntry.mask_sha256,
+    geometry_source: "operator_entered",
+    view: VIEW,
+    fit_detector_scale: false,
+    detector_scale: 1,
+    detector_fit: "not_requested",
+    method: "vessel_evidence_compass_v1",
+    polarity: "dark",
+  });
+  expect(Object.keys(saved.inputs.reported_score).sort()).toEqual([
+    "in_field_fraction",
+    "mean_evidence",
+    "uncovered_fraction",
+  ]);
+  expect(saved.inputs.reported_score.mean_evidence).toBeGreaterThan(
+    saved.inputs.reported_start_score.mean_evidence,
+  );
+  // The saved pose lays the mask on the frame within a millimeter.
+  const size = { width: SIDE, height: SIDE },
+    got = projectRegistered(
+      saved.inputs.view,
+      saved.inputs.isocenter,
+      saved.inputs.volume_to_carm_ras,
+      medial.points,
+      size,
+    ),
+    want = projectRegistered(VIEW, pivot, truth, medial.points, size);
+  let sum = 0;
+  for (let k = 0; k < got.length; k += 2)
+    sum += Math.hypot(got[k] - want[k], got[k + 1] - want[k + 1]);
+  expect((sum / (got.length / 2)) * (((180 / SIDE) * 800) / 1200)).toBeLessThan(
+    1,
+  );
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toHaveLength(1);
+  // A record by vessel evidence has no line set for a presence report.
+  expect(group().textContent).toMatch(
+    /made by vessel evidence\. A vessel presence report reads the 2D centerlines of a centerline distance proposal, and is not available for this one/,
+  );
+  expect(
+    within(group()).queryByRole("button", { name: /vessel presence/i }),
+  ).toBeNull();
+}, 90000);
+
+test("a two-plane proposal by vessel evidence needs the same attestation", async () => {
+  let saved: any = null;
+  server({
+    ...pairRoutes,
+    put: (body) => {
+      saved = body;
+      return json(currentPairAnswer(body.inputs));
+    },
+  });
+  render(<Harness />);
+  await openPair();
+  chooseMethod("vessel_evidence");
+  expect(screen.getByText(/with no threshold/).textContent).toMatch(
+    /Both frames must show the patient in the same position/,
+  );
+  await proposePair();
+  const text = status("Overlay status").textContent!;
+  expect(text).toMatch(
+    /^Unsaved two-plane proposal by vessel evidence: .* central rays 90° apart\. Plane A: .* Plane B: /,
+  );
+  expect(text).toMatch(/It is not a registration accuracy/);
+  expect(
+    screen.getAllByRole("img").map((img) => img.getAttribute("aria-label")),
+  ).toEqual([
+    "Admitted frame 12, plane a, with projected 3D vessels",
+    "Admitted frame 12, plane b, with projected 3D vessels",
+  ]);
+  const save = screen.getByRole("button", { name: "Save confirmed proposal" }),
+    review = screen.getByRole("checkbox", { name: /I reviewed both overlays/ }),
+    attest = screen.getByRole("checkbox", {
+      name: /Both frames show the patient in the same position/,
+    });
+  fireEvent.click(review);
+  expect(save).toHaveProperty("disabled", true);
+  fireEvent.click(attest);
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed two-plane proposal by vessel evidence, revision 1, not a validated registration/,
+  );
+  expect(Object.keys(saved.inputs).sort()).toEqual(
+    Object.keys(savedEvidencePairInputs()).sort(),
+  );
+  expect(saved.inputs).toMatchObject({
+    same_position_attested: true,
+    method: "vessel_evidence_compass_biplane_v1",
+    detector_fit: "not_requested",
+  });
+  saved.inputs.planes.forEach((plane: any, k: number) => {
+    expect(Object.keys(plane).sort()).toEqual(
+      Object.keys(savedEvidencePairInputs().planes[k]).sort(),
+    );
+    expect(plane).toMatchObject({
+      plane: "ab"[k],
+      frame_sha256: hex(pairGray[k]),
+      view: k ? VIEW_B : VIEW,
+      detector_scale: 1,
+    });
+  });
+  // The saved pose is right in three dimensions, not only in each image.
+  const at = (matrix: number[][]) => applyRigid(matrix, pivot),
+    found = at(saved.inputs.volume_to_carm_ras),
+    want = at(pairTruth);
+  expect(
+    Math.hypot(found[0] - want[0], found[1] - want[1], found[2] - want[2]),
+  ).toBeLessThan(1);
+}, 90000);
+
+test("redraws a saved vessel evidence record without searching, and says what became of a fit", async () => {
+  const run = vi.spyOn(overlayJobs, "createOverlayJob");
+  const api = server({
+    registration: () =>
+      json(
+        currentAnswer(
+          savedEvidenceInputs({
+            fit_detector_scale: true,
+            detector_fit: "dropped",
+          }),
+        ),
+      ),
+  });
+  render(<Harness />);
+  const saved = await screen.findByRole("status", {
+    name: "Saved overlay proposal",
+  });
+  expect(saved.textContent).toMatch(
+    /Saved operator-confirmed proposal by vessel evidence, revision 1, not a validated registration: .* installed and unchanged\. A fit of the field size was tried and not kept: it did not improve on the entered size\./,
+  );
+  click("Show saved overlay");
+  await waitFor(
+    () =>
+      expect(status("Overlay status").textContent).toMatch(
+        /Showing the saved operator-confirmed proposal/,
+      ),
+    { timeout: 30000 },
+  );
+  // The stored pose is drawn as stored: nothing is searched or rescored.
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(run.mock.calls[0][0].search).toBeNull();
+  // The controls show the method the record was made with.
+  expect(screen.getByRole("combobox", { name: "Method" })).toHaveProperty(
+    "value",
+    "vessel_evidence",
+  );
+  expect(screen.queryByRole("slider")).toBeNull();
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+  run.mockRestore();
+}, 60000);
+
+test("a saved record says which plane's size a kept fit moved, or that none did", async () => {
+  // A fit can be kept for the pose it found with every size where it was.
+  const words = async (
+    inputs: any,
+    answer: (inputs: any) => unknown = currentAnswer,
+  ) => {
+    server({ ...pairRoutes, registration: () => json(answer(inputs)) });
+    const view = render(<Harness />);
+    const text = (
+      await screen.findByRole("status", { name: "Saved overlay proposal" })
+    ).textContent;
+    view.unmount();
+    return text;
+  };
+  expect(
+    await words(
+      savedEvidenceInputs({ fit_detector_scale: true, detector_fit: "kept" }),
+    ),
+  ).toMatch(
+    /installed and unchanged\. A fit of the field size was kept, with the field at its entered size\.$/,
+  );
+  const pair = savedEvidencePairInputs({ detector_fit: "kept" });
+  pair.planes = pair.planes.map((plane: any) => ({
+    ...plane,
+    geometry_source: "operator_entered",
+    fit_detector_scale: true,
+  }));
+  expect(await words(pair, currentPairAnswer)).toMatch(
+    /installed and unchanged\. A fit of the field size was kept, with both fields at their entered sizes\.$/,
+  );
+  pair.planes[0] = { ...pair.planes[0], detector_scale: 1.04 };
+  pair.planes[1] = { ...pair.planes[1], detector_scale: 0.9 };
+  expect(await words(pair, currentPairAnswer)).toMatch(
+    /A fit of the field size was kept: plane a's field at 1\.04 times the entered width and plane b's field at 0\.90 times the entered width\.$/,
+  );
+  // A size that moved a little is not written as 1.00, and is not called
+  // unmoved either: it gets the digits that show the move.
+  expect(
+    await words(
+      savedEvidenceInputs({
+        fit_detector_scale: true,
+        detector_fit: "kept",
+        detector_scale: 1.004,
+      }),
+    ),
+  ).toMatch(
+    /A fit of the field size was kept: the field at 1\.004 times the entered width\.$/,
+  );
+  pair.planes[0] = { ...pair.planes[0], detector_scale: 1 };
+  pair.planes[1] = { ...pair.planes[1], detector_scale: 0.99996 };
+  expect(await words(pair, currentPairAnswer)).toMatch(
+    /A fit of the field size was kept: plane b's field at 0\.99996 times the entered width\.$/,
+  );
+});
+
+test("a saved two-plane vessel evidence record is redrawn on both frames", async () => {
+  server({
+    ...pairRoutes,
+    registration: () => json(currentPairAnswer(savedEvidencePairInputs())),
+  });
+  render(<Harness />);
+  const saved = await screen.findByRole("status", {
+    name: "Saved overlay proposal",
+  });
+  expect(saved.textContent).toMatch(
+    /Saved operator-confirmed two-plane proposal by vessel evidence, revision 1/,
+  );
+  click("Show saved overlay");
+  await waitFor(
+    () =>
+      expect(
+        screen.getAllByRole("img").map((img) => img.getAttribute("aria-label")),
+      ).toEqual([
+        "Admitted frame 12, plane a, with projected 3D vessels",
+        "Admitted frame 12, plane b, with projected 3D vessels",
+      ]),
+    { timeout: 30000 },
+  );
+  expect(screen.getByRole("combobox", { name: "Method" })).toHaveProperty(
+    "value",
+    "vessel_evidence",
+  );
+}, 60000);
+
+test("a saved centerline distance record sets the method back", async () => {
+  server({ registration: () => json(currentAnswer()) });
+  render(<Harness />);
+  await screen.findByRole("status", { name: "Saved overlay proposal" });
+  // The studio takes input once the saved report has been read.
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toMatch(
+      /^No vessel presence report/,
+    ),
+  );
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole(
+    "img",
+    { name: "Admitted frame 12, plane single" },
+    { timeout: 10000 },
+  );
+  chooseMethod("vessel_evidence");
+  expect(screen.queryByRole("slider")).toBeNull();
+  click("Show saved overlay");
+  await waitFor(
+    () =>
+      expect(status("Overlay status").textContent).toMatch(
+        /Showing the saved operator-confirmed proposal/,
+      ),
+    { timeout: 30000 },
+  );
+  expect(screen.getByRole("combobox", { name: "Method" })).toHaveProperty(
+    "value",
+    "centerline_distance",
+  );
+  expect(screen.getByRole("slider")).toBeTruthy();
+  expect(status("Saved overlay proposal").textContent).not.toMatch(
+    /vessel evidence|field size/,
+  );
+}, 60000);
+
+test("changing the method drops a one-plane proposal made by the other one", async () => {
+  const api = server();
+  render(<Harness />);
+  await openFrames();
+  enterGeometry();
+  click("Propose overlay");
+  await proposed();
+  expect(status("Overlay status").textContent).not.toMatch(/vessel evidence/);
+  chooseMethod("vessel_evidence");
+  expect(status("Overlay status").textContent).toBe("");
+  expect(
+    screen.queryByRole("button", { name: "Save confirmed proposal" }),
+  ).toBeNull();
+  // Going back does not bring it back, and the same holds the other way.
+  chooseMethod("centerline_distance");
+  expect(status("Overlay status").textContent).toBe("");
+  chooseMethod("vessel_evidence");
+  click("Propose overlay");
+  await proposed();
+  expect(status("Overlay status").textContent).toMatch(/by vessel evidence/);
+  chooseMethod("centerline_distance");
+  expect(status("Overlay status").textContent).toBe("");
+  expect(
+    screen.queryByRole("button", { name: "Save confirmed proposal" }),
+  ).toBeNull();
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+}, 90000);
+
+test("changing the method drops a proposal made by the other one", async () => {
+  const api = server({ ...pairRoutes });
+  render(<Harness />);
+  await openPair();
+  await proposePair();
+  expect(status("Overlay status").textContent).not.toMatch(/vessel evidence/);
+  chooseMethod("vessel_evidence");
+  expect(status("Overlay status").textContent).toBe("");
+  expect(
+    screen.queryByRole("button", { name: "Save confirmed proposal" }),
+  ).toBeNull();
+  // Going back does not bring the old proposal back, in either direction.
+  chooseMethod("centerline_distance");
+  expect(status("Overlay status").textContent).toBe("");
+  chooseMethod("vessel_evidence");
+  await proposePair();
+  expect(status("Overlay status").textContent).toMatch(/by vessel evidence/);
+  chooseMethod("centerline_distance");
+  expect(status("Overlay status").textContent).toBe("");
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+}, 90000);
+
+test("saves a kept fit of the field size as the size the search found", async () => {
+  let saved: any = null;
+  server({
+    put: (body) => {
+      saved = body;
+      return json(currentAnswer(body.inputs));
+    },
+  });
+  render(<Harness />);
+  await openFrames();
+  // The frame was rendered at 180 mm. The fit stays on.
+  type("Source to isocenter (mm)", "800");
+  type("Field width at the detector (mm)", "205");
+  chooseMethod("vessel_evidence");
+  click("Propose overlay");
+  await proposed();
+  expect(status("Overlay status").textContent).toMatch(
+    /0 to 1 \(starting pose 0\.\d\d\), \d+% of points inside the frame, \d+% of the strong line-like structure in the frame with no projected point near it, field size fitted at 0\.(8[5-9]|9[0-3]) times the entered width\. A fit of the field size was kept\. Vessel evidence is high/,
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed the overlay/ }),
+  );
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed proposal by vessel evidence, revision 1, .* installed and unchanged\. A fit of the field size was kept: the field at 0\.(8[5-9]|9[0-3]) times the entered width\.$/,
+  );
+  const { inputs } = saved;
+  expect(inputs).toMatchObject({
+    fit_detector_scale: true,
+    detector_fit: "kept",
+    geometry_source: "operator_entered",
+  });
+  // The record holds the fitted size, and the scale that leads back to the
+  // entered one.
+  expect(inputs.detector_scale).toBeGreaterThan(0.85);
+  expect(inputs.detector_scale).toBeLessThan(0.93);
+  expect(inputs.view.detector_width_mm).toBeCloseTo(
+    205 * inputs.detector_scale,
+    6,
+  );
+  expect(Math.abs(inputs.view.detector_width_mm - 180)).toBeLessThan(5);
+  expect(inputs.view.detector_height_mm).toBeCloseTo(
+    inputs.view.detector_width_mm,
+    6,
+  );
+}, 90000);
+
+test("a two-plane fit is recorded plane by plane", async () => {
+  let saved: any = null;
+  server({
+    ...pairRoutes,
+    put: (body) => {
+      saved = body;
+      return json(currentPairAnswer(body.inputs));
+    },
+  });
+  render(<Harness />);
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  // Plane A at its true size with no fit. Plane B entered too wide, fitted.
+  enterGeometry();
+  choosePlane("b");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane b" });
+  type("Source to isocenter (mm)", "800");
+  type("Field width at the detector (mm)", "205");
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  );
+  chooseMethod("vessel_evidence");
+  await proposePair();
+  // Only the fitted plane names a fitted size.
+  expect(status("Overlay status").textContent).toMatch(
+    /Plane A: [^:]* no projected point near it\. Plane B: [^:]* no projected point near it, field size fitted at 0\.(8[5-9]|9[0-3]) times the entered width\. A fit of the field size was kept\. Vessel evidence is high/,
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed both overlays/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: /Both frames show the patient in the same position/,
+    }),
+  );
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed two-plane proposal by vessel evidence, revision 1, .* A fit of the field size was kept: plane b's field at 0\.(8[5-9]|9[0-3]) times the entered width\.$/,
+  );
+  const [a, b] = saved.inputs.planes;
+  expect(saved.inputs.detector_fit).toBe("kept");
+  // Each plane's result and starting scores, in that order.
+  for (const plane of [a, b])
+    expect(plane.reported_score.mean_evidence).toBeGreaterThan(
+      plane.reported_start_score.mean_evidence + 0.2,
+    );
+  expect(a).toMatchObject({
+    fit_detector_scale: false,
+    detector_scale: 1,
+    view: VIEW,
+  });
+  expect(b.fit_detector_scale).toBe(true);
+  expect(b.detector_scale).toBeGreaterThan(0.85);
+  expect(b.detector_scale).toBeLessThan(0.93);
+  expect(b.view.detector_width_mm).toBeCloseTo(205 * b.detector_scale, 6);
+  expect(b.view).toMatchObject({
+    primary_deg: VIEW_B.primary_deg,
+    secondary_deg: VIEW_B.secondary_deg,
+    source_isocenter_mm: 800,
+  });
 }, 90000);

@@ -101,18 +101,31 @@ export const maskEntry = {
 };
 export const REVISION = "a".repeat(64);
 export const CONTAINER = "e".repeat(64);
+const EVIDENCE_METHOD = "vessel_evidence_compass_v1",
+  EVIDENCE_PAIR_METHOD = "vessel_evidence_compass_biplane_v1";
+/** What the server adds to the summary of a vessel evidence record. */
+const evidenceSummary = (inputs: Record<string, any>) => ({
+  detector_fit: inputs.detector_fit,
+  score_source: "browser_reported_not_recomputed",
+  score_kind: "mean_vessel_evidence_under_projected_points",
+});
 /** The server's own summary of confirmed inputs, mirroring `summarize`. */
 export function savedResult(inputs: Record<string, any> = savedInputs()) {
+  const evidence = inputs.method === EVIDENCE_METHOD;
   return {
-    version: "step-c1-projection-registration-v1",
+    version: evidence
+      ? "step-c4-evidence-registration-v3"
+      : "step-c1-projection-registration-v1",
     convention: "dicom_xa_patient_longitude_latitude_ras_v1",
-    method: "centerline_distance_compass_v1",
+    method: evidence ? EVIDENCE_METHOD : "centerline_distance_compass_v1",
     status: "operator_confirmed_proposal",
     validated: false,
     geometry_source: inputs.geometry_source,
     rotation_deg: 4,
     isocenter_shift_mm: 6.4,
-    score_source: "browser_reported_not_recomputed",
+    ...(evidence
+      ? evidenceSummary(inputs)
+      : { score_source: "browser_reported_not_recomputed" }),
     reported_score: inputs.reported_score,
     reported_start_score: inputs.reported_start_score,
   };
@@ -290,7 +303,8 @@ export function currentAnswer(
       evidence: "verified",
       dependencies: {
         ...identity,
-        version: "step-c1-projection-registration-v1",
+        version: savedResult((inputs ?? savedInputs()) as Record<string, any>)
+          .version,
       },
       input_sha256: "f".repeat(64),
       inputs,
@@ -362,18 +376,25 @@ export function savedPairInputs(change: Record<string, unknown> = {}) {
  * central rays is the difference of their primary angles, folded to 90. */
 export function savedPairResult(inputs: Record<string, any>) {
   const primary = (k: number) => inputs.planes[k]?.view?.primary_deg ?? 0,
-    apart = Math.abs(primary(0) - primary(1));
+    apart = Math.abs(primary(0) - primary(1)),
+    evidence = inputs.method === EVIDENCE_PAIR_METHOD;
   return {
-    version: "step-c2-biplane-registration-v2",
+    version: evidence
+      ? "step-c4-evidence-biplane-registration-v4"
+      : "step-c2-biplane-registration-v2",
     convention: "dicom_xa_patient_longitude_latitude_ras_v1",
-    method: "centerline_distance_compass_biplane_v1",
+    method: evidence
+      ? EVIDENCE_PAIR_METHOD
+      : "centerline_distance_compass_biplane_v1",
     status: "operator_confirmed_proposal",
     validated: false,
     same_position: "operator_attested_not_checked",
     plane_angle_deg: Math.min(apart, 180 - apart),
     rotation_deg: 6.4,
     isocenter_shift_mm: 8.8,
-    score_source: "browser_reported_not_recomputed",
+    ...(evidence
+      ? evidenceSummary(inputs)
+      : { score_source: "browser_reported_not_recomputed" }),
     planes: inputs.planes.map((plane: Record<string, unknown>) => ({
       plane: plane.plane,
       geometry_source: plane.geometry_source,
@@ -394,7 +415,7 @@ export function currentPairAnswer(
       evidence: "verified",
       dependencies: {
         ...identity,
-        version: "step-c2-biplane-registration-v2",
+        version: savedPairResult(inputs).version,
       },
       input_sha256: "f".repeat(64),
       inputs,
@@ -403,4 +424,41 @@ export function currentPairAnswer(
     },
     revision,
   );
+}
+
+/** A vessel evidence score: no distance, and no sensitivity beside it. */
+export const EVIDENCE_SCORE = {
+  mean_evidence: 0.21,
+  in_field_fraction: 1,
+  uncovered_fraction: 0.1,
+};
+/** A single-plane record of the vessel evidence method. */
+export function savedEvidenceInputs(change: Record<string, unknown> = {}) {
+  const { sensitivity: _none, ...rest } = savedInputs();
+  return {
+    ...rest,
+    method: EVIDENCE_METHOD,
+    detector_fit: "not_requested",
+    reported_score: EVIDENCE_SCORE,
+    reported_start_score: { ...EVIDENCE_SCORE, mean_evidence: 0.12 },
+    ...change,
+  };
+}
+/** A two-plane record of the vessel evidence method. */
+export function savedEvidencePairInputs(change: Record<string, unknown> = {}) {
+  const base = savedPairInputs();
+  return {
+    ...base,
+    method: EVIDENCE_PAIR_METHOD,
+    detector_fit: "not_requested",
+    planes: base.planes.map(({ sensitivity: _none, ...plane }, k) => ({
+      ...plane,
+      reported_score: EVIDENCE_SCORE,
+      reported_start_score: {
+        ...EVIDENCE_SCORE,
+        mean_evidence: 0.12 + k / 100,
+      },
+    })),
+    ...change,
+  };
 }

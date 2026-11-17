@@ -28,7 +28,7 @@ from pydantic import Field, StrictFloat, StrictInt, field_validator
 
 from planner.physics_contract import encoded
 from planner.projection_plan import PlanConflict
-from planner.projection_registration import bound_planes
+from planner.projection_registration import bound_planes, is_evidence
 from planner.reformat_scene import digest
 from planner.territory_workflows import StrictModel
 from planner.workspace import _connect
@@ -153,10 +153,12 @@ def binding(registration):
     """What a report must name to belong to this registration, or None.
 
     ``registration`` is the registration reader's envelope. Only a current
-    registration can carry a report.
+    registration by a centerline distance method can carry a report: the
+    report reads the 2D line set that registration was matched to, at the
+    sensitivity its record states, and a vessel evidence record has neither.
     """
     current = registration["current"]
-    if current["status"] != "current":
+    if current["status"] != "current" or is_evidence(current["inputs"]):
         return None
     return {
         "registration_id": current["registration_id"],

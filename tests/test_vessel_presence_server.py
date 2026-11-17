@@ -9,7 +9,14 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from test_projection_registration_server import body as registration_body
-from test_projection_registration_server import pair_body, pair_ready, ready
+from test_projection_registration_server import (
+    evidence_inputs,
+    evidence_pair_inputs,
+    pair_body,
+    pair_ready,
+    ready,
+    request_for,
+)
 
 from planner.frame_source import frame_filename
 from planner.fusion_brief import project_fusion
@@ -765,3 +772,54 @@ def test_a_read_that_changes_between_two_looks_is_refused(tmp_path):
         response = TestClient(app).get(f"/api/cases/{identity['case_id']}/vessel-presence")
         assert response.status_code == status, response.text
     assert len(seen) == 2
+
+
+def test_a_vessel_evidence_registration_carries_no_report(tmp_path, monkeypatch):
+    """The report reads the line set of a centerline distance registration."""
+    client, case, reference, mask, listed, _ = ready(tmp_path, monkeypatch)
+    base = f"/api/cases/{case['case_id']}"
+    saved = client.put(
+        base + "/projection-registration",
+        json=request_for(case, reference, evidence_inputs(mask, listed)),
+    )
+    assert saved.status_code == 200, saved.text
+    registration = saved.json()
+    refused = client.put(base + "/vessel-presence", json=request(case, reference, registration))
+    assert refused.status_code == 422, refused.text
+    assert "current registration" in refused.json()["detail"]
+    read = client.get(base + "/vessel-presence").json()
+    assert read["report_revision"] == 0 and read["current"] == {"status": "not_confirmed"}
+    brief = client.get(base + "/local-brief")
+    assert brief.status_code == 200, brief.text
+    fusion = brief.json()["angiogram_fusion"]
+    assert fusion["registration"]["method"] == "vessel_evidence_compass_v1"
+    assert fusion["registration"]["version"] == "step-c4-evidence-registration-v3"
+    assert fusion["registration"]["validated"] is False
+    assert "same_position" not in fusion["registration"]
+    assert fusion["vessel_presence"] == {"status": "not_confirmed", "report_revision": 0}
+    assert "- Planes: one" in brief.json()["markdown"]
+    assert "not a validated registration" in brief.json()["markdown"]
+    # The same case registered again by centerline distance can carry a report.
+    older = saved_registration(client, case, reference, mask, listed, revision=1)
+    accepted = client.put(base + "/vessel-presence", json=request(case, reference, older))
+    assert accepted.status_code == 200, accepted.text
+
+
+def test_the_brief_reads_a_two_plane_vessel_evidence_registration(tmp_path, monkeypatch):
+    client, case, reference, mask, listed, _ = pair_ready(tmp_path, monkeypatch)
+    base = f"/api/cases/{case['case_id']}"
+    saved = client.put(
+        base + "/projection-registration",
+        json=request_for(case, reference, evidence_pair_inputs(mask, listed)),
+    )
+    assert saved.status_code == 200, saved.text
+    brief = client.get(base + "/local-brief")
+    assert brief.status_code == 200, brief.text
+    registration = brief.json()["angiogram_fusion"]["registration"]
+    assert registration["method"] == "vessel_evidence_compass_biplane_v1"
+    assert registration["version"] == "step-c4-evidence-biplane-registration-v4"
+    assert registration["same_position"] == "operator_attested_not_checked"
+    assert registration["plane_angle_deg"] == 90.0
+    assert "- Planes: two, 90.0 degrees apart" in brief.json()["markdown"]
+    refused = client.put(base + "/vessel-presence", json=request(case, reference, saved.json()))
+    assert refused.status_code == 422, refused.text

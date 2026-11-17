@@ -2,19 +2,19 @@
 
 Nothing here carries a matrix, an isocenter, a view, a frame or a pixel. The
 registration's own fit scores are left out: they describe how well two sets
-of automatically extracted lines agree, and they do not measure accuracy.
+of automatically extracted lines agree, or how much vessel evidence lies
+under the projected points, and they do not measure accuracy.
 """
 
 import re
 
 from planner.planning_context import IDENTITY_KEYS
 from planner.projection_registration import (
-    BIPLANE_VERSION,
     bound_planes,
+    is_biplane,
     record_version,
     validate_registration,
 )
-from planner.projection_registration import VERSION as REGISTRATION_VERSION
 from planner.projection_registration import summarize as summarize_registration
 from planner.reformat_scene import digest
 from planner.vessel_presence import CLASSES, binding, bound_to, validate_presence
@@ -112,7 +112,7 @@ def _registration(identity, envelope):
                 "same_position": result["same_position"],
                 "plane_angle_deg": result["plane_angle_deg"],
             }
-            if version == BIPLANE_VERSION
+            if is_biplane(inputs)
             else {}
         ),
         "planes": [
@@ -213,7 +213,7 @@ def render_fusion(fusion) -> list[str]:
     if registration["status"] != "current":
         return [*lines, "", "No current confirmed registration is included.", ""]
     lines.append(f"- Frame and mask on hand: {registration['evidence']}")
-    if registration["version"] == REGISTRATION_VERSION:
+    if len(registration["planes"]) == 1:
         lines.append("- Planes: one")
     else:
         lines += [

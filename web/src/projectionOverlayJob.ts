@@ -1,24 +1,35 @@
 /** One resumable run from a vessel mask and one admitted frame, or one frame
  * from each plane of a pair, to an overlay: medial 3D points, then either a
- * registration proposal against the extracted centerlines, or nothing
- * further when a saved pose is only being redrawn. Pure computation; it
- * fetches and stores nothing. */
+ * registration proposal, or nothing further when a saved pose is only being
+ * redrawn. The proposal is made against the extracted centerlines or, by
+ * the vessel evidence methods, against the frame's vessel evidence. Pure
+ * computation; it fetches and stores nothing. */
 import {
   createBiplaneRegistrationJob,
   type BiplaneRegistrationProposal,
 } from "./biplaneRegistration";
 import type { ViewNumbers } from "./carmGeometry";
+import {
+  createEvidenceRegistrationJob,
+  type EvidenceRegistrationProposal,
+} from "./evidenceRegistration";
 import { centroid, medialPointSteps } from "./maskPoints";
 import type { Vec3 } from "./obliqueSlice";
 import {
   createProjectionRegistrationJob,
   type ProjectionRegistrationProposal,
 } from "./projectionRegistration";
+import { vesselEvidenceSteps } from "./vesselEvidence2d";
 import {
   vesselTargetSteps,
   type Polarity,
   type VesselTarget,
 } from "./vesselness2d";
+
+/** Which pair of methods proposes: the centerline distance methods, which
+ * match to a thresholded line set, or the vessel evidence methods, which
+ * read a map with no threshold and ignore the sensitivity. */
+export type OverlayMethod = "centerline_distance" | "vessel_evidence";
 
 export const IDENTITY_MATRIX = [
   [1, 0, 0, 0],
@@ -38,6 +49,8 @@ export type OverlayJobInput = {
   isocenter: Vec3 | null;
   /** Null redraws without searching: no target is extracted. */
   search: {
+    /** Centerline distance when absent. */
+    method?: OverlayMethod;
     polarity: Polarity;
     sensitivity: number;
     fit_detector_scale: boolean;
@@ -48,8 +61,13 @@ export type OverlayJobResult = {
   isocenter: Vec3;
   /** Grid voxels per measured cell; above 1 the mask was coarsened. */
   pooling: number;
+  /** The extracted line set. Null for a vessel evidence proposal, which
+   * has none. */
   target: VesselTarget | null;
+  /** By centerline distance, or null. */
   proposal: ProjectionRegistrationProposal | null;
+  /** By vessel evidence, or null. At most one of the two is set. */
+  evidence: EvidenceRegistrationProposal | null;
 };
 export type OverlayJob = {
   /** Runs until complete or `expired()` is true. Returns true once complete.
@@ -65,9 +83,33 @@ function* run(
   const medial = yield* medialPointSteps(input.mask, input.shape, input.affine),
     isocenter = input.isocenter ?? centroid(medial.points),
     base = { points: medial.points, isocenter, pooling: medial.pooling };
-  if (!input.search) return { ...base, target: null, proposal: null };
-  const { gray, width, height } = input.frame,
-    target = yield* vesselTargetSteps(
+  if (!input.search)
+    return { ...base, target: null, proposal: null, evidence: null };
+  const { gray, width, height } = input.frame;
+  if (input.search.method === "vessel_evidence") {
+    const evidence = yield* vesselEvidenceSteps(
+        gray,
+        width,
+        height,
+        input.search.polarity,
+      ),
+      job = createEvidenceRegistrationJob({
+        points: medial.points,
+        planes: [
+          {
+            view: input.view,
+            isocenter,
+            frame: { width, height },
+            evidence,
+            fit_detector_scale: input.search.fit_detector_scale,
+          },
+        ],
+        start: IDENTITY_MATRIX,
+      });
+    while (!job.advance(() => clock.expired())) yield;
+    return { ...base, target: null, proposal: null, evidence: job.result() };
+  }
+  const target = yield* vesselTargetSteps(
       gray,
       width,
       height,
@@ -84,7 +126,7 @@ function* run(
       fit_detector_scale: input.search.fit_detector_scale,
     });
   while (!job.advance(() => clock.expired())) yield;
-  return { ...base, target, proposal: job.result() };
+  return { ...base, target, proposal: job.result(), evidence: null };
 }
 
 /** Wraps a stepping computation so it can be advanced in time slices. */
@@ -143,13 +185,19 @@ export type BiplaneOverlayJobInput = {
   isocenter: Vec3 | null;
   /** False redraws without searching: no target is extracted. */
   search: boolean;
+  /** Centerline distance when absent. */
+  method?: OverlayMethod;
 };
 export type BiplaneOverlayJobResult = {
   points: Float32Array;
   isocenter: Vec3;
   pooling: number;
+  /** The extracted line sets. Null for a vessel evidence proposal. */
   targets: [VesselTarget, VesselTarget] | null;
+  /** By centerline distance, or null. */
   proposal: BiplaneRegistrationProposal | null;
+  /** By vessel evidence, or null. At most one of the two is set. */
+  evidence: EvidenceRegistrationProposal | null;
 };
 export type BiplaneOverlayJob = {
   advance(expired: () => boolean): boolean;
@@ -163,7 +211,31 @@ function* runPair(
   const medial = yield* medialPointSteps(input.mask, input.shape, input.affine),
     isocenter = input.isocenter ?? centroid(medial.points),
     base = { points: medial.points, isocenter, pooling: medial.pooling };
-  if (!input.search) return { ...base, targets: null, proposal: null };
+  if (!input.search)
+    return { ...base, targets: null, proposal: null, evidence: null };
+  if (input.method === "vessel_evidence") {
+    const planes = [];
+    for (const plane of input.planes)
+      planes.push({
+        view: plane.view,
+        isocenter,
+        frame: { width: plane.frame.width, height: plane.frame.height },
+        evidence: yield* vesselEvidenceSteps(
+          plane.frame.gray,
+          plane.frame.width,
+          plane.frame.height,
+          plane.polarity,
+        ),
+        fit_detector_scale: plane.fit_detector_scale,
+      });
+    const job = createEvidenceRegistrationJob({
+      points: medial.points,
+      planes,
+      start: IDENTITY_MATRIX,
+    });
+    while (!job.advance(() => clock.expired())) yield;
+    return { ...base, targets: null, proposal: null, evidence: job.result() };
+  }
   const targets: VesselTarget[] = [];
   for (const plane of input.planes)
     targets.push(
@@ -192,6 +264,7 @@ function* runPair(
     ...base,
     targets: [targets[0], targets[1]],
     proposal: job.result(),
+    evidence: null,
   };
 }
 
