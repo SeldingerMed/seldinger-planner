@@ -263,7 +263,9 @@ class RegistrationRequest(StrictModel):
 
 
 def _method(inputs):
-    return inputs.get("method") if isinstance(inputs, dict) else None
+    # A stored row can hold anything here. Only a name is looked up by.
+    value = inputs.get("method") if isinstance(inputs, dict) else None
+    return value if isinstance(value, str) else None
 
 
 def is_evidence(inputs):

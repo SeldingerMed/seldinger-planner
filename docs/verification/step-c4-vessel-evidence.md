@@ -137,7 +137,7 @@ Nothing. No fault was found, so no case was run again.
 
 ## Final local checks
 
-On the head of this pull request: backend 1408 passed and 127 skipped, Python lint and format checks clean; frontend 1219 passed in 99 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). Every TypeScript file this pull request changes passes Prettier. Against the Step C3 baseline that is 45 more backend tests and 123 more frontend tests over the two pull requests of part 1. The native ingestion and physics suites were not run again here; nothing they cover is changed, and CI runs them.
+On the head of this pull request: backend 1417 passed and 127 skipped, Python lint and format checks clean; frontend 1219 passed in 99 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). Every TypeScript file this pull request changes passes Prettier. Against the Step C3 baseline that is 54 more backend tests and 123 more frontend tests over the two pull requests of part 1. The native ingestion and physics suites were not run again here; nothing they cover is changed, and CI runs them.
 
 Three existing tests were found to depend on timing and were corrected, each after reproducing the failure:
 
@@ -157,6 +157,8 @@ The reviewer was told not to review the two method files, which were reviewed be
 The repository's automated review raised two points of wording, both in the studio and neither in a method. The words for a saved record said only that a fit was kept; they now name each field the fit moved, or say that none did, as the words for an unsaved proposal already did. The sentence for an unsaved one-plane proposal lacked a verb. Its further suggestion, to name the vessel polarity in that sentence, was not taken: the polarity is on the control beside it, and the sentence for the centerline distance method does not name it either. The five clinical cases were read before this change, and it does not alter what was shown for them: all five were two-plane proposals whose fit was dropped.
 
 A second round raised two points of upkeep, both applied with no change in behavior. A two-plane centerline distance save no longer has a fallback sensitivity of zero: a proposal with no stated sensitivity is not saved. No path produces one today. And what a vessel evidence proposal belongs to no longer includes the sensitivity, which that method does not read.
+
+A third round found a fault in the server. The method of a stored record picks its model and its version, and a stored row whose method had been rewritten to a list or an object raised a type error in that lookup, where every other malformed row is an invalid record. The registration route already answered 503 for it; the reading function itself now refuses it as invalid, for any caller. Test: `test_a_method_that_is_not_a_name_is_refused_as_invalid`, which fails without the change, and two more stored rows in `test_a_stored_row_that_is_not_a_record_fails_closed`. It also noted that this record and the pull request text gave different frontend counts, one written before the last tests were added; both now give the count of the final run.
 
 ## Limits
 

@@ -709,7 +709,17 @@ def test_tampered_two_plane_record_fails_closed(tmp_path, monkeypatch):
 @pytest.mark.parametrize("pair", [False, True])
 @pytest.mark.parametrize(
     "stored",
-    ["[]", '"text"', "7", "null", '{"method": 5}', "[" * 100_000 + "]" * 100_000],
+    [
+        "[]",
+        '"text"',
+        "7",
+        "null",
+        '{"method": 5}',
+        # A method that cannot be looked up by.
+        '{"method": []}',
+        '{"method": {}}',
+        "[" * 100_000 + "]" * 100_000,
+    ],
 )
 def test_a_stored_row_that_is_not_a_record_fails_closed(tmp_path, monkeypatch, pair, stored):
     if pair:
@@ -725,6 +735,15 @@ def test_a_stored_row_that_is_not_a_record_fails_closed(tmp_path, monkeypatch, p
     response = client.get(route)
     assert response.status_code == 503, response.text
     assert response.json()["detail"] == "Projection registration is unavailable; reload"
+
+
+@pytest.mark.parametrize("method", [[], {}, 5, None, ["vessel_evidence_compass_v1"]])
+def test_a_method_that_is_not_a_name_is_refused_as_invalid(method):
+    """The method picks the record's model and version. A stored value that is
+    not a name is an invalid record like any other, whoever reads it."""
+    with pytest.raises(ValueError):
+        validate_registration({"method": method})
+    assert record_version({"method": method}) == "step-c1-projection-registration-v1"
 
 
 # Vessel evidence methods (Step C4). The same records with another score, no
