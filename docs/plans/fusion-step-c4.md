@@ -55,6 +55,20 @@ The ten subjects were run once in Step C2 and the per-run detail was read. Part 
 - [ ] 1.6 TAIR five-case review.
 - [ ] 1.7 Studio, docs, verification record, mutation pass, independent review, automated review.
 
+### The TAIR review, fixed before the new method is run on a TAIR frame
+
+Written on 2026-11-17, before the vessel evidence method was run on any TAIR frame. It is the same five cases as the Step C3 note, read the same way: one reading by the agent that built this step, not accuracy evidence, with no pass criterion.
+
+- Cases, bundles, frames, accepted vessel masks and entered geometry are those of the proposals the Step C3 note saved: 00164, 00132, 00151, 00161 and 00146, the frame of each plane that note used, the geometry it entered. Nothing is chosen again.
+- Method: vessel evidence, two planes, from the on-screen angles, dark vessels, the field-size fit on for both planes as in the Step C3 note. The sensitivity does not apply.
+- One proposal per case, saved as proposed with the same attestation, then the saved record reloaded and redrawn once. No retries with other settings.
+- It runs in the studio against the running server, on a shadow copy of the Step C3 runtime, so the Step C3 records stay as they are.
+- Recorded per case: what the studio reported (movement, each plane's mean evidence at the start and at the result, the fit outcome and fitted sizes), the overlay images, and whether the saved record read back and was redrawn.
+- Read per case, by eye: whether the projected vessels visibly lie on the filled arteries, in one or two sentences, beside what the Step C3 note said of the same frames.
+- A software fault found by a real case is fixed with a test that fails without the fix, the case is run again, and the note says so. There are no other reruns.
+- Whatever it shows, the methods stay at version 1. A finding is an input to the next version.
+- Images, per-case files and the runtime stay on external storage. The repository gets the table and the reading.
+
 ### Design
 
 Written on 2026-11-16 after the diagnostics, a literature scan and one design probe, and before any method code.
