@@ -156,6 +156,8 @@ The reviewer was told not to review the two method files, which were reviewed be
 
 The repository's automated review raised two points of wording, both in the studio and neither in a method. The words for a saved record said only that a fit was kept; they now name each field the fit moved, or say that none did, as the words for an unsaved proposal already did. The sentence for an unsaved one-plane proposal lacked a verb. Its further suggestion, to name the vessel polarity in that sentence, was not taken: the polarity is on the control beside it, and the sentence for the centerline distance method does not name it either. The five clinical cases were read before this change, and it does not alter what was shown for them: all five were two-plane proposals whose fit was dropped.
 
+A second round raised two points of upkeep, both applied with no change in behavior. A two-plane centerline distance save no longer has a fallback sensitivity of zero: a proposal with no stated sensitivity is not saved. No path produces one today. And what a vessel evidence proposal belongs to no longer includes the sensitivity, which that method does not read.
+
 ## Limits
 
 - On the five clinical cases reviewed, proposals by vessel evidence did not hold, and two were worse than the centerline distance proposals. Vessel evidence is not a better default on selective injections, and the studio's default stays centerline distance.

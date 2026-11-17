@@ -668,7 +668,8 @@ export default function ProjectionOverlayStudio({
           fit,
           isocenter,
           polarity,
-          sensitivity,
+          // Vessel evidence does not read the sensitivity.
+          sensitivity: method === "vessel_evidence" ? null : sensitivity,
           method,
         })
       : "";
@@ -679,7 +680,10 @@ export default function ProjectionOverlayStudio({
           source: frames.source_id,
           revision: frames.manifest_revision,
           mask: mask.mask_sha256,
-          planes: pairSetup,
+          planes:
+            method === "vessel_evidence"
+              ? pairSetup.map(({ sensitivity: _unread, ...plane }) => plane)
+              : pairSetup,
           isocenter,
           method,
         })
@@ -1164,6 +1168,10 @@ export default function ProjectionOverlayStudio({
       // A two-plane record also needs the operator's word that both frames
       // show the patient in one position.
       if (!attested) return;
+      // A centerline distance proposal was searched at a stated sensitivity.
+      // Without it there is no record of what was reviewed, so none is made.
+      const sensitivities = pair.searched.map((plane) => plane.sensitivity);
+      if (sensitivities.some((value) => value === undefined)) return;
       inputs = {
         confirmed: true,
         same_position_attested: true,
@@ -1183,7 +1191,7 @@ export default function ProjectionOverlayStudio({
           fit_detector_scale: pair.searched[k].fit_detector_scale,
           detector_scale: pairProposal.planes[k].detector_scale,
           polarity: pair.searched[k].polarity,
-          sensitivity: pair.searched[k].sensitivity ?? 0,
+          sensitivity: sensitivities[k],
           reported_score: pairProposal.planes[k].score,
           reported_start_score: pairProposal.planes[k].start_score,
         })) as BiplaneRegistrationInputs["planes"],
