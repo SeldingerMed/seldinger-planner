@@ -434,20 +434,26 @@ test("requires explicit saved-state reload after a revision conflict before anot
     "Draft must be explicitly discarded",
   );
   fireEvent.click(reload);
-  await waitFor(() =>
+  // The reload shows the saved values before it has finished: the worksheet
+  // stays locked until the linked source has been read again. An operator
+  // cannot type or save before then, and neither does this test.
+  await waitFor(() => {
     expect(screen.getByLabelText("Aneurysm label")).toHaveValue(
       "Server revision",
-    ),
-  );
+    );
+    expect(screen.getByLabelText("Aneurysm label")).toBeEnabled();
+    expect(
+      screen.getByLabelText("Public or synthetic data only"),
+    ).not.toBeChecked();
+  });
   expect(screen.getByLabelText("Case planning notes")).toHaveValue(
     "Latest persisted note",
   );
-  expect(
-    screen.getByLabelText("Public or synthetic data only"),
-  ).not.toBeChecked();
   fireEvent.change(screen.getByLabelText("Aneurysm label"), {
     target: { value: "Reviewed latest" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Save aneurysm plan" }));
+  const save = screen.getByRole("button", { name: "Save aneurysm plan" });
+  await waitFor(() => expect(save).toBeEnabled());
+  fireEvent.click(save);
   await waitFor(() => expect(versions).toEqual(["1", "2"]));
 });
