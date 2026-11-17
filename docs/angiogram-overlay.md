@@ -1,4 +1,4 @@
-# Angiogram overlay and 2D-to-3D registration proposal (fusion Steps C1 to C3)
+# Angiogram overlay and 2D-to-3D registration proposal (fusion Steps C1 to C4)
 
 Step C1 lays the accepted 3D vessel mask of a case over one acquired angiographic frame. Step C2 adds a proposal that fits one pose to a frame from each plane of a pair, described under [Two planes](#two-planes). Step C1 adds four things:
 
@@ -9,7 +9,7 @@ Step C1 lays the accepted 3D vessel mask of a case over one acquired angiographi
 
 Everything here is retrospective. No live video is read. A proposal is not a validated registration and no accuracy is claimed for it. The angle convention is the one Step A declares (`dicom_xa_patient_longitude_latitude_ras_v1`), which has not been verified against a vendor system, a detector rotation or an image flip.
 
-Step C2 added joint refinement across two planes and an evaluation against public data with a known pose. Step C3 added the vessel-presence report and a section of the brief, described under [Vessel-presence report](#vessel-presence-report).
+Step C2 added joint refinement across two planes and an evaluation against public data with a known pose. Step C3 added the vessel-presence report and a section of the brief, described under [Vessel-presence report](#vessel-presence-report). Step C4, part 1, added a second pair of proposal methods that read the frame with no threshold, described under [Vessel evidence](#vessel-evidence). The centerline distance methods of Steps C1 and C2 are unchanged and remain the default.
 
 ## Frame admission
 
@@ -129,6 +129,22 @@ The studio reports the mean capped distance from projected 3D points to 2D crest
 
 **What was measured.** On a synthetic phantom, from about 10 mm and 10 degrees off, the two-plane proposal comes back within 1 mm and 1 degree in three dimensions. On ten public clinical subjects with a reference pose it was better than either single plane at the median, its worst runs were worse, and it was more than 1 mm from the reference in about three runs out of four. Started at the reference pose it moved away, and its score did not mark the reference as a good pose. Fitting the detector size did not work on that data. The protocol and the aggregate numbers are in [docs/research](research/ljubljana-known-pose-results.md). A two-plane proposal is therefore a starting point for an operator to correct, and its score is not a sign that it is right.
 
+## Vessel evidence
+
+`web/src/evidenceRegistration.ts`, method IDs `vessel_evidence_compass_v1` for one plane and `vessel_evidence_compass_biplane_v1` for two. The operator chooses between these and the centerline distance methods in the studio. A saved record of one kind is never read as the other.
+
+- **Why.** On the public subjects with a reference pose, the centerline distance score was poor at the reference pose itself. The extracted 2D lines were mostly correct but covered a median 20% of the projected 3D points, and the cost let the unmatched points decide the pose. The diagnostics are in [docs/research](research/ljubljana-reference-diagnostics-results.md).
+- **2D side.** `vesselEvidence2d.ts` runs the ridge filter on a copy of the frame no longer than 768 pixels per side and keeps the response with no threshold. It is compressed between the frame's own 75th and 99.5th percentile, so a faint small vessel counts for a useful share of what a large one counts for, and blurred to five widths. There is no sensitivity setting and no extracted line set. It is a matching target, not a vessel segmentation, and it is high on any line-like structure: a catheter, a tube or a bone edge included.
+- **Score.** For each plane, the mean evidence under the projected 3D points, from 0 to 1. A point outside the frame counts as zero. A 3D point with no vessel under it costs the same wherever it lands. A bounded term adds the share of strong evidence with no projected point near it.
+- **Search.** A scan over shifts, then a compass search through the five blur widths from widest to narrowest, 60 mm along and 15 degrees about each camera axis of the first plane, within 120,000 evaluations for the whole proposal. One implementation serves one plane and two. With one plane, depth and out-of-plane turns keep a weak pull toward the starting pose, as in the centerline distance method.
+- **Field size.** A requested fit of the field size is searched beside the entered size and kept only when it lowers the cost by at least 0.02. The record states what became of it: `not_requested`, `kept` or `dropped`. `kept` means the fitted search's result was kept. It does not by itself say that the size moved; each plane's detector scale says that. A dropped fit leaves every plane at its entered size.
+
+**What the numbers mean.** The studio reports, per plane, the mean vessel evidence under the projected points at the result and at the starting pose, the share of points inside the frame, and the share of strong line-like structure with no projected point near it. None of these is a registration accuracy, and the studio says so beside them. A wrong pose can score as well as a right one.
+
+**What was measured.** On the synthetic phantoms the methods meet the gates of the centerline distance methods and a gate with part of the 3D tree absent from the frames. On the ten public subjects with a reference pose, under a protocol committed before the run, the two-plane method ended under 1 mm from the reference in 18 of 25 runs on the five subjects held back from development and in 25 of 25 on the five used for development, against 5 and 7 of 25 for the centerline distance method. One held-back subject failed in every arm, including when started on the reference pose. With a wrong entered field size and the fit on, 10 of 25 held-back runs ended under 1 mm. That is a completed run of a small, fixed protocol on data that is not unseen, and not a validation study. The protocol and aggregates are in [docs/research](research/ljubljana-evidence-results.md).
+
+On five public clinical cases with selective injections, read once by eye, the vessel evidence proposals did not visibly lie on the filled arteries in any case, and in three of the five the centerline distance proposal of the same frames read closer. In one of them part of the projected tree settled on a tube that is not a vessel. The record is in [docs/verification](verification/step-c4-vessel-evidence.md). The method has no way to know which 3D vessels an injection filled. A vessel evidence proposal is a starting point for an operator to correct, and its score is not a sign that it is right.
+
 ## The studio
 
 **Angiogram overlay** appears for a case with a verified millimeter source.
@@ -136,7 +152,7 @@ The studio reports the mean capped distance from projected 3D points to 2D crest
 1. Enter the frame bundle identifier and open it. Each frame is fetched, checked against its manifest SHA-256 in the browser, and only then drawn.
 2. Use the admitted DICOM geometry, or enter angles, distances and field width. Entered values are labelled assumed.
 3. Choose the isocenter: the centroid of the vessel mask, or the viewer crosshair.
-4. Set vessel polarity and sensitivity, and select **Propose overlay**. The projected mask is drawn in cyan and the extracted 2D lines in amber. **Larger view** enlarges the figure, and the projected vessels can be hidden to see the frame beneath.
+4. Choose the method. **Centerline distance** is the default. Set vessel polarity, and for centerline distance the sensitivity, and select **Propose overlay**. The projected mask is drawn in cyan. For centerline distance the extracted 2D lines are drawn in amber; **Vessel evidence** extracts none and has no sensitivity. **Larger view** enlarges the figure, and the projected vessels can be hidden to see the frame beneath.
 5. Tick the review box and select **Save confirmed proposal**, or discard.
 
 For a bundle with two planes:
@@ -146,13 +162,15 @@ For a bundle with two planes:
 3. Select **Propose two-plane overlay**. Both frames are drawn side by side with the one pose projected over each.
 4. Tick the review box and the box stating that both frames show the patient in the same position, then save. Both ticks belong to the proposal on screen and do not carry over to another.
 
-A proposal belongs to the exact frame or pair of frames, mask, geometry, isocenter and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A bundle's manifest request is released before the first-frame fetch starts, giving the frame its own full deadline. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
+A proposal belongs to the exact frame or pair of frames, mask, geometry, isocenter, method and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A bundle's manifest request is released before the first-frame fetch starts, giving the frame its own full deadline. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
 
 ## The saved record
 
 One record per case is current, single-plane or two-plane. A single-plane record (`step-c1-projection-registration-v1`) binds the matrix to the case revision, the source revision, the accepted vessel mask (candidate ID and SHA-256) and the frame (bundle ID, manifest revision, plane, index and SHA-256). It stores `validated: false`, the status `operator_confirmed_proposal`, the geometry source (`frame_manifest` or `operator_entered`), and the browser-reported scores labelled `browser_reported_not_recomputed`. The server derives the rotation and the isocenter shift from the matrix itself.
 
 A two-plane record (`step-c2-biplane-registration-v2`) binds one matrix and one isocenter to plane A's frame and plane B's frame of one bundle, in that order. Each plane carries its own view, geometry source, detector scale, filter settings and browser-reported scores. The record stores `same_position_attested: true`, and the server's summary reads `same_position: operator_attested_not_checked` and gives the angle between the central rays, which it derives from the two views. A record's version must be the one its method belongs to. Single-plane records written before Step C2 read unchanged.
+
+A record made by vessel evidence has its own version: `step-c4-evidence-registration-v3` for one plane and `step-c4-evidence-biplane-registration-v4` for two. It carries no sensitivity. Its scores are the mean vessel evidence, the share of points inside the frame and the share of strong evidence left uncovered, and the server's summary names them `mean_vessel_evidence_under_projected_points`. It stores `detector_fit`, and the server and the browser both refuse a record whose fit outcome contradicts what was requested or whose dropped fit changed a size. A two-plane record needs the same attestation. Records of versions 1 and 2 validate, summarize and read back as before. When a saved record is shown, the studio sets the method choice to the record's method and redraws the stored pose with nothing searched or rescored.
 
 Records are append-only. A later case revision makes the record stale, and a stale record is not shown or reused. On every read the server checks that every frame the record names and the mask are still installed with the recorded hashes and reports `verified` or `unavailable`. The studio redraws a saved overlay only after repeating those checks itself.
 
@@ -190,7 +208,7 @@ The method is `segment_centerline_support_v1`. The limits are fixed in the code 
 
 ### In the studio
 
-1. Save a proposal, single-plane or two-plane.
+1. Save a proposal by centerline distance, single-plane or two-plane. A report reads the 2D line set that proposal was matched to, at the sensitivity its record states. A proposal by vessel evidence has neither, so the server refuses a report bound to one and the studio says why in place of the action.
 2. Select **Compute vessel presence**. Each plane's own saved frame, view, polarity and sensitivity are used. The frame is drawn with the segment axes colored by class: green for 2D support, red for none, yellow for indeterminate, and magenta for the unmatched 2D pieces. A table gives counts and lengths by class per plane, and another lists every segment.
 3. Tick the review box and select **Save confirmed report**.
 
@@ -219,4 +237,7 @@ The local brief gains the section **Angiogram registration and vessel presence**
 - TAIR-style screen captures have no DICOM geometry. Their angles come from burned-in text and their pixel aspect is not declared.
 - The vessel-presence report reads a wrong proposal as missing vessels and unmatched 2D lines. On the five public clinical cases reviewed, that is what it showed. It is not evidence of occlusion, stenosis or absence.
 - A vessel seen end-on, or lying over another vessel in the frame, is left indeterminate whatever the frame shows.
+- The vessel evidence methods score line-like structure, not vessels. On five public clinical cases with selective injections their proposals did not visibly lie on the filled arteries. Their scores there, 0.11 to 0.25, lie on both sides of the median score of the two-plane runs on the held-back public subjects with a reference pose, 0.19, most of which ended within 1 mm. The score does not tell a right pose from a wrong one.
+- The fit of the field size is not solved by either pair of methods. With vessel evidence it was dropped in all five clinical cases reviewed, and on the held-back public subjects with a reference pose 10 of 25 two-plane runs ended under 1 mm when the entered size was wrong.
+- A proposal by vessel evidence carries no vessel-presence report.
 - Not for live guidance, diagnosis or treatment decisions.

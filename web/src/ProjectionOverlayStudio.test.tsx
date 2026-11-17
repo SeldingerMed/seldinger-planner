@@ -2407,3 +2407,109 @@ test("changing the method drops a proposal made by the other one", async () => {
   expect(status("Overlay status").textContent).toBe("");
   expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
 }, 90000);
+
+test("saves a kept fit of the field size as the size the search found", async () => {
+  let saved: any = null;
+  server({
+    put: (body) => {
+      saved = body;
+      return json(currentAnswer(body.inputs));
+    },
+  });
+  render(<Harness />);
+  await openFrames();
+  // The frame was rendered at 180 mm. The fit stays on.
+  type("Source to isocenter (mm)", "800");
+  type("Field width at the detector (mm)", "205");
+  chooseMethod("vessel_evidence");
+  click("Propose overlay");
+  await proposed();
+  expect(status("Overlay status").textContent).toMatch(
+    /0 to 1 \(starting pose 0\.\d\d\), \d+% of points inside the frame, \d+% of the strong line-like structure in the frame with no projected point near it, field size fitted at 0\.(8[5-9]|9[0-3]) times the entered width\. A fit of the field size was kept\. Vessel evidence is high/,
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed the overlay/ }),
+  );
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed proposal by vessel evidence, revision 1, .* installed and unchanged\. A fit of the field size was kept\.$/,
+  );
+  const { inputs } = saved;
+  expect(inputs).toMatchObject({
+    fit_detector_scale: true,
+    detector_fit: "kept",
+    geometry_source: "operator_entered",
+  });
+  // The record holds the fitted size, and the scale that leads back to the
+  // entered one.
+  expect(inputs.detector_scale).toBeGreaterThan(0.85);
+  expect(inputs.detector_scale).toBeLessThan(0.93);
+  expect(inputs.view.detector_width_mm).toBeCloseTo(
+    205 * inputs.detector_scale,
+    6,
+  );
+  expect(Math.abs(inputs.view.detector_width_mm - 180)).toBeLessThan(5);
+  expect(inputs.view.detector_height_mm).toBeCloseTo(
+    inputs.view.detector_width_mm,
+    6,
+  );
+}, 90000);
+
+test("a two-plane fit is recorded plane by plane", async () => {
+  let saved: any = null;
+  server({
+    ...pairRoutes,
+    put: (body) => {
+      saved = body;
+      return json(currentPairAnswer(body.inputs));
+    },
+  });
+  render(<Harness />);
+  await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+  type("Frame bundle identifier", "phantom-run");
+  click("Open admitted frames");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  // Plane A at its true size with no fit. Plane B entered too wide, fitted.
+  enterGeometry();
+  choosePlane("b");
+  await screen.findByRole("img", { name: "Admitted frame 12, plane b" });
+  type("Source to isocenter (mm)", "800");
+  type("Field width at the detector (mm)", "205");
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+  );
+  chooseMethod("vessel_evidence");
+  await proposePair();
+  // Only the fitted plane names a fitted size.
+  expect(status("Overlay status").textContent).toMatch(
+    /Plane A: [^:]* no projected point near it\. Plane B: [^:]* no projected point near it, field size fitted at 0\.(8[5-9]|9[0-3]) times the entered width\. A fit of the field size was kept\. Vessel evidence is high/,
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", { name: /I reviewed both overlays/ }),
+  );
+  fireEvent.click(
+    screen.getByRole("checkbox", {
+      name: /Both frames show the patient in the same position/,
+    }),
+  );
+  click("Save confirmed proposal");
+  await screen.findByText(
+    /Saved operator-confirmed two-plane proposal by vessel evidence, revision 1, .* A fit of the field size was kept\.$/,
+  );
+  const [a, b] = saved.inputs.planes;
+  expect(saved.inputs.detector_fit).toBe("kept");
+  expect(a).toMatchObject({
+    fit_detector_scale: false,
+    detector_scale: 1,
+    view: VIEW,
+  });
+  expect(b.fit_detector_scale).toBe(true);
+  expect(b.detector_scale).toBeGreaterThan(0.85);
+  expect(b.detector_scale).toBeLessThan(0.93);
+  expect(b.view.detector_width_mm).toBeCloseTo(205 * b.detector_scale, 6);
+  expect(b.view).toMatchObject({
+    primary_deg: VIEW_B.primary_deg,
+    secondary_deg: VIEW_B.secondary_deg,
+    source_isocenter_mm: 800,
+  });
+}, 90000);
