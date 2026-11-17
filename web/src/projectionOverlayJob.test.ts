@@ -274,6 +274,55 @@ describe("overlay jobs by vessel evidence", () => {
       expect(found.planes[0].detector_scale).toBe(1);
   }, 60000);
 
+  it("reads bright vessels when the frame is declared bright", () => {
+    // The same frames with the gray scale reversed.
+    const reversed = (frame: Uint8Array) => frame.map((value) => 255 - value);
+    const one = createOverlayJob({
+      ...evidence,
+      frame: { ...evidence.frame, gray: reversed(gray) },
+      search: { ...evidence.search, polarity: "bright" },
+    });
+    expect(one.advance(() => false)).toBe(true);
+    const found = one.result().evidence!,
+      got = projectRegistered(
+        found.planes[0].view,
+        one.result().isocenter,
+        found.matrix,
+        medial.points,
+        size,
+      ),
+      want = projectRegistered(VIEW, pivot, truth, medial.points, size);
+    let sum = 0;
+    for (let k = 0; k < got.length; k += 2)
+      sum += Math.hypot(got[k] - want[k], got[k + 1] - want[k + 1]);
+    expect(
+      (sum / (got.length / 2)) * (((180 / SIDE) * 800) / 1200),
+    ).toBeLessThan(1);
+    expect(found.planes[0].score.mean_evidence).toBeGreaterThan(0.4);
+    const two = createBiplaneOverlayJob({
+      ...pair,
+      method: "vessel_evidence",
+      planes: [
+        {
+          ...pair.planes[0],
+          polarity: "bright",
+          frame: { ...pair.planes[0].frame, gray: reversed(pairGray[0]) },
+        },
+        {
+          ...pair.planes[1],
+          polarity: "bright",
+          frame: { ...pair.planes[1].frame, gray: reversed(pairGray[1]) },
+        },
+      ],
+    });
+    expect(two.advance(() => false)).toBe(true);
+    const both = two.result().evidence!;
+    expect(pointError(both.matrix, pairTruth)).toBeLessThan(1);
+    both.planes.forEach((plane) =>
+      expect(plane.score.mean_evidence).toBeGreaterThan(0.4),
+    );
+  }, 60000);
+
   it("only redraws when no search is asked for, whatever the method", () => {
     const job = createBiplaneOverlayJob({
       ...pair,

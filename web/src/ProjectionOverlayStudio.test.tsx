@@ -2386,6 +2386,34 @@ test("a saved centerline distance record sets the method back", async () => {
   );
 }, 60000);
 
+test("changing the method drops a one-plane proposal made by the other one", async () => {
+  const api = server();
+  render(<Harness />);
+  await openFrames();
+  enterGeometry();
+  click("Propose overlay");
+  await proposed();
+  expect(status("Overlay status").textContent).not.toMatch(/vessel evidence/);
+  chooseMethod("vessel_evidence");
+  expect(status("Overlay status").textContent).toBe("");
+  expect(
+    screen.queryByRole("button", { name: "Save confirmed proposal" }),
+  ).toBeNull();
+  // Going back does not bring it back, and the same holds the other way.
+  chooseMethod("centerline_distance");
+  expect(status("Overlay status").textContent).toBe("");
+  chooseMethod("vessel_evidence");
+  click("Propose overlay");
+  await proposed();
+  expect(status("Overlay status").textContent).toMatch(/by vessel evidence/);
+  chooseMethod("centerline_distance");
+  expect(status("Overlay status").textContent).toBe("");
+  expect(
+    screen.queryByRole("button", { name: "Save confirmed proposal" }),
+  ).toBeNull();
+  expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+}, 90000);
+
 test("changing the method drops a proposal made by the other one", async () => {
   const api = server({ ...pairRoutes });
   render(<Harness />);
@@ -2498,6 +2526,11 @@ test("a two-plane fit is recorded plane by plane", async () => {
   );
   const [a, b] = saved.inputs.planes;
   expect(saved.inputs.detector_fit).toBe("kept");
+  // Each plane's result and starting scores, in that order.
+  for (const plane of [a, b])
+    expect(plane.reported_score.mean_evidence).toBeGreaterThan(
+      plane.reported_start_score.mean_evidence + 0.2,
+    );
   expect(a).toMatchObject({
     fit_detector_scale: false,
     detector_scale: 1,

@@ -100,6 +100,10 @@ describe("vessel evidence records", () => {
     ["a sensitivity", single({ sensitivity: 0.5 })],
     ["no fit outcome", changed(single(), (c) => delete c.inputs.detector_fit)],
     ["an unknown fit outcome", single({ detector_fit: "guessed" })],
+    [
+      "an unknown fit outcome on a requested fit",
+      single({ fit_detector_scale: true, detector_fit: "guessed" }),
+    ],
     ["a kept fit that was not requested", single({ detector_fit: "kept" })],
     [
       "a dropped fit that was not requested",
