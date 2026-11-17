@@ -330,8 +330,12 @@ test("computes, shows and saves exactly the report the operator reviewed", async
   fireEvent.click(button("Compute vessel presence"));
   await computedReport();
   expect(computing).toHaveBeenCalledWith(true);
-  expect(computing).toHaveBeenLastCalledWith(false);
-  expect(requests).toHaveBeenLastCalledWith(false);
+  // The panel reports the end of a computation after the report is on
+  // screen, not in the same step.
+  await waitFor(() => {
+    expect(computing).toHaveBeenLastCalledWith(false);
+    expect(requests).toHaveBeenLastCalledWith(false);
+  });
   const total = expectedSingle.segments
     .reduce((sum, segment) => sum + segment.length_mm, 0)
     .toFixed(1);
@@ -397,7 +401,7 @@ test("computes, shows and saves exactly the report the operator reviewed", async
   expect(screen.queryByRole("checkbox", { name: /I reviewed/ })).toBeNull();
   // The saved report is the one on screen: nothing was fetched again.
   expect(api.keys().filter((key) => key.includes("planes/"))).toHaveLength(1);
-  expect(requests).toHaveBeenLastCalledWith(false);
+  await waitFor(() => expect(requests).toHaveBeenLastCalledWith(false));
 }, 60000);
 
 test("fits each plane's frame, view and settings to its own result", async () => {
@@ -962,7 +966,7 @@ test("a request that does not answer is given up after its deadline", async () =
   expect((await screen.findByRole("alert")).textContent).toMatch(
     /could not be loaded/,
   );
-  expect(requests).toHaveBeenLastCalledWith(false);
+  await waitFor(() => expect(requests).toHaveBeenLastCalledWith(false));
 });
 
 // The deadline is for requests. Reading a large mask in a background tab can
