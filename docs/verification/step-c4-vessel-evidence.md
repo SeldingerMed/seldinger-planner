@@ -27,7 +27,7 @@ Not changed in this pull request: `web/src/evidenceRegistration.ts` and `web/src
 | A record of one kind is never accepted as the other, on either side | The rejection tables in the same two files: a sensitivity on an evidence record, an evidence method under an older version, a centerline distance score under an evidence method, an accuracy field in the score |
 | The fit outcome cannot contradict the request, and a dropped fit cannot change a size | Same two files, both sides |
 | The server and the browser agree on the record | `test_the_studio_s_own_vessel_evidence_records_are_accepted_as_sent` and `web/src/evidenceRecords.test.ts` read the same fixture |
-| The studio offers the method, shows no sensitivity for it, asks for the same attestation for two planes, and drops an unsaved proposal when the method changes | `web/src/ProjectionOverlayStudio.test.tsx`, nine tests named for vessel evidence, the method choice or a fit |
+| The studio offers the method, shows no sensitivity for it, asks for the same attestation for two planes, and drops an unsaved proposal when the method changes | `web/src/ProjectionOverlayStudio.test.tsx`, ten tests named for vessel evidence, the method choice or a fit |
 | A kept fit is stored as the size the search found, per plane | "saves a kept fit of the field size as the size the search found" and "a two-plane fit is recorded plane by plane" |
 | A saved record is redrawn as stored, with nothing searched or rescored | "redraws a saved vessel evidence record without searching, and says what became of a fit", and the reload of five real cases below |
 | A vessel evidence record carries no vessel presence report | `test_a_vessel_evidence_registration_carries_no_report`, the panel tests, and the five real cases below |
@@ -137,7 +137,7 @@ Nothing. No fault was found, so no case was run again.
 
 ## Final local checks
 
-On the head of this pull request: backend 1408 passed and 127 skipped, Python lint and format checks clean; frontend 1218 passed in 99 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). Every TypeScript file this pull request changes passes Prettier. Against the Step C3 baseline that is 45 more backend tests and 122 more frontend tests over the two pull requests of part 1. The native ingestion and physics suites were not run again here; nothing they cover is changed, and CI runs them.
+On the head of this pull request: backend 1408 passed and 127 skipped, Python lint and format checks clean; frontend 1219 passed in 99 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). Every TypeScript file this pull request changes passes Prettier. Against the Step C3 baseline that is 45 more backend tests and 123 more frontend tests over the two pull requests of part 1. The native ingestion and physics suites were not run again here; nothing they cover is changed, and CI runs them.
 
 Three existing tests were found to depend on timing and were corrected, each after reproducing the failure:
 
@@ -153,6 +153,8 @@ One independent Hermes reviewer read the whole change against eight stated requi
 It raised one finding: that the panel's sentence "The saved proposal was made by vessel evidence" would also show for a proposal that is stale or absent. That is not so. The panel renders nothing unless the saved proposal is current, the sentence sits below that return, and "nothing is offered for a registration that is not current" holds it. Nothing was changed.
 
 The reviewer was told not to review the two method files, which were reviewed before the protocol run.
+
+The repository's automated review raised two points of wording, both in the studio and neither in a method. The words for a saved record said only that a fit was kept; they now name each field the fit moved, or say that none did, as the words for an unsaved proposal already did. The sentence for an unsaved one-plane proposal lacked a verb. Its further suggestion, to name the vessel polarity in that sentence, was not taken: the polarity is on the control beside it, and the sentence for the centerline distance method does not name it either. The five clinical cases were read before this change, and it does not alter what was shown for them: all five were two-plane proposals whose fit was dropped.
 
 ## Limits
 

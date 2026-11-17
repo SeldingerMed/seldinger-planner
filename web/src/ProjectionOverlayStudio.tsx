@@ -239,7 +239,7 @@ function savedSummary(
 ): string {
   const moved = `turned ${result.rotation_deg.toFixed(1)}° and moved the isocenter ${result.isocenter_shift_mm.toFixed(1)} mm from the volume's own position`,
     by = isEvidence(inputs) ? " by vessel evidence" : "",
-    fitted = isEvidence(inputs) ? fitWords(inputs.detector_fit) : "";
+    fitted = isEvidence(inputs) ? savedFitWords(inputs) : "";
   if (isBiplane(inputs))
     return `Saved operator-confirmed two-plane proposal${by}, revision ${revision}, not a validated registration: ${inputs.planes
       .map(
@@ -252,20 +252,39 @@ function savedSummary(
   return `Saved operator-confirmed proposal${by}, revision ${revision}, not a validated registration: frame ${inputs.frame_index} of plane ${inputs.plane} in ${inputs.frame_source_id}, ${geometryWords(inputs.geometry_source)}, ${moved}. Its frame and vessel mask are ${evidence === "verified" ? "installed and unchanged" : "no longer available unchanged"}.${fitted}`;
 }
 
+/** What became of a requested fit in a saved vessel evidence record. A fit
+ * can be kept for the pose it found with every size where it was, so a kept
+ * fit names each field that moved, or says that none did. */
+function savedFitWords(
+  inputs: EvidenceRegistrationInputs | EvidenceBiplaneRegistrationInputs,
+): string {
+  if (inputs.detector_fit !== "kept") return fitWords(inputs.detector_fit);
+  const pair = isBiplane(inputs),
+    moved = (pair ? inputs.planes : [inputs])
+      .filter((plane) => plane.detector_scale !== 1)
+      .map(
+        (plane) =>
+          `${pair ? `plane ${plane.plane}'s` : "the"} field at ${plane.detector_scale.toFixed(2)} times the entered width`,
+      );
+  return moved.length
+    ? ` A fit of the field size was kept: ${moved.join(" and ")}.`
+    : ` A fit of the field size was kept, with ${pair ? "both fields at their entered sizes" : "the field at its entered size"}.`;
+}
+
 /** An unsaved vessel evidence proposal in words. Its score is not an
  * accuracy, and the sentence says so. */
 function evidenceWords(found: EvidenceRegistrationProposal): string {
   const moved = `moved the vessel points ${found.translation_mm.toFixed(1)} mm and ${found.rotation_deg.toFixed(1)}° from the starting pose`,
-    plane = (k: number) => {
+    plane = (k: number, is = "") => {
       const one = found.planes[k];
-      return `mean vessel evidence under the projected 3D vessel points ${one.score.mean_evidence.toFixed(2)} on a scale from 0 to 1 (starting pose ${one.start_score.mean_evidence.toFixed(2)}), ${percent(one.score.in_field_fraction)} of points inside the frame, ${percent(one.score.uncovered_fraction)} of the strong line-like structure in the frame with no projected point near it${found.detector_fit === "kept" && one.detector_scale !== 1 ? `, field size fitted at ${one.detector_scale.toFixed(2)} times the entered width` : ""}`;
+      return `mean vessel evidence under the projected 3D vessel points ${is}${one.score.mean_evidence.toFixed(2)} on a scale from 0 to 1 (starting pose ${one.start_score.mean_evidence.toFixed(2)}), ${percent(one.score.in_field_fraction)} of points inside the frame, ${percent(one.score.uncovered_fraction)} of the strong line-like structure in the frame with no projected point near it${found.detector_fit === "kept" && one.detector_scale !== 1 ? `, field size fitted at ${one.detector_scale.toFixed(2)} times the entered width` : ""}`;
     },
     fitted = fitWords(found.detector_fit),
     caution =
       "Vessel evidence is high on any line-like structure, a catheter or a bone edge included. It is not a registration accuracy, and a wrong pose can score as well as a right one.";
   if (found.planes.length === 2)
     return `Unsaved two-plane proposal by vessel evidence: ${moved}, with central rays ${(found.plane_angle_deg ?? 0).toFixed(0)}° apart. Plane A: ${plane(0)}. Plane B: ${plane(1)}.${fitted} ${caution} Review both overlays before confirming.`;
-  return `Unsaved proposal by vessel evidence: ${moved}. Its ${plane(0)}.${fitted} ${caution} Review the overlay before confirming.`;
+  return `Unsaved proposal by vessel evidence: ${moved}. Its ${plane(0, "is ")}.${fitted} ${caution} Review the overlay before confirming.`;
 }
 
 /** One verified frame with, optionally, the lines extracted from it and the

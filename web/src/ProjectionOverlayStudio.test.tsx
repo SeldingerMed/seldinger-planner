@@ -2142,7 +2142,7 @@ test("proposes by vessel evidence and saves a record with its own score and no s
   const text = status("Overlay status").textContent!;
   expect(text).toMatch(/^Unsaved proposal by vessel evidence: /);
   expect(text).toMatch(
-    /mean vessel evidence under the projected 3D vessel points 0\.\d\d on a scale from 0 to 1/,
+    /from the starting pose\. Its mean vessel evidence under the projected 3D vessel points is 0\.\d\d on a scale from 0 to 1/,
   );
   expect(text).toMatch(
     /a catheter or a bone edge included\. It is not a registration accuracy, and a wrong pose can score as well as a right one/,
@@ -2320,6 +2320,43 @@ test("redraws a saved vessel evidence record without searching, and says what be
   run.mockRestore();
 }, 60000);
 
+test("a saved record says which plane's size a kept fit moved, or that none did", async () => {
+  // A fit can be kept for the pose it found with every size where it was.
+  const words = async (
+    inputs: any,
+    answer: (inputs: any) => unknown = currentAnswer,
+  ) => {
+    server({ ...pairRoutes, registration: () => json(answer(inputs)) });
+    const view = render(<Harness />);
+    const text = (
+      await screen.findByRole("status", { name: "Saved overlay proposal" })
+    ).textContent;
+    view.unmount();
+    return text;
+  };
+  expect(
+    await words(
+      savedEvidenceInputs({ fit_detector_scale: true, detector_fit: "kept" }),
+    ),
+  ).toMatch(
+    /installed and unchanged\. A fit of the field size was kept, with the field at its entered size\.$/,
+  );
+  const pair = savedEvidencePairInputs({ detector_fit: "kept" });
+  pair.planes = pair.planes.map((plane: any) => ({
+    ...plane,
+    geometry_source: "operator_entered",
+    fit_detector_scale: true,
+  }));
+  expect(await words(pair, currentPairAnswer)).toMatch(
+    /installed and unchanged\. A fit of the field size was kept, with both fields at their entered sizes\.$/,
+  );
+  pair.planes[0] = { ...pair.planes[0], detector_scale: 1.04 };
+  pair.planes[1] = { ...pair.planes[1], detector_scale: 0.9 };
+  expect(await words(pair, currentPairAnswer)).toMatch(
+    /A fit of the field size was kept: plane a's field at 1\.04 times the entered width and plane b's field at 0\.90 times the entered width\.$/,
+  );
+});
+
 test("a saved two-plane vessel evidence record is redrawn on both frames", async () => {
   server({
     ...pairRoutes,
@@ -2460,7 +2497,7 @@ test("saves a kept fit of the field size as the size the search found", async ()
   );
   click("Save confirmed proposal");
   await screen.findByText(
-    /Saved operator-confirmed proposal by vessel evidence, revision 1, .* installed and unchanged\. A fit of the field size was kept\.$/,
+    /Saved operator-confirmed proposal by vessel evidence, revision 1, .* installed and unchanged\. A fit of the field size was kept: the field at 0\.(8[5-9]|9[0-3]) times the entered width\.$/,
   );
   const { inputs } = saved;
   expect(inputs).toMatchObject({
@@ -2522,7 +2559,7 @@ test("a two-plane fit is recorded plane by plane", async () => {
   );
   click("Save confirmed proposal");
   await screen.findByText(
-    /Saved operator-confirmed two-plane proposal by vessel evidence, revision 1, .* A fit of the field size was kept\.$/,
+    /Saved operator-confirmed two-plane proposal by vessel evidence, revision 1, .* A fit of the field size was kept: plane b's field at 0\.(8[5-9]|9[0-3]) times the entered width\.$/,
   );
   const [a, b] = saved.inputs.planes;
   expect(saved.inputs.detector_fit).toBe("kept");
