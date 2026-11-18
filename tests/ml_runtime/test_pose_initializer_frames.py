@@ -92,6 +92,15 @@ def test_lengths_follow_the_voxel_size():
     assert model["along"][0][own].max() < 0.5 * 60 + 25
 
 
+def test_a_mask_of_small_fragments_only_is_refused():
+    crumbs = np.zeros((64, 64, 64), dtype=np.uint8)
+    for corner in np.ndindex(16, 16, 16):
+        x, y, z = (4 * index for index in corner)
+        crumbs[x : x + 2, y : y + 2, z : z + 2] = 1
+    with pytest.raises(vessels.VesselError, match="large enough to have an inlet"):
+        vessels.vessel_model(crumbs, AFFINE)
+
+
 @pytest.mark.parametrize(
     ("mask", "affine", "message"),
     [

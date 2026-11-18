@@ -356,6 +356,15 @@ def test_a_right_answer_measures_as_zero_and_a_wrong_one_as_its_miss():
     assert (off["best_deg"] <= off["first_deg"] + 1e-9).all()
 
 
+def test_a_turn_is_measured_the_short_way_round():
+    asked = np.array(TRUE[:1], dtype=np.float64)
+    asked[0, 2] = 179
+    truth = asked.copy()
+    truth[0, 2] = -179
+    found = measure.measure(*answers_for(asked), truth)
+    assert np.allclose(found["best_turn_error_deg"], 2, atol=1e-3)
+
+
 def test_the_best_proposal_can_be_a_later_one():
     scores, offsets, turns = answers_for(TRUE[:1], miss=(60.0, 0.0))
     weight, offset, _ = views.targets(*TRUE[0])

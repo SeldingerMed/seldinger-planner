@@ -374,7 +374,11 @@ export function toGrid(
   return out;
 }
 
-/** The network's input for one frame's vessel evidence. */
+/** The network's input for one frame's vessel evidence. The grid values go
+ * in as they are. Training frames were stored rounded to 8 bits, so the
+ * two differ by at most half a step of 1/255 per cell; on the ten Ljubljana
+ * development frames that moved no first proposal by more than 0.03
+ * degrees. Left unrounded because the Ljubljana protocol run read it so. */
 export function networkInput(
   network: ViewNetwork,
   evidence: VesselEvidence,

@@ -120,6 +120,13 @@ def test_frames_that_are_not_complete_are_not_trained_on(tmp_path, anywhere):
         train.train(tmp_path / "frames", tmp_path / "run", OPTIONS)
 
 
+def test_fewer_frames_than_one_batch_are_refused_by_name(tmp_path, anywhere):
+    frames_folder(tmp_path / "frames", "training", 4, seed=1)
+    frames_folder(tmp_path / "frames", "validation", 4, seed=2)
+    with pytest.raises(ValueError, match="4 training frames give no full batch of 8"):
+        train.train(tmp_path / "frames", tmp_path / "run", OPTIONS)
+
+
 @pytest.fixture
 def stored_network(tmp_path):
     path = tmp_path / "view-network.bin"

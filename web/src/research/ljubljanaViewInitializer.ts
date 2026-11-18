@@ -172,8 +172,9 @@ export type ViewFrameResult = {
   best_deg: number;
   /** Position of the proposal nearest the stored view, from 0. */
   best_rank: number;
-  /** Angle of the studio's default view for this plane from the stored
-   * view; for the lateral plane, from the nearer side. */
+  /** Angle of the studio's default view for this plane (0/0 or 90/0) from
+   * the stored view. No other side is tried, so a lateral frame stored from
+   * the patient's right reads as far away. */
   default_deg: number;
   failure?: string;
 };

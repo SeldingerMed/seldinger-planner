@@ -80,6 +80,8 @@ def train(frames_dir: Path, out: Path, options: dict) -> dict:
     true_views = torch.from_numpy(training["views"])
     model = network.ViewNetwork().to(device)
     steps_per_epoch = len(inputs) // options["batch"]
+    if steps_per_epoch == 0:
+        raise ValueError(f"{len(inputs)} training frames give no full batch of {options['batch']}")
     total_steps = steps_per_epoch * options["epochs"]
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=options["learning_rate"], weight_decay=options["weight_decay"]

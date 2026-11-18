@@ -96,6 +96,8 @@ def vessel_model(mask: np.ndarray, affine: np.ndarray) -> dict:
         inside = piece == large
         seed |= inside & (points[:, 2] <= points[inside, 2].min() + SLAB_MM)
     seeds = np.nonzero(seed)[0]
+    if len(seeds) == 0:
+        raise VesselError("No piece of the mask is large enough to have an inlet")
     groups, group = csgraph.connected_components(graph[seeds][:, seeds], directed=False)
     centers = np.stack([points[seeds[group == g], :2].mean(axis=0) for g in range(groups)])
     # Inlets that lie close together in the axial plane count as one.

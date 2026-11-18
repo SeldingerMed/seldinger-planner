@@ -32,7 +32,8 @@ def measure(scores, offsets, turns, true_views) -> dict[str, np.ndarray]:
         )
         nearest = int(apart.argmin())
         first[index], best[index], rank[index] = apart[0], apart[nearest], nearest
-        turn[index] = abs(found[nearest]["turn_deg"] - true_views[index][2])
+        # A turn is an angle: 179 against -179 is 2 degrees, not 358.
+        turn[index] = abs((found[nearest]["turn_deg"] - true_views[index][2] + 180) % 360 - 180)
     return {"first_deg": first, "best_deg": best, "best_rank": rank, "best_turn_error_deg": turn}
 
 
