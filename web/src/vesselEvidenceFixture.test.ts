@@ -108,7 +108,9 @@ function computed() {
       gray: base64(gray),
       strong_px: evidence.strong.length,
       levels: evidence.levels.map((level) =>
-        base64(new Uint8Array(level.buffer, level.byteOffset, level.byteLength)),
+        base64(
+          new Uint8Array(level.buffer, level.byteOffset, level.byteLength),
+        ),
       ),
     };
   });

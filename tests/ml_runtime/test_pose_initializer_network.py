@@ -31,7 +31,7 @@ else:
 import numpy as np
 
 sys.path.insert(0, str(ROOT / "scripts" / "research"))
-from pose_initializer import network, views
+from pose_initializer import frames, network, views
 
 SMALL = {"widths": (3, 4, 5, 6), "blocks": (1, 2, 2, 2), "grid": 32}
 
@@ -74,14 +74,51 @@ def fixture():
     data = network.export_bytes(model, {"purpose": "forward pass fixture, random weights"})
     return {
         "about": "A narrow view network with random weights, one input and the answer of "
-        "the training framework for it. Float32, little-endian, base64. Written by "
-        "tests/ml_runtime/test_pose_initializer_network.py --write.",
+        "the training framework for it, with the Python side's reading of that answer, "
+        "its grid averages and its turned view frames. Float32, little-endian, base64. "
+        "Written by tests/ml_runtime/test_pose_initializer_network.py --write.",
         "file": base64.b64encode(data).decode(),
         "input": packed(given),
         "scores": packed(scores.numpy()),
         "offsets": packed(offsets.numpy()),
         "turns": packed(turns.numpy()),
+        "proposals": views.proposals(scores[0].numpy(), offsets[0].numpy(), turns[0].numpy()),
+        "grids": grids(),
+        "frames": turned_frames(),
     }
+
+
+def grids():
+    """Levels of several shapes and their averages on a 16 by 16 grid."""
+    rng = np.random.default_rng(31)
+    cases = []
+    for width, height in ((90, 52), (40, 75), (64, 64), (10, 12)):
+        level = rng.random((height, width)).astype(np.float32)
+        cases.append(
+            {
+                "width": width,
+                "height": height,
+                "size": 16,
+                "level": packed(level),
+                "grid": packed(frames.to_grid(level, 16)),
+            }
+        )
+    return cases
+
+
+def turned_frames():
+    cases = []
+    for view in ((0, 0, 0), (35, -20, 10), (-117.5, 41.25, -25), (90, 0, 170), (120, 50, -3)):
+        u, v, d = views.turned_frame(*(float(x) for x in view))
+        cases.append(
+            {
+                "view": dict(zip(("primary_deg", "secondary_deg", "turn_deg"), view, strict=True)),
+                "u": u.tolist(),
+                "v": v.tolist(),
+                "d": d.tolist(),
+            }
+        )
+    return cases
 
 
 if _WRITE:
@@ -101,6 +138,24 @@ def test_the_committed_fixture_is_what_the_framework_answers_for_its_own_file():
     assert np.abs(turns.numpy().ravel() - unpacked(stored["turns"])).max() < 1e-4
     # The stored answer is that of the network with its norms, not of the file.
     assert np.abs(unpacked(stored["scores"])).max() > 0.5
+
+
+def test_the_committed_fixture_holds_this_codes_reading_of_the_answer():
+    stored = json.loads(FIXTURE.read_text())
+    found = views.proposals(
+        unpacked(stored["scores"]),
+        unpacked(stored["offsets"]).reshape(views.BINS, 2),
+        unpacked(stored["turns"]),
+    )
+    assert len(found) == len(stored["proposals"]) == views.MAX_PROPOSALS
+    for mine, kept in zip(found, stored["proposals"], strict=True):
+        assert mine.keys() == kept.keys()
+        assert all(np.isclose(mine[name], kept[name], atol=1e-9) for name in mine)
+    assert stored["grids"] == grids()
+    assert len(stored["frames"]) == len(turned_frames())
+    for mine, kept in zip(turned_frames(), stored["frames"], strict=True):
+        assert mine["view"] == kept["view"]
+        assert all(np.allclose(mine[axis], kept[axis], atol=1e-12) for axis in "uvd")
 
 
 def test_the_stored_file_answers_as_the_network_with_its_norms_does():
