@@ -44,3 +44,7 @@ jobs:
           tests/ml_runtime/test_model_evaluation.py
           tests/ml_runtime/test_source_context.py
           tests/ml_runtime/test_phase5_worker.py
+          tests/ml_runtime/test_pose_initializer_evidence.py
+          tests/ml_runtime/test_pose_initializer_views.py
+          tests/ml_runtime/test_pose_initializer_frames.py
+          tests/ml_runtime/test_pose_initializer_pipeline.py
