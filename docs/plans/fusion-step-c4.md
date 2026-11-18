@@ -53,7 +53,7 @@ The ten subjects were run once in Step C2 and the per-run detail was read. Part 
 - [x] 1.4 New methods `vessel_evidence_compass_v1` and `vessel_evidence_compass_biplane_v1`, with the synthetic gates of the older methods, a partial-filling gate, a wide-field gate and a gate for a pose only the scan reaches (`208e3fa`, `e01ae92`, `fd7aba4`). Mutation pass: 25 of 28 changes caught; the three that survive are listed in the decisions log. Independent review: no wrong-result defect; its four findings are closed in `c0e2ee1`.
 - [x] 1.5 Protocol `ljubljana-evidence-v1` committed (`0cca942`), then one run at `c0e2ee1`. Results in `docs/research/ljubljana-evidence-results.md`. Two planes, calibrated, runs under 1 mm: held back 18 of 25 (older methods 5), development 25 of 25 (older 7). One held-back subject fails in every arm. The held-back group is clearly worse than the development group, and the detector-size fit did not carry over.
 - [x] 1.6 TAIR five-case review, 2026-11-17, under the rule below (`52fe264`). One proposal per case, each saved, reloaded and redrawn. In none of the five do the projected vessels visibly lie on the filled arteries, two read worse than the centerline distance proposal of the same frames, and the fit of the field size was dropped in all five. Record in `docs/verification/step-c4-vessel-evidence.md`.
-- [ ] 1.7 Studio, docs, verification record, mutation pass, independent review, automated review. Built on `feat/step-c4-studio`; open until the second pull request merges.
+- [x] 1.7 Studio, docs, verification record, mutation pass, independent review, automated review. Built on `feat/step-c4-studio` and merged on 2026-11-17 as `2cd9058` (#14).
 
 ### The TAIR review, fixed before the new method is run on a TAIR frame
 
@@ -88,13 +88,69 @@ Design probe (subjects 01 to 05, development evidence, added after the diagnosti
 
 Not taken up now: an orientation term (projected vessel direction against the 2D line direction) and dropping non-vessel 3D points. Both stay available if the Ljubljana run or the TAIR review shows the need.
 
+## Part 4: learned view initializer
+
+Started 2026-11-17, ahead of parts 2 and 3, on Colin's decision.
+
+### Why
+
+A frame with no geometry tags gets its view from the operator, and the search then looks only within 15 degrees and 60 mm of that. The TAIR review of part 1 ended with no proposal on the filled arteries, and its log entry names a starting pose from elsewhere as one of two ways forward. This part builds that start: a small network that reads one frame and proposes which way the frame looks at the head.
+
+### What it is and is not
+
+- It proposes views. For each frame it returns up to five ranked views (primary angle, secondary angle and in-plane turn), each with the network's own score. The operator picks one or none. The registration search, its record and the confirmation of a proposal are unchanged, and the search refines whatever start it is given.
+- It is general, not trained per patient. It never sees the patient's 3D model: it reads the frame and answers in patient axes, which is where a CTA or MRA volume already is. Position and field size stay with the existing search, whose scan covers 60 mm.
+- It is a research artifact. The training data includes sets released for research use only, so the weights are for internal research and are not cleared for commercial use.
+
+### Acceptance criteria
+
+1. The network reads the vessel evidence of one frame, the same map the part 1 methods score against, and nothing else from the frame.
+2. It is trained only on synthetic projections of vessel models from public volumes. No Ljubljana and no TAIR frame or volume is used for training or for choosing a checkpoint.
+3. The Python copy of the evidence filter used to make training frames agrees with `vesselEvidence2d.ts` on shared fixtures to within 1e-4 at every pixel of every level.
+4. The browser forward pass agrees with the training framework on a shared fixture to within 1e-4 on every output.
+5. Synthetic gate, firm, on vessel models held out from training: over at least 2,000 frames drawn as in training, the best of the five proposed views lies within 15 degrees of the true viewing direction in at least 80%, and the first proposal in at least 50%. If the gate fails the part reports a negative result and nothing is offered in the studio.
+6. Ljubljana, reported and not gated. Subjects 01 to 05 may guide the design. A protocol is committed before one run on subjects 06 to 10, and nothing is tuned on that run. Reported: the angle between each proposed view and the reference view, and the target error of the part 1 registrations started from a proposed view against the same registrations started from the studio's default views.
+7. TAIR, five fixed cases, one reading under a rule written before the first proposal is drawn. It is not accuracy evidence.
+8. The weights enter the planner as one file whose size and SHA-256 are fixed in code, with a record of the training code commit, the settings, the seed, the training volumes and their licences. A request never names a file or a hash.
+9. Every training output (prepared vessel models, generated frames, checkpoints, logs, caches, temporary files) is written to the external volume, checked by its identifier before each run. No fallback to the internal disk.
+10. Saved records of every earlier version still replay to the same numbers. Anything a record gains is a new version.
+
+### Phases
+
+- [x] 4.1 Scope, criteria and design written here before code.
+- [ ] 4.2 Vessel models prepared from the public volumes, on external storage, with a manifest of sources and licences.
+- [ ] 4.3 Python evidence filter with the fixture check of criterion 3; frame generator; network; training; export.
+- [ ] 4.4 Browser forward pass with the fixture check of criterion 4, and the decoding of its output into views.
+- [ ] 4.5 Synthetic gate of criterion 5 on held-out vessel models.
+- [ ] 4.6 Ljubljana: development on 01 to 05, protocol committed, one run on 06 to 10, results page.
+- [ ] 4.7 First pull request: everything above, nothing offered in the studio.
+- [ ] 4.8 Second pull request: weights under their contract, the studio's view proposals, the TAIR reading, the verification record, mutation pass and reviews.
+
+### Design
+
+Written on 2026-11-17 after a scan of the data on hand and of the published work, and before any code.
+
+What the published work says. The learned initializers with public code train one network per patient on synthetic X-rays of that patient's own volume (DiffPose, Gopalakrishnan and others, CVPR 2024, doi 10.1109/CVPR52733.2024.01108; xvr, Gopalakrishnan and others, arXiv 2503.16309), and xvr, which pretrains one network across many patients, still fine-tunes it on each patient before use. The closest work on cerebral CTA to DSA trains on projections of segmented vessels and segments the real frame first, so that both sides are vessel pictures and not gray levels (Downs and others, Int J CARS 2025, doi 10.1007/s11548-025-03412-2). No published method was found that trains on injections of one territory only. A general network is therefore the less proven choice. It is taken because the planner cannot train per case, and because the question it answers is coarser than those papers ask: which way the frame looks, to within the search's own reach, and not the pose.
+
+1. **Input.** The vessel evidence of the frame from `vesselEvidence2d.ts`, at two of its blur widths, 8 and 2 working pixels, reduced to 128 by 128 with the frame centred and its longer side filling the grid. Both sides of the synthetic gap go through the same filter.
+2. **Output.** Views are binned every 10 degrees: primary from -120 to 120 and secondary from -50 to 50, 275 bins. For each bin the network gives a score and, for a frame that belongs in that bin, the offset of the view from the bin centre and the in-plane turn. The proposals are the highest-scoring bins, none within 20 degrees of a better one, at most five. Binning is used because one frame can have more than one reading: a left carotid seen from the front and a right carotid seen from behind give mirrored pictures.
+3. **Network.** A small residual network, four stages of 24, 48, 96 and 192 channels, about 2 million weights, with its normalization folded into the convolutions at export. The browser forward pass is plain loops over typed arrays with no new dependency.
+4. **Vessel models.** Whole-brain artery masks of public TOF-MRA volumes. Arteries are what an arterial-phase frame shows, and MRA masks carry no veins or bone. Each mask is split into territories by growing along the mask from the vessels that enter at the bottom of the volume, which also gives every voxel its distance along the vessels from the entry.
+5. **Synthetic frames.** A mask is projected through the planner's own camera model at a random view (primary within 125 degrees, secondary within 55, in-plane turn within 25), source distances, field size, frame size and offset from the isocenter. Each voxel adds its volume to the pixel it lands on, so a thick vessel is darker. Then, at random: all territories, or one, or one with part of another; filling only up to a distance from the entry, as early in an injection; the top or bottom of the model cut away; lines that are not vessels, for catheters and tubes; a low-frequency background and noise. The 8-bit frame goes through the Python copy of the evidence filter.
+6. **Use.** The proposal turns a view into a start for the search under the views the operator entered: the rotation that makes the entered view see the model as the proposed view would, about the centre of the vessel points. The search then scans position and refines.
+7. **Ranking.** Proposals are ranked by the network's score. The registration score is not used to pick among them, because the TAIR review showed it does not tell a right pose from a wrong one.
+
+Not taken up now: a territory answer (which artery was injected), restricting the 3D model to that territory, and position or field size from the network.
+
+Limits known before the first run. TOF-MRA volumes cover a slab of about 7 to 10 cm, so the synthetic trees lack the far cortical branches and the neck. Ljubljana frames were taken close to straight frontal and lateral views, so the studio's default views are already near the reference there and Ljubljana can show that the network tells those views apart and how far off its angles are, but not that it helps from a far start. TAIR has no reference pose.
+
 ## Parts 2 to 6
 
 Each gets its own acceptance criteria here when it starts. Known inputs:
 
 - Part 2. 16 of 150 uncalibrated Ljubljana runs raised an error when the fitted detector passed the 600 mm the view model accepts. Fitted sizes were no closer than entered sizes.
 - Part 3. Candidate public data: Guide3D and CathAction (guidewires and catheters). Licences are checked before any download. No public labelled set for implanted devices has been identified.
-- Part 4. Trained on synthetic projections of public CTA at known poses. Training runs outside this repository with outputs on external storage; a trained model enters the planner only under its own artifact provenance contract.
+- Part 4. Started; see its own section above.
 - Part 5. Frame admission is capped at 8 frames per plane, so contrast timing needs a bounded time-series path. TAIR has no calibrated pixels and no trusted frame times.
 - Part 6. Latency is measured and reported.
 
@@ -118,3 +174,6 @@ Each gets its own acceptance criteria here when it starts. Known inputs:
 - 2026-11-17. The studio's default method stays centerline distance. The TAIR review gives no reason to change it.
 - 2026-11-17. TAIR review, five cases, one proposal each. No proposal visibly lay on the filled arteries, as with the centerline distance proposals of the same frames. Two (00151, 00146) read worse than those. The methods stay at version 1. Inputs to the next version, none applied: (a) the result scores, 0.11 to 0.25, lie on both sides of the 0.19 median of the held-back reference-pose runs, so the score does not flag a poor pose; (b) in 00151 part of the projected tree settled on a tube, so line-like structure that is not a vessel can decide a result; (c) the fit of the field size was dropped in all five, where the entered size is believed to be about 7% small; (d) with a selective injection most of a whole-head mask has no partner at any pose, and the cost alone does not find which part was injected. A next version needs either a restriction of the mask to the injected territory or a starting pose from elsewhere, which is what part 4 is for.
 - 2026-11-17. Mutation pass on the studio, the record parser, the job runners and the server contract: 43 changes, 41 caught after four tests were added. The two that survive remove a second guard behind a first one.
+- 2026-11-17. Second pull request merged as `2cd9058` (#14). Part 1 is complete.
+- 2026-11-17. Colin chose part 4, the learned pose initializer, as the next part, ahead of parts 2 and 3. Branch `feat/step-c4-pose-initializer` cut from `2cd9058`.
+- 2026-11-17. Part 4 design. A general view network on vessel evidence, binned views with up to five proposals, trained on synthetic projections of public TOF-MRA artery masks with single-territory and early-filling frames. Training code lives in this repository under `research/pose_initializer`; training runs with the main checkout's model runtime and writes only to the external volume. The public masks at hand with whole-brain arteries are COSTA's (Zenodo 11025761, released for academic research use), so the weights are a research artifact and are not cleared for commercial use; clearing them means retraining on masks made from CC0 or CC BY volumes or getting the owners' agreement.
