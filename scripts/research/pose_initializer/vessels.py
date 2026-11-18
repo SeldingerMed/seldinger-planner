@@ -20,7 +20,10 @@ from scipy import sparse
 from scipy.sparse import csgraph
 
 SLAB_MM = 5.0
-MERGE_MM = 18.0
+# Wide enough to join a pair of vertebral arteries near where they meet, and
+# too narrow to join a carotid to the basilar: at 18 mm a third of the masks
+# were left with a single inlet.
+MERGE_MM = 10.0
 MIN_PIECE_SHARE = 0.03
 MIN_INLET_SHARE = 0.08
 MIN_VOXELS = 2000

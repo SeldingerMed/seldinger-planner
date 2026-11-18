@@ -58,8 +58,13 @@ def test_distance_along_the_vessels_goes_up_a_tube_and_across_the_bridge():
 
 
 def test_inlets_that_lie_close_together_count_as_one():
-    model = vessels.vessel_model(tubes(gap=10), AFFINE)
+    model = vessels.vessel_model(tubes(gap=8), AFFINE)
     assert len(model["inlets"]) == 1 and (model["cell"] == model["inlets"][0]).all()
+
+
+def test_inlets_further_apart_than_the_merge_distance_stay_separate():
+    model = vessels.vessel_model(tubes(gap=14), AFFINE)
+    assert vessels.MERGE_MM < 14 and len(model["inlets"]) == 2
 
 
 def test_a_separate_large_piece_has_its_own_inlet_and_cannot_be_reached_from_another():
