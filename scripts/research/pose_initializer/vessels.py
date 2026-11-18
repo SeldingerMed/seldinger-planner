@@ -59,15 +59,8 @@ def _graph(mask: np.ndarray, affine: np.ndarray) -> tuple[np.ndarray, sparse.csr
     return index, graph + graph.T
 
 
-def vessel_model(mask: np.ndarray, affine: np.ndarray) -> dict:
-    """Points, inlet cells and distances along the vessels for one mask.
-
-    Returns ``points`` (N, 3) in millimeters, ``cell`` (N,) with the inlet
-    each voxel belongs to or -1, ``inlets`` (G,) cell ids that hold at least
-    ``MIN_INLET_SHARE`` of the voxels, ``along`` (G, N) distance along the
-    vessels from each of those inlets (infinite where not connected),
-    ``edges`` (3, 3) the voxel edge vectors as rows and ``voxel_mm3``.
-    """
+def checked(mask: np.ndarray, affine: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The mask as booleans and its affine, or a refusal of what is not supported."""
     mask = np.asarray(mask) > 0
     affine = np.asarray(affine, dtype=np.float64)
     if mask.ndim != 3 or affine.shape != (4, 4) or not np.isfinite(affine).all():
@@ -78,6 +71,21 @@ def vessel_model(mask: np.ndarray, affine: np.ndarray) -> dict:
     total = int(mask.sum())
     if not MIN_VOXELS <= total <= MAX_VOXELS:
         raise VesselError(f"Mask holds {total} voxels, outside the supported range")
+    return mask, affine
+
+
+def vessel_model(mask: np.ndarray, affine: np.ndarray) -> dict:
+    """Points, inlet cells and distances along the vessels for one mask.
+
+    Returns ``points`` (N, 3) in millimeters, ``cell`` (N,) with the inlet
+    each voxel belongs to or -1, ``inlets`` (G,) cell ids that hold at least
+    ``MIN_INLET_SHARE`` of the voxels, ``along`` (G, N) distance along the
+    vessels from each of those inlets (infinite where not connected),
+    ``edges`` (3, 3) the voxel edge vectors as rows and ``voxel_mm3``.
+    """
+    mask, affine = checked(mask, affine)
+    volume = abs(float(np.linalg.det(affine[:3, :3])))
+    total = int(mask.sum())
     index, graph = _graph(mask, affine)
     points = index @ affine[:3, :3].T + affine[:3, 3]
     pieces, piece = csgraph.connected_components(graph, directed=False)
