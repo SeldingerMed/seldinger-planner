@@ -54,7 +54,10 @@ def summary(measured: dict[str, np.ndarray], modes=None) -> dict:
 
     result = {"within_deg": WITHIN_DEG, "all": of(np.ones(len(measured["first_deg"]), dtype=bool))}
     if modes is not None:
-        for index, name in enumerate(frames.MODES):
-            if (modes == index).any():
-                result[name] = of(modes == index)
+        # Kept apart from "all": one of the filling modes is itself named "all".
+        result["by_mode"] = {
+            name: of(modes == index)
+            for index, name in enumerate(frames.MODES)
+            if (modes == index).any()
+        }
     return result

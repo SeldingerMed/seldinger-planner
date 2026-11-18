@@ -35,7 +35,8 @@ def load_split(folder: Path) -> dict:
     if "frames" not in record:
         raise ValueError(f"The frames in {folder} are not complete")
     inputs, true_views, modes = [], [], []
-    for path in sorted(folder.glob("*.npz")):
+    # macOS leaves "._name" companions on volumes without extended attributes.
+    for path in sorted(p for p in folder.glob("*.npz") if not p.name.startswith(".")):
         with np.load(path) as stored:
             inputs.append(stored["inputs"])
             true_views.append(stored["views"])
@@ -101,7 +102,7 @@ def train(frames_dir: Path, out: Path, options: dict) -> dict:
             total.backward()
             optimizer.step()
             schedule.step()
-            running += [float(total), float(which), float(where)]
+            running += [float(part.detach()) for part in (total, which, where)]
         row = {
             "epoch": epoch,
             "loss": [round(value / steps_per_epoch, 4) for value in running],
