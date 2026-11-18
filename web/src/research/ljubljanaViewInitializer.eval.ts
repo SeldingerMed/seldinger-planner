@@ -48,6 +48,7 @@ it.skipIf(!PREPARED || !NETWORK || !RESULTS || !SET)(
     const summary = {
       protocol: VIEW_PROTOCOL.id,
       set: SET,
+      volume_axes: VIEW_PROTOCOL.volume_axes,
       network_sha256: createHash("sha256").update(file).digest("hex"),
       network_bytes: file.length,
       network_record: network.record,

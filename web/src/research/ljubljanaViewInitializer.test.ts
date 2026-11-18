@@ -45,29 +45,48 @@ describe("view initializer evaluation on a phantom stored the same way", () => {
 
   it("reads the stored view of each plane in patient axes", () => {
     const g = geometry(),
-      [frontal, lateral] = [storedView(g, 0), storedView(g, 1)];
-    // The phantom is turned a few degrees in the C-arm frame, so its
-    // frontal plane looks close to straight on and its lateral from a side.
+      [frontal, lateral] = [0, 1].map((k) => storedView(g, k, "patient"));
+    // The phantom is stored in patient axes and turned a few degrees in the
+    // C-arm frame, so its frontal plane looks close to straight on and its
+    // lateral from the patient's left.
     expect(
       viewSeparationDeg(frontal, VIEW_PROTOCOL.default_views.frontal),
     ).toBeLessThan(15);
     expect(
-      Math.min(
-        viewSeparationDeg(lateral, VIEW_PROTOCOL.default_views.lateral),
-        viewSeparationDeg(
-          lateral,
-          VIEW_PROTOCOL.default_views.lateral_other_side,
-        ),
-      ),
+      viewSeparationDeg(lateral, VIEW_PROTOCOL.default_views.lateral),
     ).toBeLessThan(15);
-    expect(viewSeparationDeg(frontal, lateral)).toBeGreaterThan(60);
+  });
+
+  it("reads a volume stored half round about the vertical from the other side", () => {
+    const g = geometry();
+    for (const k of [0, 1]) {
+      const plain = storedView(g, k, "patient"),
+        turned = storedView(g, k, "half_turn_about_vertical"),
+        apart = Math.abs(turned.primary_deg - plain.primary_deg);
+      // Front and back change places, and so do left and right; up stays.
+      expect(Math.min(apart, 360 - apart)).toBeCloseTo(180, 6);
+      expect(turned.secondary_deg).toBeCloseTo(plain.secondary_deg, 6);
+      expect(turned.turn_deg).toBeCloseTo(plain.turn_deg, 6);
+    }
+    // The set under evaluation is stored that way.
+    expect(VIEW_PROTOCOL.volume_axes).toBe("half_turn_about_vertical");
   });
 
   it("starts at the reference rotation when given the stored view", () => {
     const g = geometry(),
       pivot: [number, number, number] = [3, -4, 5];
-    for (const k of [0, 1]) {
-      const start = startFromView(g.planes[k], storedView(g, k), pivot);
+    for (const [k, axes] of [
+      [0, "patient"],
+      [1, "patient"],
+      [0, "half_turn_about_vertical"],
+      [1, "half_turn_about_vertical"],
+    ] as const) {
+      const start = startFromView(
+        g.planes[k],
+        storedView(g, k, axes),
+        pivot,
+        axes,
+      );
       expect(turnBetweenDeg(start, g.matrix)).toBeLessThan(1e-5);
       // The pivot lands on the isocenter of the plane.
       const moved = [0, 1, 2].map(
@@ -86,17 +105,33 @@ describe("view initializer evaluation on a phantom stored the same way", () => {
 
   it("starts as far from the reference as the view is from the stored one", () => {
     const g = geometry(),
-      truth = storedView(g, 0);
+      truth = storedView(g, 0, "patient");
     const off = startFromView(
       g.planes[0],
       { ...truth, turn_deg: truth.turn_deg + 20 },
       [0, 0, 0],
+      "patient",
     );
     expect(turnBetweenDeg(off, g.matrix)).toBeCloseTo(20, 6);
     const away = { ...truth, secondary_deg: truth.secondary_deg + 30 };
     expect(
-      turnBetweenDeg(startFromView(g.planes[0], away, [0, 0, 0]), g.matrix),
+      turnBetweenDeg(
+        startFromView(g.planes[0], away, [0, 0, 0], "patient"),
+        g.matrix,
+      ),
     ).toBeGreaterThan(25);
+    // The same view read against the wrong axes starts half a turn away.
+    expect(
+      turnBetweenDeg(
+        startFromView(
+          g.planes[0],
+          truth,
+          [0, 0, 0],
+          "half_turn_about_vertical",
+        ),
+        g.matrix,
+      ),
+    ).toBeGreaterThan(150);
   });
 
   it("measures the turn between two rotations", () => {
@@ -115,6 +150,7 @@ describe("view initializer evaluation on a phantom stored the same way", () => {
       [1, 2],
       network(),
       (m) => seen.push(m),
+      "patient",
     );
     expect(seen).toEqual(["subject 1 done", "subject 2 done"]);
     expect(frames.map((f) => [f.subject, f.plane])).toEqual([
@@ -159,9 +195,8 @@ describe("view initializer evaluation on a phantom stored the same way", () => {
     // From the default views, a few degrees off, the phantom registers.
     expect(arms.biplane_default[0].start_turn_deg).toBeLessThan(15);
     expect(arms.biplane_default[0].error_mm).toBeLessThan(1);
-    expect(arms.lateral_default_other_side[0].start_turn_deg).toBeGreaterThan(
-      150,
-    );
+    expect(arms.lateral_default[0].start_turn_deg).toBeLessThan(15);
+    expect(summary.volume_axes).toBe("patient");
 
     expect(summary.protocol).toBe("ljubljana-view-initializer-v1");
     expect(summary.subjects).toEqual([1, 2]);

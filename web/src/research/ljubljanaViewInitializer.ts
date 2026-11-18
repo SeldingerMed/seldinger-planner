@@ -52,22 +52,32 @@ export const VIEW_PROTOCOL = {
   /** A proposal this close to the stored view counts as near it. */
   within_deg: 15,
   /** What the studio starts from when nobody has entered a view: a frontal
-   * plane at 0/0 and a second plane at 90/0. The second plane is also tried
-   * from the patient's other side, since nothing in a frame without
-   * geometry tags says which side its detector was on. */
+   * plane at 0/0 and a second plane at 90/0. */
   default_views: {
     frontal: { primary_deg: 0, secondary_deg: 0, turn_deg: 0 },
     lateral: { primary_deg: 90, secondary_deg: 0, turn_deg: 0 },
-    lateral_other_side: { primary_deg: -90, secondary_deg: 0, turn_deg: 0 },
   },
+  /** The files of this set give their world axes as patient axes (right,
+   * front, up), but in them the front of the head lies toward -y. This was
+   * read off the lateral frames of the development subjects without the
+   * network (see the protocol). Up is up, so the volumes are in patient axes
+   * turned half round about the vertical. Views are compared, and starts
+   * made, in patient axes. */
+  volume_axes: "half_turn_about_vertical",
 } as const;
+
+export type VolumeAxes = "patient" | "half_turn_about_vertical";
+
+/** A direction taken between volume axes and patient axes. The half turn is
+ * its own inverse, so one function serves both ways. */
+const between = (x: Vec3, axes: VolumeAxes): Vec3 =>
+  axes === "patient" ? x : [-x[0], -x[1], x[2]];
 
 export const VIEW_ARMS = [
   "frontal_default",
   "frontal_first",
   "frontal_best",
   "lateral_default",
-  "lateral_default_other_side",
   "lateral_first",
   "lateral_best",
   "biplane_default",
@@ -82,8 +92,13 @@ const columns = (frame: { u: Vec3; v: Vec3; d: Vec3 }) =>
   [0, 1, 2].map((i) => [frame.u[i], frame.v[i], frame.d[i]]);
 
 /** The stored view of one plane as the network should answer it: viewing
- * direction and image-up of the plane, taken back into volume RAS. */
-export function storedView(g: ReferenceGeometry, plane: number): TurnedView {
+ * direction and image-up of the plane, taken back into the volume's axes
+ * and from there into patient axes. */
+export function storedView(
+  g: ReferenceGeometry,
+  plane: number,
+  axes: VolumeAxes,
+): TurnedView {
   const { view } = g.planes[plane],
     { v, d } = viewFrame(view.primary_deg, view.secondary_deg),
     back = (x: Vec3) =>
@@ -91,22 +106,29 @@ export function storedView(g: ReferenceGeometry, plane: number): TurnedView {
         (j) =>
           g.matrix[0][j] * x[0] + g.matrix[1][j] * x[1] + g.matrix[2][j] * x[2],
       ) as Vec3;
-  return viewOfAxes(back(d), back(v));
+  return viewOfAxes(between(back(d), axes), between(back(v), axes));
 }
 
-/** The rigid volume-RAS to C-arm-RAS start that makes `plane` see the
- * volume as `view` says, with `pivot` (volume RAS) on the plane's central
- * ray at its isocenter. This is what entering `view` in the studio does,
- * written in the frame the reference geometry uses. */
+/** The rigid volume to C-arm-RAS start that makes `plane` see the patient
+ * as `view` (in patient axes) says, with `pivot` (volume axes) on the
+ * plane's central ray at its isocenter. For a volume in patient axes this
+ * is what entering `view` in the studio does, written in the frame the
+ * reference geometry uses. */
 export function startFromView(
   plane: ReferencePlane,
   view: TurnedView,
   pivot: Vec3,
+  axes: VolumeAxes,
 ): number[][] {
   const here = columns(
       viewFrame(plane.view.primary_deg, plane.view.secondary_deg),
     ),
-    there = columns(turnedFrame(view)),
+    seen = turnedFrame(view),
+    there = columns({
+      u: between(seen.u as Vec3, axes),
+      v: between(seen.v as Vec3, axes),
+      d: between(seen.d as Vec3, axes),
+    }),
     turn = [0, 1, 2].map((i) =>
       [0, 1, 2].map(
         (j) =>
@@ -173,6 +195,7 @@ export function evaluateViews(
   subjects: readonly number[],
   network: ViewNetwork,
   progress: (message: string) => void = () => {},
+  axes: VolumeAxes = VIEW_PROTOCOL.volume_axes,
 ) {
   const frames: ViewFrameResult[] = [],
     arms = Object.fromEntries(
@@ -215,7 +238,7 @@ export function evaluateViews(
       };
     });
     const seen = planes.map((plane, k): ViewFrameResult => {
-      const truth = storedView(g, k),
+      const truth = storedView(g, k, axes),
         proposals = proposeViews(
           runViewNetwork(network, networkInput(network, plane.evidence)),
         ).map((proposal) => ({
@@ -224,7 +247,7 @@ export function evaluateViews(
           turn_error_deg: Math.abs(proposal.turn_deg - truth.turn_deg),
         })),
         apart = proposals.map((proposal) => proposal.apart_deg),
-        defaults = k ? [D.lateral, D.lateral_other_side] : [D.frontal];
+        standard = k ? D.lateral : D.frontal;
       return {
         subject,
         plane: PLANE_NAMES[k],
@@ -233,15 +256,13 @@ export function evaluateViews(
         first_deg: apart[0],
         best_deg: Math.min(...apart),
         best_rank: apart.indexOf(Math.min(...apart)),
-        default_deg: Math.min(
-          ...defaults.map((view) => viewSeparationDeg(view, truth)),
-        ),
+        default_deg: viewSeparationDeg(standard, truth),
       };
     });
     frames.push(...seen);
     const run = (arm: ViewArm, which: number[], view: TurnedView) => {
       // The start comes from the first of the planes that are registered.
-      const from = startFromView(g.planes[which[0]], view, pivot),
+      const from = startFromView(g.planes[which[0]], view, pivot, axes),
         began = performance.now();
       let outcome: Partial<ViewRun> & { error_mm: number | null };
       try {
@@ -282,7 +303,6 @@ export function evaluateViews(
     run("frontal_first", [0], pick(0, 0));
     run("frontal_best", [0], pick(0, seen[0].best_rank));
     run("lateral_default", [1], D.lateral);
-    run("lateral_default_other_side", [1], D.lateral_other_side);
     run("lateral_first", [1], pick(1, 0));
     run("lateral_best", [1], pick(1, seen[1].best_rank));
     run("biplane_default", [0, 1], D.frontal);
@@ -290,7 +310,11 @@ export function evaluateViews(
     run("biplane_best", [0, 1], pick(0, seen[0].best_rank));
     progress(`subject ${subject} done`);
   }
-  return { frames, arms, summary: summarizeViews(frames, arms, subjects) };
+  return {
+    frames,
+    arms,
+    summary: { ...summarizeViews(frames, arms, subjects), volume_axes: axes },
+  };
 }
 
 const rounded = (value: number | null) =>
