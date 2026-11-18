@@ -292,6 +292,8 @@ def test_reveal_requires_exact_manifest(tmp_path, monkeypatch):
 
 
 def test_reveal_releases_truth_and_reports(tmp_path, monkeypatch):
+    # Model the documented python -m invocation even under the pytest console script.
+    monkeypatch.syspath_prepend(str(REPO))
     harness = Harness(tmp_path)
     patch_stub(monkeypatch, harness)
     harness.blind()
