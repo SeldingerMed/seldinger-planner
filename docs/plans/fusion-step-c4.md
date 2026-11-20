@@ -144,6 +144,31 @@ Not taken up now: a territory answer (which artery was injected), restricting th
 
 Limits known before the first run. TOF-MRA volumes cover a slab of about 7 to 10 cm, so the synthetic trees lack the far cortical branches and the neck. Ljubljana frames were taken close to straight frontal and lateral views, so the studio's default views are already near the reference there (once its volumes are read in patient axes, see the log of 2026-11-18) and Ljubljana can show that the network tells those views apart and how far off its angles are, but not that it helps from a far start. TAIR has no reference pose.
 
+### Second pull request: design
+
+Written on 2026-11-20, before its code.
+
+1. **Weights.** `planner/model_assets.py` fixes the size and SHA-256 of the one network file. The server reads it from a fixed place under `.runtime/models/view-network-v1/` and serves it, verified on every read, at one route with no parameters. The browser fixes the same size and hash and checks the bytes again before it parses them. A test holds the two pairs of numbers equal. A request names no file and no hash. Absent weights are not an error of the studio: the control says they are not installed. The record of how the file was made is `docs/research/view-network-v1.md`.
+2. **Where the file lives.** On the external volume. `.runtime/models/view-network-v1` is a link to its folder there, so no copy of the weights is written to the internal disk.
+3. **The studio.** A control proposes views for the frame on screen, at the plane's polarity, and lists up to five with their angles, in-plane turn and share. The operator picks one, or none. Nothing is picked by default.
+4. **What a pick does.** It is the start of the search, as the design above says under "Use": the rotation, about the centre of the vessel points, that makes the plane see the model as the proposed view would, with the views the operator entered left as they are. For two planes one rotation serves both, so the entered angle between the planes is kept. The search itself is unchanged and either method can be started this way. Without a pick the start is the volume's own position, as before.
+5. **No record yet.** A proposal that started from a proposed view is shown and cannot be saved. The four record versions state a start at the volume's own position, and a record that names the proposed view and the network is a new version (criterion 10). Whether to build it is decided after the TAIR reading, not before. Every earlier record is untouched.
+6. **Wording in the studio.** The control says that the views come from a research network trained on synthetic frames, that the first one is often not the nearest, and that they are not for clinical use.
+
+### The TAIR reading of the view proposals, fixed before a view is proposed for a TAIR frame
+
+Written on 2026-11-20, before the network was run on any TAIR frame. One reading by the agent that built this step, not accuracy evidence, with no pass criterion. TAIR has no reference pose.
+
+- Cases, bundles, frames, accepted vessel masks and entered geometry are those of the proposals the Step C3 note saved (00164, 00132, 00151, 00161, 00146), as in the part 1 review. Nothing is chosen again.
+- Per case, views are proposed once for the plane A frame and once for the plane B frame, dark vessels. All of them are recorded: angles, in-plane turn and share, beside the angles the Step C3 note entered for that plane. The entered angles were an operator's estimate and are not a reference.
+- Per case, two searches and no more: vessel evidence, two planes, the field-size fit on for both planes, one started from the first proposal of the plane A frame and one from the first proposal of the plane B frame. Lower-ranked proposals are not tried. No retries with other settings.
+- It runs in the studio against the running server, on a shadow copy of the Step C3 runtime, so the Step C3 records and the part 1 records stay as they are. Nothing is saved.
+- Recorded per search: what the studio reported (movement from the start, each plane's mean evidence at the start and at the result, the fit outcome) and the overlay images.
+- Read per search, by eye: whether the projected vessels visibly lie on the filled arteries, in one or two sentences, beside what the part 1 review said of the same frames.
+- A software fault found by a real case is fixed with a test that fails without the fix, the case is run again, and the note says so. There are no other reruns.
+- Whatever it shows, the network stays as it is. A finding is an input to the next network and to the decision about a record version.
+- Images, per-case files and the runtime stay on external storage. The repository gets the table and the reading.
+
 ## Parts 2 to 6
 
 Each gets its own acceptance criteria here when it starts. Known inputs:
