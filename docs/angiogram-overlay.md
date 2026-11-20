@@ -171,7 +171,7 @@ Nothing is picked for the operator. **The volume's own position** stays selected
 
 A proposal that started from a picked view can be reviewed and discarded. It cannot be saved: no saved record states that start, and the records are unchanged. A pick belongs to the frame and polarity it was proposed for, and is no start for another frame or for the same frame read at the other polarity.
 
-The network was trained on synthetic frames. On real frames its first view is often not the nearest of the five, and none of them need be right. The views are not for clinical use.
+The network was trained on synthetic frames. On real frames its first view is often not the nearest of the five, and none of them need be right. On five public clinical cases, read once by eye, a search started from the first proposed view gave no gain over one started from the volume's own position, and for three of the five lateral frames the first view looked from the other side of the head ([record](verification/step-c4-view-proposals.md)). The views are not for clinical use.
 
 A proposal belongs to the exact frame or pair of frames, mask, geometry, isocenter, method, filter settings and picked start view it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A bundle's manifest request is released before the first-frame fetch starts, giving the frame its own full deadline. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
 
@@ -251,4 +251,5 @@ The local brief gains the section **Angiogram registration and vessel presence**
 - The vessel evidence methods score line-like structure, not vessels. On five public clinical cases with selective injections their proposals did not visibly lie on the filled arteries. Their scores there, 0.11 to 0.25, lie on both sides of the median score of the two-plane runs on the held-back public subjects with a reference pose, 0.19, most of which ended within 1 mm. The score does not tell a right pose from a wrong one.
 - The fit of the field size is not solved by either pair of methods. With vessel evidence it was dropped in all five clinical cases reviewed, and on the held-back public subjects with a reference pose 10 of 25 two-plane runs ended under 1 mm when the entered size was wrong.
 - A proposal by vessel evidence carries no vessel-presence report.
+- The proposed views are a research aid. No accuracy is claimed for them on patient frames, and a proposal started from one cannot be saved.
 - Not for live guidance, diagnosis or treatment decisions.

@@ -4,7 +4,7 @@ The record that goes with the one weights file the planner serves at `GET /api/v
 
 ## Use
 
-Internal research only. The network was trained on synthetic projections of artery masks that are released for academic research use under restricted access. The weights are not cleared for commercial use, are not distributed, and are no part of a product. Its proposed views are for an operator to pick from or to ignore, and are not for clinical use.
+Internal research only. The network was trained on synthetic projections of artery masks that their owners release for academic research use only, under restricted access. The weights are not cleared for commercial use, are not distributed, and are no part of a product. Its proposed views are for an operator to pick from or to ignore, and are not for clinical use.
 
 ## The file
 
@@ -40,7 +40,7 @@ At the chosen epoch, on the validation frames: the first proposal within 15 degr
 |                                    |                                                                                                                                        |
 | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Source                             | COSTA TOF-MRA vessel masks, Zenodo record 11025761                                                                                     |
-| Licence as recorded for every case | academic use, restricted access                                                                                                        |
+| Licence as recorded for every case | academic research use only, restricted access (checked against the Zenodo record on 2026-11-20)                                        |
 | Cases read                         | 355                                                                                                                                    |
 | Vessel models kept                 | 344: 253 for training, 34 for validation, 57 held out for the gate                                                                     |
 | Left out                           | 11, whose orientation the two indicators did not settle                                                                                |
