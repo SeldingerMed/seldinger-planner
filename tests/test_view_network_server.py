@@ -80,6 +80,14 @@ def test_a_link_in_place_of_the_file_is_refused(tmp_path):
     assert client(path, spec()).get("/api/view-network").status_code == 503
 
 
+def test_a_link_to_nothing_is_a_fault_and_not_an_absence(tmp_path):
+    path = tmp_path / "view-network.bin"
+    path.symlink_to(tmp_path / "gone.bin")
+    answer = client(path, spec()).get("/api/view-network")
+    assert answer.status_code == 503
+    assert answer.json() == {"detail": "View network failed integrity checks"}
+
+
 def test_the_file_and_its_fixed_identity():
     assert (
         VIEW_NETWORK_FILE == REPO / ".runtime" / "models" / "view-network-v1" / "view-network.bin"
