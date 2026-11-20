@@ -11,7 +11,7 @@ The headline is the same as for part 1. The software path is sound: the weights 
 - `planner/model_assets.py`: `VIEW_NETWORK`, the size and SHA-256 of the one weights file, and the commit that trained it.
 - `planner/view_network_server.py`: `GET /api/view-network`. No parameters. The file is verified on every read. 404 when nothing is installed, 503 when what is there is not the fixed file or is a link, never cached.
 - `web/src/viewNetworkFile.ts`: the same size and hash, checked in the browser before the bytes are parsed.
-- `web/src/viewProposals.ts`: the network fetched once per page, with a failed or abandoned fetch not kept, and the views of one frame at one polarity.
+- `web/src/viewProposals.ts`: the network fetched once per page under a 30-second deadline, by a fetch no single caller can stop, with a failed or late fetch not kept, and the views of one frame at one polarity.
 - `web/src/poseInitializer.ts`: `startFromProposedView`, the turn of the model, about a fixed point, that makes a plane at its entered angles see the model as a proposed view says.
 - `web/src/projectionOverlayJob.ts`: an optional start view for the one-plane and the two-plane job. Without one the start is the volume's own position, as before. Each result states the start it used.
 - `web/src/ViewProposalPicker.tsx` and `web/src/ProjectionOverlayStudio.tsx`: the control, the pick, the sentence that states the start, and a proposal from a picked view that can be reviewed and discarded only.
@@ -34,7 +34,8 @@ Unit evidence for the new parts, all on synthetic data:
 
 - `poseInitializer.test.ts`: the start from a proposed view is a rigid turn that leaves the pivot in place, makes the entered plane see the model as the proposed view says, in-plane turn included, and agrees with the start the Ljubljana evaluation used for a volume in patient axes.
 - `projectionOverlayJob.test.ts`: a search started from a proposed view near the truth ends on it where the same search from the volume's own position does not, for one plane and for two, with the second plane keeping its entered angle to the first. Without a start view the start is the identity.
-- `viewProposals.test.ts`: the views are those of the evaluation path for the same frame, the polarity is used, the network is fetched once, and a failed fetch is tried again.
+- `viewProposals.test.ts`: the views are those of the evaluation path for the same frame, the polarity is used, the network is fetched once, a failed fetch is tried again, a caller that gives up does not take the fetch from the next one, and a fetch that does not arrive in 30 seconds is given up, said to be late and tried again when asked.
+- `ViewProposalPicker.test.tsx`: a share too small to round to one percent is not shown as none, and a start picked for the other plane's frame is shown as the choice in force.
 - `ProjectionOverlayStudio.test.tsx`: nothing is proposed or picked until the operator asks. A pick is the start of the next search and is stated before and after it. It holds for the frame and polarity it was proposed for and for no other. For two planes one pick serves both. Going back to the volume's own position drops a proposal made from a picked view. A network that is not installed is said so, and the search is as it was.
 
 ## Mutation checks
@@ -147,9 +148,20 @@ Whatever a reading shows, the rule left the network as it is. The decision the r
 
 Nothing. No fault was found, so no case was run again.
 
+## Review of the pull request
+
+The automated review of the first head raised four findings, all in the studio and none in the server path, the start from a picked view or the save block. Each was fixed with a test written first.
+
+- With two planes, the list for one plane's frame showed the volume's own position as chosen while the start in force was a view picked for the other plane's frame. The status line was right and the list was not. The list now shows that pick as the choice in force.
+- The fetch of the weights had no deadline. The reading above shows that a server can stop answering on this workstation. The fetch now has the studio's 30 seconds and says so when they run out.
+- The one fetch was tied to the first caller, so asking again for another frame while it ran failed the second request with the first one's abort. The fetch now belongs to the page.
+- A share under half a percent was shown as 0%. It is now shown as under 1%.
+
+The mutation counts above are of the first head. The new guards were checked the same way: nine single-site changes (the list's choice in force in the control and in the studio, the share's wording, the deadline's abort, message and timer, the fetch's own signal, a caller's abort, and a failed fetch not being kept), all nine caught.
+
 ## Final local checks
 
-On the head of this pull request: backend 1468 passed and 133 skipped, Python lint and format checks clean; frontend 1325 passed in 107 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). Every file this pull request changes passes Prettier. The native ingestion and physics suites were not run again here; nothing they cover is changed.
+On the head of this pull request: backend 1468 passed and 133 skipped, Python lint and format checks clean; frontend 1331 tests in 108 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). In the full frontend run 1329 passed and two timed out, in files this pull request does not touch, while the job governor had the test workers paused for about 13 minutes. Those two files were run again on their own and passed, 18 of 18. Every file this pull request changes passes Prettier. The native ingestion and physics suites were not run again here; nothing they cover is changed.
 
 ## Limits
 

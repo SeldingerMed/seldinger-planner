@@ -23,6 +23,14 @@ export function viewWords(view: StartView): string {
   return `primary ${degrees(view.primary_deg)}, secondary ${degrees(view.secondary_deg)}, turned ${degrees(view.turn_deg)} in the image`;
 }
 
+/** The network's share for a view. A share too small to round to one
+ * percent is not shown as none. */
+export function shareWords(share: number): string {
+  return share > 0 && share < 0.005
+    ? "under 1%"
+    : `${Math.round(share * 100)}%`;
+}
+
 /** Proposes views for the frame on screen and lets the operator pick one
  * as the start of the search, or none. Nothing is picked for them. */
 export default function ViewProposalPicker({
@@ -30,13 +38,18 @@ export default function ViewProposalPicker({
   polarity,
   disabled,
   picked,
+  elsewhere,
   onPick,
 }: {
   frame: VerifiedFrame | null;
   polarity: Polarity;
   disabled: boolean;
-  /** The pick, when it belongs to this frame and polarity. */
+  /** The pick, when it belongs to this frame and polarity and is the start
+   * of the next search. */
   picked: StartPick | null;
+  /** The start of the next search when it is a view picked for another
+   * frame: with two planes, the other plane's. */
+  elsewhere: StartPick | null;
   onPick: (pick: StartPick | null) => void;
 }) {
   const name = useId(),
@@ -101,11 +114,18 @@ export default function ViewProposalPicker({
             <input
               type="radio"
               name={name}
-              checked={!picked}
+              checked={!picked && !elsewhere}
               onChange={() => onPick(null)}
             />{" "}
             The volume&apos;s own position
           </label>
+          {elsewhere && (
+            <label>
+              <input type="radio" name={name} checked readOnly /> Proposed view{" "}
+              {elsewhere.rank + 1} for plane {elsewhere.plane.toUpperCase()}
+              &apos;s frame: {viewWords(elsewhere.view)}
+            </label>
+          )}
           {views.map((view, rank) => (
             <label key={rank}>
               <input
@@ -128,7 +148,7 @@ export default function ViewProposalPicker({
                 }
               />{" "}
               Proposed view {rank + 1}: {viewWords(view)} (share{" "}
-              {Math.round(view.share * 100)}%)
+              {shareWords(view.share)})
             </label>
           ))}
         </fieldset>

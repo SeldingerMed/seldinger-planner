@@ -1674,7 +1674,8 @@ export default function ProjectionOverlayStudio({
                 frame={shownFrame}
                 polarity={polarity}
                 disabled={!!active}
-                picked={pickedHere}
+                picked={startFrom === pickedHere ? pickedHere : null}
+                elsewhere={startFrom !== pickedHere ? startFrom : null}
                 onPick={setStartPick}
               />
               {startFrom && (

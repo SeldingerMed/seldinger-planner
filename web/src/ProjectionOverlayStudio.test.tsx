@@ -2903,6 +2903,23 @@ test("for two planes one picked view turns the model for both, and the proposal 
     await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
     expect(status("Search start").textContent).toMatch(/for plane B's frame/);
     expect(screen.queryByRole("radio")).toBeNull();
+    // With views proposed for plane A's frame too, the list shows the start
+    // in force, which is still plane B's, and not the volume's own position.
+    click("Propose views for this frame");
+    await screen.findByRole("radio", { name: /^Proposed view 1: / });
+    expect(
+      screen
+        .getAllByRole("radio")
+        .map((item) => (item as HTMLInputElement).checked),
+    ).toEqual([false, true, false, false]);
+    expect(
+      (
+        radio(
+          "Proposed view 1 for plane B's frame: primary -35°, secondary 12°, turned 8° in the image",
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(status("Search start").textContent).toMatch(/for plane B's frame/);
     await proposePair();
     expect(create.mock.calls.at(-1)![0].start_view).toEqual({
       plane: 1,
