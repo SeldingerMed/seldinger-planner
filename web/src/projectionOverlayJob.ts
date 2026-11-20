@@ -14,6 +14,7 @@ import {
   type EvidenceRegistrationProposal,
 } from "./evidenceRegistration";
 import { centroid, medialPointSteps } from "./maskPoints";
+import { startFromProposedView, type StartView } from "./poseInitializer";
 import type { Vec3 } from "./obliqueSlice";
 import {
   createProjectionRegistrationJob,
@@ -55,10 +56,16 @@ export type OverlayJobInput = {
     sensitivity: number;
     fit_detector_scale: boolean;
   } | null;
+  /** A proposed view to start the search from: the model is turned about
+   * the centre of its vessel points until this plane sees it as the view
+   * says. Absent or null starts at the volume's own position. */
+  start_view?: StartView | null;
 };
 export type OverlayJobResult = {
   points: Float32Array;
   isocenter: Vec3;
+  /** The volume to C-arm-RAS pose the search started from. */
+  start: number[][];
   /** Grid voxels per measured cell; above 1 the mask was coarsened. */
   pooling: number;
   /** The extracted line set. Null for a vessel evidence proposal, which
@@ -82,7 +89,14 @@ function* run(
 ): Generator<void, OverlayJobResult> {
   const medial = yield* medialPointSteps(input.mask, input.shape, input.affine),
     isocenter = input.isocenter ?? centroid(medial.points),
-    base = { points: medial.points, isocenter, pooling: medial.pooling };
+    start = input.start_view
+      ? startFromProposedView(
+          input.view,
+          input.start_view,
+          centroid(medial.points),
+        )
+      : IDENTITY_MATRIX,
+    base = { points: medial.points, isocenter, pooling: medial.pooling, start };
   if (!input.search)
     return { ...base, target: null, proposal: null, evidence: null };
   const { gray, width, height } = input.frame;
@@ -104,7 +118,7 @@ function* run(
             fit_detector_scale: input.search.fit_detector_scale,
           },
         ],
-        start: IDENTITY_MATRIX,
+        start,
       });
     while (!job.advance(() => clock.expired())) yield;
     return { ...base, target: null, proposal: null, evidence: job.result() };
@@ -122,7 +136,7 @@ function* run(
       isocenter,
       frame: { width, height },
       target,
-      start: IDENTITY_MATRIX,
+      start,
       fit_detector_scale: input.search.fit_detector_scale,
     });
   while (!job.advance(() => clock.expired())) yield;
@@ -187,10 +201,17 @@ export type BiplaneOverlayJobInput = {
   search: boolean;
   /** Centerline distance when absent. */
   method?: OverlayMethod;
+  /** A proposed view for one of the two frames (0 is plane A) to start the
+   * search from. One turn of the model serves both planes, so their entered
+   * angle to each other is kept. Absent or null starts at the volume's own
+   * position. */
+  start_view?: { plane: 0 | 1; view: StartView } | null;
 };
 export type BiplaneOverlayJobResult = {
   points: Float32Array;
   isocenter: Vec3;
+  /** The volume to C-arm-RAS pose the search started from. */
+  start: number[][];
   pooling: number;
   /** The extracted line sets. Null for a vessel evidence proposal. */
   targets: [VesselTarget, VesselTarget] | null;
@@ -210,7 +231,14 @@ function* runPair(
 ): Generator<void, BiplaneOverlayJobResult> {
   const medial = yield* medialPointSteps(input.mask, input.shape, input.affine),
     isocenter = input.isocenter ?? centroid(medial.points),
-    base = { points: medial.points, isocenter, pooling: medial.pooling };
+    start = input.start_view
+      ? startFromProposedView(
+          input.planes[input.start_view.plane].view,
+          input.start_view.view,
+          centroid(medial.points),
+        )
+      : IDENTITY_MATRIX,
+    base = { points: medial.points, isocenter, pooling: medial.pooling, start };
   if (!input.search)
     return { ...base, targets: null, proposal: null, evidence: null };
   if (input.method === "vessel_evidence") {
@@ -231,7 +259,7 @@ function* runPair(
     const job = createEvidenceRegistrationJob({
       points: medial.points,
       planes,
-      start: IDENTITY_MATRIX,
+      start,
     });
     while (!job.advance(() => clock.expired())) yield;
     return { ...base, targets: null, proposal: null, evidence: job.result() };
@@ -257,7 +285,7 @@ function* runPair(
   const job = createBiplaneRegistrationJob({
     points: medial.points,
     planes: [a, b],
-    start: IDENTITY_MATRIX,
+    start,
   });
   while (!job.advance(() => clock.expired())) yield;
   return {

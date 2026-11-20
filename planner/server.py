@@ -310,6 +310,9 @@ def build_app(
     from planner.vessel_presence_server import register_vessel_presence_routes
 
     read_presence = register_vessel_presence_routes(app, db_path, read_registration)
+    from planner.view_network_server import register_view_network_routes
+
+    register_view_network_routes(app)
 
     from planner.device_db import (
         CATEGORIES,

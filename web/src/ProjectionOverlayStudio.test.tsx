@@ -50,6 +50,7 @@ import ProjectionOverlayStudio, {
 import { projectRegistered } from "./projectionRegistration";
 import * as overlayJobs from "./projectionOverlayJob";
 import * as segmentation from "./segmentation";
+import * as viewProposals from "./viewProposals";
 
 afterEach(() => {
   cleanup();
@@ -2601,3 +2602,196 @@ test("a two-plane fit is recorded plane by plane", async () => {
     source_isocenter_mm: 800,
   });
 }, 90000);
+
+const PROPOSED = [
+  { primary_deg: -35.2, secondary_deg: 12.4, turn_deg: 8.1, share: 0.41 },
+  { primary_deg: 4.6, secondary_deg: -3.3, turn_deg: -2.2, share: 0.17 },
+];
+const radio = (name: string | RegExp) => screen.getByRole("radio", { name });
+const startView = (k: number) => ({
+  primary_deg: PROPOSED[k].primary_deg,
+  secondary_deg: PROPOSED[k].secondary_deg,
+  turn_deg: PROPOSED[k].turn_deg,
+});
+const unsavedProposal = () =>
+  waitFor(
+    () =>
+      expect(status("Overlay status").textContent).toMatch(/^Unsaved proposal/),
+    { timeout: 30000 },
+  );
+
+test("proposes views only when asked, starts the search from a picked one and does not save it", async () => {
+  const api = server();
+  const views = vi
+      .spyOn(viewProposals, "proposeFrameViews")
+      .mockResolvedValue(PROPOSED),
+    create = vi.spyOn(overlayJobs, "createOverlayJob");
+  try {
+    render(<Harness />);
+    await openFrames();
+    enterGeometry();
+    // Nothing is proposed, and nothing is picked, until the operator asks.
+    expect(views).not.toHaveBeenCalled();
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(
+      screen.getByText(/research network trained on synthetic frames/)
+        .textContent,
+    ).toMatch(
+      /not for clinical use.*its first view is often not the nearest.*can be reviewed but not saved/,
+    );
+    click("Propose views for this frame");
+    await screen.findByRole("radio", { name: /Proposed view 1/ });
+    expect(views).toHaveBeenCalledTimes(1);
+    expect(views.mock.calls[0][0]).toMatchObject({
+      sha256: hex(gray),
+      width: SIDE,
+      height: SIDE,
+    });
+    expect(views.mock.calls[0][1]).toBe("dark");
+    expect(radio("The volume's own position")).toHaveProperty("checked", true);
+    expect(radio(/Proposed view 1/).parentElement!.textContent).toMatch(
+      /Proposed view 1: primary -35°, secondary 12°, turned 8° in the image \(share 41%\)/,
+    );
+    expect(screen.getAllByRole("radio")).toHaveLength(3);
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+
+    fireEvent.click(radio(/Proposed view 2/));
+    expect(status("Search start").textContent).toBe(
+      "The search will start from proposed view 2: primary 5°, secondary -3°, turned -2° in the image.",
+    );
+    click("Propose overlay");
+    await unsavedProposal();
+    expect(create.mock.calls.at(-1)![0].start_view).toEqual(startView(1));
+    expect(status("Start of this proposal").textContent).toMatch(
+      /^This proposal started from proposed view 2: primary 5°, secondary -3°, turned -2° in the image\. The 3D model was turned under the entered geometry before the search\. A proposal started this way cannot be saved/,
+    );
+    // It can be reviewed and discarded, and that is all.
+    expect(
+      screen.queryByRole("button", { name: "Save confirmed proposal" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", { name: /I reviewed the overlay/ }),
+    ).toBeNull();
+    expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+      "Admitted frame 12, plane single, with projected 3D vessels",
+    );
+    expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+
+    // Going back to the volume's own position drops that proposal, and the
+    // next one is an ordinary proposal that can be saved.
+    fireEvent.click(radio("The volume's own position"));
+    expect(status("Overlay status").textContent).toBe("");
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+    click("Propose overlay");
+    await proposed();
+    expect(create.mock.calls.at(-1)![0].start_view).toBeNull();
+    expect(
+      screen.queryByRole("status", { name: "Start of this proposal" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Save confirmed proposal" }),
+    ).toBeTruthy();
+  } finally {
+    views.mockRestore();
+    create.mockRestore();
+  }
+}, 60000);
+
+test("a picked view is for the frame and polarity it was proposed for", async () => {
+  server();
+  const views = vi
+      .spyOn(viewProposals, "proposeFrameViews")
+      .mockResolvedValue(PROPOSED),
+    create = vi.spyOn(overlayJobs, "createOverlayJob");
+  try {
+    render(<Harness />);
+    await openFrames();
+    enterGeometry();
+    click("Propose views for this frame");
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /Proposed view 1/ }),
+    );
+    expect(status("Search start").textContent).toMatch(/proposed view 1/);
+    // Read as bright vessels, the frame is another input to the network:
+    // the views are gone and so is the pick.
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Vessels in this frame are/ }),
+      { target: { value: "bright" } },
+    );
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+    click("Propose overlay");
+    await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: 30000 });
+    expect(create.mock.calls.at(-1)![0].start_view).toBeNull();
+  } finally {
+    views.mockRestore();
+    create.mockRestore();
+  }
+}, 60000);
+
+test("says so when no views can be proposed, and the search is as it was", async () => {
+  server();
+  const views = vi
+    .spyOn(viewProposals, "proposeFrameViews")
+    .mockRejectedValue(new Error("The view network is not installed"));
+  try {
+    render(<Harness />);
+    await openFrames();
+    enterGeometry();
+    click("Propose views for this frame");
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "No views were proposed: The view network is not installed.",
+    );
+    expect(screen.queryByRole("radio")).toBeNull();
+    click("Propose overlay");
+    await proposed();
+    expect(
+      screen.getByRole("button", { name: "Save confirmed proposal" }),
+    ).toBeTruthy();
+  } finally {
+    views.mockRestore();
+  }
+}, 60000);
+
+test("for two planes one picked view turns the model for both, and the proposal is not saved", async () => {
+  const api = server(pairRoutes);
+  const views = vi
+      .spyOn(viewProposals, "proposeFrameViews")
+      .mockResolvedValue(PROPOSED),
+    create = vi.spyOn(overlayJobs, "createBiplaneOverlayJob");
+  try {
+    render(<Harness />);
+    await openPair();
+    chooseMethod("vessel_evidence");
+    await acceptsInput();
+    // Plane B's frame is on screen: the views are proposed for it.
+    click("Propose views for this frame");
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /Proposed view 1/ }),
+    );
+    expect(views.mock.calls[0][0]).toMatchObject({ plane: "b" });
+    expect(status("Search start").textContent).toBe(
+      "The search will start from proposed view 1 for plane B's frame: primary -35°, secondary 12°, turned 8° in the image.",
+    );
+    // The pick stays the start while plane A's frame is on screen.
+    choosePlane("a");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+    expect(status("Search start").textContent).toMatch(/for plane B's frame/);
+    expect(screen.queryByRole("radio")).toBeNull();
+    await proposePair();
+    expect(create.mock.calls.at(-1)![0].start_view).toEqual({
+      plane: 1,
+      view: startView(0),
+    });
+    expect(status("Start of this proposal").textContent).toMatch(
+      /^This proposal started from proposed view 1 for plane B's frame: /,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Save confirmed proposal" }),
+    ).toBeNull();
+    expect(api.keys().filter((key) => key.startsWith("PUT"))).toEqual([]);
+  } finally {
+    views.mockRestore();
+    create.mockRestore();
+  }
+}, 60000);
