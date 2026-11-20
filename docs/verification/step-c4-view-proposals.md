@@ -35,7 +35,7 @@ Unit evidence for the new parts, all on synthetic data:
 - `poseInitializer.test.ts`: the start from a proposed view is a rigid turn that leaves the pivot in place, makes the entered plane see the model as the proposed view says, in-plane turn included, and agrees with the start the Ljubljana evaluation used for a volume in patient axes.
 - `projectionOverlayJob.test.ts`: a search started from a proposed view near the truth ends on it where the same search from the volume's own position does not, for one plane and for two, with the second plane keeping its entered angle to the first. Without a start view the start is the identity.
 - `viewProposals.test.ts`: the views are those of the evaluation path for the same frame, the polarity is used, the network is fetched once, a failed fetch is tried again, a caller that gives up does not take the fetch from the next one, and a fetch that does not arrive in 30 seconds is given up, said to be late and tried again when asked.
-- `ViewProposalPicker.test.tsx`: a share too small to round to one percent is not shown as none, and a start picked for the other plane's frame is shown as the choice in force.
+- `ViewProposalPicker.test.tsx`: a share too small to round to one percent is not shown as none, a start picked for the other plane's frame is shown as the choice in force, a running request is stopped when another frame or polarity is shown, and an angle that rounds to nothing is written as 0.
 - `ProjectionOverlayStudio.test.tsx`: nothing is proposed or picked until the operator asks. A pick is the start of the next search and is stated before and after it. It holds for the frame and polarity it was proposed for and for no other. For two planes one pick serves both. Going back to the volume's own position drops a proposal made from a picked view. A network that is not installed is said so, and the search is as it was.
 
 ## Mutation checks
@@ -157,11 +157,16 @@ The automated review of the first head raised four findings, all in the studio a
 - The one fetch was tied to the first caller, so asking again for another frame while it ran failed the second request with the first one's abort. The fetch now belongs to the page.
 - A share under half a percent was shown as 0%. It is now shown as under 1%.
 
-The mutation counts above are of the first head. The new guards were checked the same way: nine single-site changes (the list's choice in force in the control and in the studio, the share's wording, the deadline's abort, message and timer, the fetch's own signal, a caller's abort, and a failed fetch not being kept), all nine caught.
+The review of the second head raised two more, in the control, fixed the same way.
+
+- A request for views kept running after its frame or polarity was no longer the one shown, for a result that could not be listed. It is now stopped when another frame or polarity is shown.
+- An angle between -0.5 and 0 degrees was written as -0°. It is now written as 0°.
+
+The mutation counts above are of the first head. The new guards were checked the same way: eleven single-site changes (the list's choice in force in the control and in the studio, the share's wording, the deadline's abort, message and timer, the fetch's own signal, a caller's abort, a failed fetch not being kept, the stop on another frame or polarity, and the wording of a small negative angle), all eleven caught.
 
 ## Final local checks
 
-On the head of this pull request: backend 1468 passed and 133 skipped, Python lint and format checks clean; frontend 1331 tests in 108 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). In the full frontend run 1329 passed and two timed out, in files this pull request does not touch, while the job governor had the test workers paused for about 13 minutes. Those two files were run again on their own and passed, 18 of 18. Every file this pull request changes passes Prettier. The native ingestion and physics suites were not run again here; nothing they cover is changed.
+On the head of this pull request: backend 1468 passed and 133 skipped, Python lint and format checks clean; frontend 1333 tests in 108 files, TypeScript typecheck, production build and dependency audit clean (zero vulnerabilities). The full frontend run was made on a busy workstation and did not pass whole in one go. On this head 1332 passed and one test failed once, in `DeviceScenarioSync.test.tsx`, which this pull request does not touch; its file then passed three times running, 20 of 20. On the head before, two tests in two other untouched files timed out while the job governor had the test workers paused for about 13 minutes, and passed when their files were run again. The frontend job in CI is the clean full run. Every file this pull request changes passes Prettier. The native ingestion and physics suites were not run again here; nothing they cover is changed.
 
 ## Limits
 

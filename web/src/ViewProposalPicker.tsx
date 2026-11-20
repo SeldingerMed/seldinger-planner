@@ -16,7 +16,8 @@ export type StartPick = {
   share: number;
 };
 
-const degrees = (value: number) => `${value.toFixed(0)}°`;
+/** Whole degrees. A small negative angle is 0, not -0. */
+const degrees = (value: number) => `${value.toFixed(0).replace(/^-0$/, "0")}°`;
 
 /** The words for one picked or listed view. */
 export function viewWords(view: StartView): string {
@@ -62,7 +63,9 @@ export default function ViewProposalPicker({
       null,
     ),
     open = useRef<AbortController | null>(null);
-  useEffect(() => () => open.current?.abort(), []);
+  // A request is for one frame at one polarity. When another is shown, or
+  // the control goes, it is stopped: its views could not be listed.
+  useEffect(() => () => open.current?.abort(), [key]);
 
   async function propose() {
     if (!frame || disabled) return;

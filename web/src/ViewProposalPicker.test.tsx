@@ -4,6 +4,7 @@ import type { VerifiedFrame } from "./projectionFrames";
 import ViewProposalPicker, {
   shareWords,
   type StartPick,
+  viewWords,
 } from "./ViewProposalPicker";
 import * as viewProposals from "./viewProposals";
 
@@ -96,4 +97,60 @@ it("shows a start picked for the other plane's frame as the choice in force", as
       rank: 0,
     }),
   );
+});
+
+it("writes an angle that rounds to nothing as 0 and not as -0", () => {
+  expect(
+    viewWords({ primary_deg: -0.3, secondary_deg: -0.4, turn_deg: 0.2 }),
+  ).toBe("primary 0°, secondary 0°, turned 0° in the image");
+  expect(
+    viewWords({ primary_deg: -35.2, secondary_deg: 12.4, turn_deg: -0.6 }),
+  ).toBe("primary -35°, secondary 12°, turned -1° in the image");
+});
+
+it("stops a running request when its frame or polarity is no longer the one shown", async () => {
+  let arrive!: (views: []) => void;
+  const propose = vi.spyOn(viewProposals, "proposeFrameViews").mockReturnValue(
+    new Promise((resolve) => {
+      arrive = resolve;
+    }),
+  );
+  const picker = (polarity: "dark" | "bright", shown = frame) => (
+    <ViewProposalPicker
+      frame={shown}
+      polarity={polarity}
+      disabled={false}
+      picked={null}
+      elsewhere={null}
+      onPick={() => {}}
+    />
+  );
+  const { rerender } = render(picker("dark"));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Propose views for this frame" }),
+  );
+  const first = propose.mock.calls[0][2]!;
+  screen.getByRole("button", { name: "Proposing views…" });
+  expect(first.aborted).toBe(false);
+  // The same frame and polarity drawn again is still the one asked about.
+  rerender(picker("dark"));
+  expect(first.aborted).toBe(false);
+  rerender(picker("bright"));
+  expect(first.aborted).toBe(true);
+
+  // Another frame of the plane ends a request the same way.
+  fireEvent.click(
+    screen.getByRole("button", { name: "Propose views for this frame" }),
+  );
+  const second = propose.mock.calls[1][2]!;
+  expect(second.aborted).toBe(false);
+  rerender(
+    picker("bright", { sha256: "c".repeat(64), plane: "a" } as VerifiedFrame),
+  );
+  expect(second.aborted).toBe(true);
+  // What arrives for a request that was stopped is not listed.
+  arrive([]);
+  await Promise.resolve();
+  rerender(picker("dark"));
+  expect(screen.queryByRole("radio")).toBeNull();
 });
