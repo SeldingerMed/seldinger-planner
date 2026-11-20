@@ -169,7 +169,7 @@ For a bundle with two planes:
 
 Nothing is picked for the operator. **The volume's own position** stays selected until a view is picked, and the search then starts as it always has. A picked view turns the 3D model, about the centre of its vessel points, until the plane at its entered geometry sees the model as the view says. The entered geometry is not changed. With two planes one turn serves both, from the view picked for either plane's frame, so the entered angle between the planes is kept. The search that follows is the same search with the same limits, by either method.
 
-A proposal that started from a picked view can be reviewed and discarded. It cannot be saved: no saved record states that start, and the records are unchanged. A pick belongs to the frame and polarity it was proposed for, and changing either drops it.
+A proposal that started from a picked view can be reviewed and discarded. It cannot be saved: no saved record states that start, and the records are unchanged. A pick belongs to the frame and polarity it was proposed for, and is no start for another frame or for the same frame read at the other polarity.
 
 The network was trained on synthetic frames. On real frames its first view is often not the nearest of the five, and none of them need be right. The views are not for clinical use.
 

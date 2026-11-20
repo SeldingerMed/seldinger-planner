@@ -2656,6 +2656,9 @@ test("proposes views only when asked, starts the search from a picked one and do
     expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
 
     fireEvent.click(radio(/Proposed view 2/));
+    expect(
+      screen.getAllByRole("radio").map((item) => (item as any).checked),
+    ).toEqual([false, false, true]);
     expect(status("Search start").textContent).toBe(
       "The search will start from proposed view 2: primary 5°, secondary -3°, turned -2° in the image.",
     );
@@ -2720,6 +2723,20 @@ test("a picked view is for the frame and polarity it was proposed for", async ()
     );
     expect(screen.queryByRole("radio")).toBeNull();
     expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+    // Views proposed at that polarity can be picked in their turn, and that
+    // pick is no start for the frame read as dark vessels.
+    click("Propose views for this frame");
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /Proposed view 2/ }),
+    );
+    expect(views.mock.calls.at(-1)![1]).toBe("bright");
+    expect(status("Search start").textContent).toMatch(/proposed view 2/);
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Vessels in this frame are/ }),
+      { target: { value: "dark" } },
+    );
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
     click("Propose overlay");
     await waitFor(() => expect(create).toHaveBeenCalled(), { timeout: 30000 });
     expect(create.mock.calls.at(-1)![0].start_view).toBeNull();
@@ -2748,10 +2765,118 @@ test("says so when no views can be proposed, and the search is as it was", async
     expect(
       screen.getByRole("button", { name: "Save confirmed proposal" }),
     ).toBeTruthy();
+    // The message is about the frame as it was read then.
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Vessels in this frame are/ }),
+      { target: { value: "bright" } },
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   } finally {
     views.mockRestore();
   }
 }, 60000);
+
+/** The pair, with a second frame of other pixels admitted on plane B. */
+function pairWithALaterFrame() {
+  const later = pairGray[1].map((value) => 255 - value);
+  const bundle = pairBundleAnswer();
+  (bundle.manifest.planes as any)[1].frames[1].sha256 = hex(later);
+  return {
+    bundle: () => json(bundle),
+    frame: (url: string) =>
+      url.endsWith("/planes/b/frames/30")
+        ? bytes(later, { "X-Frame-Manifest-Revision": REVISION })
+        : pairFrame(url),
+  };
+}
+const chooseFrame = async (index: number, plane: string) => {
+  fireEvent.change(screen.getByRole("combobox", { name: "Frame" }), {
+    target: { value: String(index) },
+  });
+  await screen.findByRole("img", {
+    name: `Admitted frame ${index}, plane ${plane}`,
+  });
+};
+
+test("a picked view is no start for another frame of its plane", async () => {
+  server(pairWithALaterFrame());
+  const views = vi
+    .spyOn(viewProposals, "proposeFrameViews")
+    .mockResolvedValue(PROPOSED);
+  try {
+    render(<Harness />);
+    await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+    type("Frame bundle identifier", "phantom-run");
+    click("Open admitted frames");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+    choosePlane("b");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane b" });
+    click("Propose views for this frame");
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /Proposed view 1/ }),
+    );
+    expect(status("Search start").textContent).toMatch(
+      /^The search will start from proposed view 1: /,
+    );
+    await chooseFrame(30, "b");
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+  } finally {
+    views.mockRestore();
+  }
+}, 60000);
+
+test("for two planes a picked view is for its frame and polarity, and a proposal belongs to its start", async () => {
+  server(pairWithALaterFrame());
+  const views = vi
+      .spyOn(viewProposals, "proposeFrameViews")
+      .mockResolvedValue(PROPOSED),
+    create = vi.spyOn(overlayJobs, "createBiplaneOverlayJob");
+  const polarityOfB = (value: string) =>
+    fireEvent.change(
+      screen.getByRole("combobox", { name: /Vessels in plane B's frame are/ }),
+      { target: { value } },
+    );
+  try {
+    render(<Harness />);
+    await openPair();
+    chooseMethod("vessel_evidence");
+    await acceptsInput();
+    click("Propose views for this frame");
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /Proposed view 1/ }),
+    );
+    expect(status("Search start").textContent).toMatch(/for plane B's frame/);
+    // Plane B read as bright vessels is not the frame the view was for.
+    polarityOfB("bright");
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+    polarityOfB("dark");
+    expect(status("Search start").textContent).toMatch(/for plane B's frame/);
+    // Nor is another frame of plane B.
+    await chooseFrame(30, "b");
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+    await chooseFrame(12, "b");
+    expect(status("Search start").textContent).toMatch(/for plane B's frame/);
+
+    await proposePair();
+    expect(create.mock.calls.at(-1)![0].start_view).toEqual({
+      plane: 1,
+      view: startView(0),
+    });
+    expect(status("Start of this proposal").textContent).toMatch(
+      /proposed view 1 for plane B's frame/,
+    );
+    // Another start is another proposal: this one is dropped.
+    fireEvent.click(radio("The volume's own position"));
+    expect(status("Overlay status").textContent).toBe("");
+    expect(
+      screen.queryByRole("status", { name: "Start of this proposal" }),
+    ).toBeNull();
+  } finally {
+    views.mockRestore();
+    create.mockRestore();
+  }
+}, 90000);
 
 test("for two planes one picked view turns the model for both, and the proposal is not saved", async () => {
   const api = server(pairRoutes);
