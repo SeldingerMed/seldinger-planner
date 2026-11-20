@@ -528,6 +528,7 @@ export default function ProjectionOverlayStudio({
     setSettings({});
     setPicks({});
     setPaired(false);
+    setStartPick(null);
   }, [source]);
 
   const load = useCallback(async () => {

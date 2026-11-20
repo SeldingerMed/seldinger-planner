@@ -2826,6 +2826,62 @@ test("a picked view is no start for another frame of its plane", async () => {
   }
 }, 60000);
 
+test("a picked view is not carried to another source", async () => {
+  server(pairRoutes);
+  const views = vi
+    .spyOn(viewProposals, "proposeFrameViews")
+    .mockResolvedValue(PROPOSED);
+  const props = { binding, volume, cursor: null };
+  const reopen = async () => {
+    type("Frame bundle identifier", "phantom-run");
+    click("Open admitted frames");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+  };
+  const routes = (image_sha256: string) =>
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.endsWith("/projection-registration")
+          ? json({ ...registrationAnswer(), image_sha256 })
+          : url.endsWith("/segmentations")
+            ? json({ current: { vessel: maskEntry, aneurysm: null } })
+            : url.includes("/planes/")
+              ? pairFrame(url)
+              : json(pairBundleAnswer()),
+      ),
+    );
+  try {
+    const view = render(
+      <ProjectionOverlayStudio {...props} caseState={caseState} />,
+    );
+    await openPair();
+    choosePlane("a");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+    click("Propose views for this frame");
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /^Proposed view 1: / }),
+    );
+    expect(status("Search start").textContent).toMatch(/proposed view 1/);
+    // The same frames admitted under another source: the pick was made for
+    // the first one and is no start here.
+    const other = { ...binding, image_sha256: "9".repeat(64) };
+    routes(other.image_sha256);
+    view.rerender(
+      <ProjectionOverlayStudio
+        {...props}
+        binding={other}
+        caseState={{ ...caseState, image_sha256: other.image_sha256 }}
+      />,
+    );
+    await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+    await reopen();
+    expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
+  } finally {
+    views.mockRestore();
+  }
+}, 60000);
+
 test("for two planes a picked view is for its frame and polarity, and a proposal belongs to its start", async () => {
   server(pairWithALaterFrame());
   const views = vi
