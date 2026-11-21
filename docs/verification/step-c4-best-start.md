@@ -27,7 +27,19 @@ Development subjects 01 to 05, run with the shipped rule and the shipped code pa
 | Lateral frame, median                       | 23.1 mm      | 22.1 mm    |
 | Runs that ended farther from the reference  |              | 0 of 20    |
 
-Held-back subjects 06 to 10, one protocol run: [results](../research/ljubljana-best-start-results.md).
+Held-back subjects 06 to 10, protocol `ljubljana-best-start-v1`, run once at `917e38c` ([results](../research/ljubljana-best-start-results.md)):
+
+| Arm                                                  | Single start | Best start |
+| ---------------------------------------------------- | ------------ | ---------- |
+| Two planes, runs under 1 mm (the protocol's measure) | 4 of 5       | 4 of 5     |
+| Two planes, median                                   | 0.27 mm      | 0.23 mm    |
+| Two planes, runs that ended nearer / farther         |              | 2 / 0 of 5 |
+| Lateral frame with its view unknown, median          | 48.1 mm      | 28.9 mm    |
+| Frontal frame, median                                | 5.3 mm       | 4.8 mm     |
+| Lateral frame, median                                | 25.5 mm      | 25.5 mm    |
+| One-plane runs that ended farther                    |              | 2 of 15    |
+
+Over all ten subjects, two planes: under 1 mm in 7 of 10 from the single start and 8 of 10 from the best start, with no run farther.
 
 ## Tests
 

@@ -52,4 +52,4 @@ The manifest lists every case with the SHA-256 of its source mask and of its ves
 
 - Synthetic gate, on 2,280 frames from the 57 held-out vessel models: one of the five proposals within 15 degrees in 88.4%, the first in 63.1%.
 - Ljubljana, ten held-back frames, one protocol run: the first proposal within 15 degrees in 4, one of the five in 7 ([results](ljubljana-view-initializer-results.md)).
-- Ljubljana, as starts for the best-start search: [results](ljubljana-best-start-results.md).
+- Ljubljana, as starts for the best-start search, ten subjects, two planes: under 1 mm in 8 of 10 against 7 of 10 from the single start (4 of 5 against 4 of 5 on the five held back), no run farther ([results](ljubljana-best-start-results.md)).
