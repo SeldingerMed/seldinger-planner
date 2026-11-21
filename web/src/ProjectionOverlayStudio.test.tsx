@@ -2834,6 +2834,41 @@ test("a picked view is no start for another frame of its plane", async () => {
   }
 }, 60000);
 
+test("a view picked for one plane's frame stands when both planes are then fitted", async () => {
+  server(pairRoutes);
+  const views = vi
+    .spyOn(viewProposals, "proposeFrameViews")
+    .mockResolvedValue(PROPOSED);
+  try {
+    render(<Harness />);
+    await screen.findByText(/No confirmed 2D-to-3D proposal is saved/);
+    type("Frame bundle identifier", "phantom-run");
+    click("Open admitted frames");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+    // One plane at a time: the frames of a two-plane bundle are still
+    // plane A's and plane B's, and the pick is made for plane A's.
+    await proposeViews();
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /^Proposed view 1: / }),
+    );
+    expect(views.mock.calls[0][0]).toMatchObject({ plane: "a" });
+    expect(status("Search start").textContent).toBe(
+      "The search will start from proposed view 1: primary -35°, secondary 12°, turned 8° in the image.",
+    );
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: "Fit one pose to both planes" }),
+    );
+    expect(status("Search start").textContent).toBe(
+      "The search will start from proposed view 1 for plane A's frame: primary -35°, secondary 12°, turned 8° in the image.",
+    );
+    expect((radio(/^Proposed view 1: /) as HTMLInputElement).checked).toBe(
+      true,
+    );
+  } finally {
+    views.mockRestore();
+  }
+}, 60000);
+
 test("a picked view stands when its frame is opened again", async () => {
   server(pairRoutes);
   const views = vi
