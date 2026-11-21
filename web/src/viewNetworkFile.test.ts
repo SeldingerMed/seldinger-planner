@@ -94,3 +94,33 @@ it("fixes one size and one lower-case SHA-256", () => {
   expect(Number.isInteger(VIEW_NETWORK_FILE.size_bytes)).toBe(true);
   expect(VIEW_NETWORK_FILE.sha256).toMatch(/^[a-f0-9]{64}$/);
 });
+
+it("does not read a body that declares another size", async () => {
+  // As for an admitted frame: a declared length that is not the fixed size
+  // is refused before any of the body is read.
+  const read = vi.fn(async () => new ArrayBuffer(0));
+  for (const declared of [file.byteLength + 1, file.byteLength - 1, 0]) {
+    const response = new Response(null, {
+      status: 200,
+      headers: { "Content-Length": String(declared) },
+    });
+    response.arrayBuffer = read;
+    serve(() => response);
+    await expect(loadViewNetwork(undefined, expected)).rejects.toThrow(
+      VIEW_NETWORK_UNREADABLE,
+    );
+  }
+  expect(read).not.toHaveBeenCalled();
+});
+
+it("reads a body that declares the fixed size, or none", async () => {
+  const declared = (length: string | null) => {
+    const response = answer(file);
+    if (length !== null) response.headers.set("Content-Length", length);
+    return response;
+  };
+  serve(() => declared(String(file.byteLength)));
+  await expect(loadViewNetwork(undefined, expected)).resolves.toBeTruthy();
+  serve(() => declared(null));
+  await expect(loadViewNetwork(undefined, expected)).resolves.toBeTruthy();
+});

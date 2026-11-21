@@ -30,6 +30,10 @@ export async function loadViewNetwork(
   });
   if (response.status === 404) throw new Error(VIEW_NETWORK_ABSENT);
   if (!response.ok) throw new Error(VIEW_NETWORK_UNREADABLE);
+  // A body that declares another size is not read at all.
+  const declared = response.headers.get("Content-Length");
+  if (declared !== null && Number(declared) !== expected.size_bytes)
+    throw new Error(VIEW_NETWORK_UNREADABLE);
   const buffer = await response.arrayBuffer();
   if (
     buffer.byteLength !== expected.size_bytes ||

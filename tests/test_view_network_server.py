@@ -34,6 +34,8 @@ def test_the_verified_file_is_served_whole_and_never_cached(tmp_path):
     assert answer.content == BYTES
     assert answer.headers["content-type"] == "application/octet-stream"
     assert answer.headers["cache-control"] == "no-store"
+    # The browser refuses a declared length that is not the fixed size.
+    assert answer.headers["content-length"] == str(spec().size_bytes)
     assert answer.headers["x-view-network-sha256"] == spec().sha256
 
 
