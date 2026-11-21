@@ -2834,6 +2834,37 @@ test("a picked view is no start for another frame of its plane", async () => {
   }
 }, 60000);
 
+test("a picked view stands when its frame is opened again", async () => {
+  server(pairRoutes);
+  const views = vi
+    .spyOn(viewProposals, "proposeFrameViews")
+    .mockResolvedValue(PROPOSED);
+  try {
+    render(<Harness />);
+    await openPair();
+    choosePlane("a");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+    await proposeViews();
+    fireEvent.click(
+      await screen.findByRole("radio", { name: /^Proposed view 1: / }),
+    );
+    expect(status("Search start").textContent).toBe(
+      "The search will start from proposed view 1 for plane A's frame: primary -35°, secondary 12°, turned 8° in the image.",
+    );
+    // A frame is known by its bytes. Opened again, it is the frame the view
+    // was picked for, and the status line says the pick is in force. Opening
+    // puts the studio back to one plane, which is all the wording loses.
+    type("Frame bundle identifier", "phantom-run");
+    click("Open admitted frames");
+    await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
+    expect(status("Search start").textContent).toBe(
+      "The search will start from proposed view 1: primary -35°, secondary 12°, turned 8° in the image.",
+    );
+  } finally {
+    views.mockRestore();
+  }
+}, 60000);
+
 test("the weights are fetched under the deadline of the studio's other requests", () => {
   expect(viewProposals.VIEW_NETWORK_TIMEOUT_MS).toBe(
     OVERLAY_REQUEST_TIMEOUT_MS,

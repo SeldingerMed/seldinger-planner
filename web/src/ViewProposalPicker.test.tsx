@@ -184,3 +184,31 @@ it("does not bring back an old failure when its frame is shown again", async () 
   rerender(picker(frame));
   expect(screen.queryByRole("alert")).toBeNull();
 });
+
+it("draws no list while no frame is on screen, whatever the start in force", async () => {
+  vi.spyOn(viewProposals, "proposeFrameViews").mockResolvedValue([
+    { ...view, share: 0.27 },
+  ]);
+  const picker = (shown: VerifiedFrame | null, start: StartPick | null) => (
+    <ViewProposalPicker
+      frame={shown}
+      polarity="dark"
+      disabled={false}
+      picked={null}
+      elsewhere={start}
+      onPick={() => {}}
+    />
+  );
+  const { rerender } = render(picker(frame, null));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Propose views for this frame" }),
+  );
+  await screen.findByRole("radio", { name: /^Proposed view 1: / });
+  // The plane's frame is being drawn again: the studio has no frame to give
+  // and the start in force is not this control's to describe.
+  rerender(picker(null, elsewhere));
+  expect(screen.queryByRole("radio")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Propose views for this frame" }),
+  ).toHaveProperty("disabled", true);
+});
