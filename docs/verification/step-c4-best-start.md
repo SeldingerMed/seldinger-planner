@@ -48,11 +48,11 @@ Over all ten subjects, two planes: under 1 mm in 7 of 10 from the single start a
 - `web/src/ProjectionOverlayStudio.test.tsx`: with the network a one-plane and a two-plane proposal are made and saved under the best-start methods; the network is fetched when the vessel evidence method is chosen and not for the centerline distance method; the wait for it runs beside the mask read; without the network the search runs from the volume's own position.
 - `web/src/evidenceRecords.test.ts`, `tests/test_projection_registration_server.py`: records of versions 5 and 6 round-trip under their own names, and a record under another kind's version or with another kind's fields is refused.
 
-Thirty-five single-site changes of the new code were made by hand (the comparison, the kept start, the failure handling, the method names, the description against the first start, the wiring of the proposer in the jobs and the studio, the wait for the weights, the slice boundaries, the version table). Each was caught by a test.
+Thirty-eight single-site changes of the new code were made by hand (the comparison, the kept start, the failure handling, the method names, the description against the first start, the wiring of the proposer in the jobs and the studio, the wait for the weights, the slice boundaries, the version table). Each was caught by a test.
 
 ## Checks
 
 On the head of this pull request:
 
 - Backend: 1477 passed and 133 skipped; Python lint and format checks clean.
-- Frontend: TypeScript typecheck clean; the nine test files of the touched code, 400 of 400; production build and dependency audit clean. The full frontend suite is the frontend job in CI.
+- Frontend: TypeScript typecheck clean; the nine test files of the touched code, 401 of 401; production build and dependency audit clean. The full frontend suite is the frontend job in CI.

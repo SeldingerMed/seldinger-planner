@@ -111,6 +111,27 @@ describe("search from the best of several starts", () => {
     }
   }, 120000);
 
+  it("reports the kept start's scores when the points fall outside the frame at the first start", () => {
+    // 80 mm aside, a fifth of the points are in the frame: too few to
+    // score, though the search still finds a pose from there.
+    const aside = IDENTITY_MATRIX.map((row, i) =>
+        i === 0 ? [1, 0, 0, 80] : row,
+      ),
+      from = { ...input, start: aside },
+      own = proposeEvidenceRegistration(from).planes[0].start_score;
+    expect(own.in_field_fraction).toBeLessThan(0.5);
+    expect(own.in_field_fraction).toBeGreaterThan(0);
+    const found = finish([right], from);
+    expect(found.kept).toBe(1);
+    expect(found.proposal.planes[0].start_score).toEqual(
+      proposeEvidenceRegistration({ ...input, start: right }).planes[0]
+        .start_score,
+    );
+    expect(
+      found.proposal.planes[0].start_score.in_field_fraction,
+    ).toBeGreaterThanOrEqual(0.5);
+  }, 120000);
+
   it("keeps the own position when no other start is better", () => {
     const found = finish([wrong, IDENTITY_MATRIX], {
       ...input,

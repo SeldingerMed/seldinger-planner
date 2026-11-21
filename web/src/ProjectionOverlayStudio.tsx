@@ -908,7 +908,7 @@ export default function ProjectionOverlayStudio({
       canceled = false;
     try {
       // The wait for the network runs beside the frame and mask reads.
-      const views = viewProposer(method);
+      const proposer = viewProposer(method);
       for (const item of pairSetup)
         loadedFrames.push(
           shownFrame?.plane === item.plane && shownFrame.index === item.index
@@ -916,7 +916,7 @@ export default function ProjectionOverlayStudio({
             : await loadVerifiedFrame(frames, item.plane, item.index, signal),
         );
       voxels = await maskVoxels(mask, signal);
-      propose_views = await views;
+      propose_views = await proposer;
     } catch (error) {
       // With both frames in hand, the failure is the mask's.
       failure =
@@ -990,9 +990,9 @@ export default function ProjectionOverlayStudio({
       canceled = false;
     try {
       // The wait for the network runs beside the mask read.
-      const views = viewProposer(method);
+      const proposer = viewProposer(method);
       voxels = await maskVoxels(mask, signal);
-      propose_views = await views;
+      propose_views = await proposer;
     } catch (error) {
       failure =
         error instanceof Error

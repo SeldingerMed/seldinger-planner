@@ -7,6 +7,7 @@ import {
   createEvidenceRegistrationJob,
   EVIDENCE_BEST_START_BIPLANE_METHOD,
   EVIDENCE_BEST_START_METHOD,
+  EVIDENCE_REGISTRATION_LIMITS,
   type EvidenceRegistrationInput,
   type EvidenceRegistrationProposal,
 } from "./evidenceRegistration";
@@ -14,7 +15,8 @@ import { centroid } from "./maskPoints";
 
 export type BestStartResult = {
   proposal: EvidenceRegistrationProposal;
-  /** How many starts were searched. */
+  /** How many starts were run, those that failed and were passed over
+   * included. */
   searched: number;
   /** Position of the start the kept result was found from: 0 is the
    * volume's own position. */
@@ -72,7 +74,18 @@ export function* bestStartSteps(
         : EVIDENCE_BEST_START_METHOD,
     ends = { searched: starts.length, kept: best.k };
   if (best.k === 0) return { proposal: { ...best.proposal, method }, ...ends };
-  const from = starts[0],
+  // The first start can be scored when enough of the points are inside
+  // every frame there. Its search may find a pose even when they are not.
+  const scored =
+      own &&
+      own.planes.every(
+        (plane) =>
+          plane.start_score.in_field_fraction >=
+          EVIDENCE_REGISTRATION_LIMITS.min_in_field,
+      )
+        ? own
+        : null,
+    from = starts[0],
     to = best.proposal.matrix,
     pivot = centroid(input.points),
     a = at(from, pivot),
@@ -88,7 +101,7 @@ export function* bestStartSteps(
         ...plane,
         // Where the first start could be scored, its score is the start
         // score, as it is for a search that began there.
-        start_score: own ? own.planes[i].start_score : plane.start_score,
+        start_score: scored ? scored.planes[i].start_score : plane.start_score,
       })),
       translation_mm: Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]),
       rotation_deg:
