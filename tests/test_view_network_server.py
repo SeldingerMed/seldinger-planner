@@ -139,13 +139,21 @@ def test_a_path_that_cannot_be_looked_at_is_a_fault(tmp_path, monkeypatch):
     def refused(file, *, expected):
         raise view_network_server.ModelArtifactError("Cannot open registered checkpoint")
 
-    def unreadable(self, *args, **kwargs):
-        raise OSError(5, "Input/output error")
+    def only_this_path(name):
+        # Every other path is looked at as usual.
+        real = getattr(type(path), name)
+
+        def look(self, *args, **kwargs):
+            if self == path:
+                raise OSError(5, "Input/output error")
+            return real(self, *args, **kwargs)
+
+        monkeypatch.setattr(type(path), name, look)
 
     monkeypatch.setattr(view_network_server, "verified_checkpoint", refused)
     app = client(path, spec())
-    monkeypatch.setattr(type(path), "is_symlink", unreadable)
-    monkeypatch.setattr(type(path), "exists", unreadable)
+    only_this_path("is_symlink")
+    only_this_path("exists")
     answer = app.get("/api/view-network")
     assert answer.status_code == 503
     assert answer.json() == {"detail": "View network failed integrity checks"}
