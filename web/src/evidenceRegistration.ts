@@ -43,6 +43,13 @@ export const EVIDENCE_BIPLANE_REGISTRATION_METHOD =
 export const EVIDENCE_BEST_START_METHOD = "vessel_evidence_best_start_v1";
 export const EVIDENCE_BEST_START_BIPLANE_METHOD =
   "vessel_evidence_best_start_biplane_v1";
+/** A search with a requested fit of the field size, run from several
+ * entered sizes, the result with the lowest cost kept (sizeSearch.ts).
+ * Where views are proposed for the frames it starts from the best of the
+ * starts (bestStart.ts). */
+export const EVIDENCE_SIZE_SEARCH_METHOD = "vessel_evidence_size_search_v1";
+export const EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD =
+  "vessel_evidence_size_search_biplane_v1";
 export const EVIDENCE_REGISTRATION_LIMITS = {
   min_points: 30,
   /** Points scored in the refinement. */
@@ -123,7 +130,9 @@ export type EvidenceRegistrationProposal = {
     | typeof EVIDENCE_REGISTRATION_METHOD
     | typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD
     | typeof EVIDENCE_BEST_START_METHOD
-    | typeof EVIDENCE_BEST_START_BIPLANE_METHOD;
+    | typeof EVIDENCE_BEST_START_BIPLANE_METHOD
+    | typeof EVIDENCE_SIZE_SEARCH_METHOD
+    | typeof EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD;
   /** Rigid volume-RAS to C-arm-RAS matrix, one for every plane. */
   matrix: number[][];
   planes: EvidencePlaneProposal[];

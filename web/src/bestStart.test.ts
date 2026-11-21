@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   gray,
   medial,
@@ -16,7 +16,14 @@ import { centroid } from "./maskPoints";
 import { startFromProposedView } from "./poseInitializer";
 import { IDENTITY_MATRIX } from "./projectionOverlayJob";
 import { projectRegistered } from "./projectionRegistration";
+import { sizeSearchSteps } from "./sizeSearch";
 import { vesselEvidence } from "./vesselEvidence2d";
+
+// The search of the size is the real one, with its calls kept.
+vi.mock("./sizeSearch", async (original) => {
+  const real = await original<typeof import("./sizeSearch")>();
+  return { ...real, sizeSearchSteps: vi.fn(real.sizeSearchSteps) };
+});
 
 const size = { width: SIDE, height: SIDE },
   evidence = vesselEvidence(gray, SIDE, SIDE, "dark"),
@@ -166,5 +173,71 @@ describe("search from the best of several starts", () => {
     expect(() => finish([right, skewed])).toThrow(
       "Rotation must be orthonormal",
     );
+  }, 120000);
+});
+
+describe("best start with a requested fit of the field size", () => {
+  // The entered width is a fifth too small, so the real one is 1.25 times it.
+  const small = (view: typeof VIEW) => ({
+      ...view,
+      detector_width_mm: view.detector_width_mm * 0.8,
+      detector_height_mm: view.detector_height_mm * 0.8,
+    }),
+    fitted = (view: typeof VIEW): EvidenceRegistrationInput => ({
+      ...input,
+      planes: [{ ...input.planes[0], view, fit_detector_scale: true }],
+    }),
+    sized = (from: EvidenceRegistrationInput) => {
+      const steps = sizeSearchSteps(from, { expired: () => false });
+      for (;;) {
+        const next = steps.next();
+        if (next.done) return next.value;
+      }
+    };
+
+  it("with no other start gives the size search's result from the own position", () => {
+    const from = fitted(small(VIEW)),
+      found = finish([], from);
+    expect(found.searched).toBe(1);
+    expect(found.kept).toBe(0);
+    expect(found.proposal).toEqual(sized(from));
+    expect(found.proposal.method).toBe("vessel_evidence_size_search_v1");
+    expect(found.proposal.detector_fit).toBe("kept");
+    expect(found.proposal.planes[0].detector_scale).toBeGreaterThan(1.2);
+    expect(found.proposal.planes[0].detector_scale).toBeLessThan(1.3);
+  }, 120000);
+
+  it("searches the size from the kept start and describes the result from the own position", () => {
+    const from = fitted(small(entered)),
+      found = finish([wrong, right], from),
+      asked = vi.mocked(sizeSearchSteps).mock.lastCall!,
+      own = proposeEvidenceRegistration(from),
+      there = sized({ ...from, start: right });
+    expect(found.searched).toBe(3);
+    expect(found.kept).toBe(2);
+    // The size is searched from the kept start, and that start's result is
+    // handed over and not searched for again.
+    expect(asked[0]).toEqual({ ...from, start: right });
+    expect(asked[2]!.entered).toEqual(
+      proposeEvidenceRegistration({ ...from, start: right }),
+    );
+    expect(found.proposal.method).toBe("vessel_evidence_size_search_v1");
+    expect(found.proposal.matrix).toEqual(there.matrix);
+    expect(found.proposal.planes[0].detector_scale).toBe(
+      there.planes[0].detector_scale,
+    );
+    expect(found.proposal.planes[0].detector_scale).toBeGreaterThan(1.2);
+    expect(found.proposal.planes[0].detector_scale).toBeLessThan(1.3);
+    expect(found.proposal.planes[0].start_score).toEqual(
+      own.planes[0].start_score,
+    );
+    expect(found.proposal.rotation_deg).toBeGreaterThan(30);
+    expect(found.proposal.rotation_deg).toBeLessThan(50);
+  }, 120000);
+
+  it("with no fit requested keeps the best-start name and numbers", () => {
+    const found = finish([right]);
+    expect(found.proposal.method).toBe("vessel_evidence_best_start_v1");
+    expect(found.proposal.detector_fit).toBe("not_requested");
   }, 120000);
 });

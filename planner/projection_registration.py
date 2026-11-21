@@ -56,6 +56,12 @@ BEST_START_VERSION = "step-c4-evidence-best-start-registration-v5"
 BEST_START_METHOD = "vessel_evidence_best_start_v1"
 BEST_START_BIPLANE_VERSION = "step-c4-evidence-best-start-biplane-registration-v6"
 BEST_START_BIPLANE_METHOD = "vessel_evidence_best_start_biplane_v1"
+# A requested fit of the field size searched from several entered sizes. The
+# record fields are again those of versions 3 and 4; a fit is always requested.
+SIZE_SEARCH_VERSION = "step-c4-evidence-size-search-registration-v7"
+SIZE_SEARCH_METHOD = "vessel_evidence_size_search_v1"
+SIZE_SEARCH_BIPLANE_VERSION = "step-c4-evidence-size-search-biplane-registration-v8"
+SIZE_SEARCH_BIPLANE_METHOD = "vessel_evidence_size_search_biplane_v1"
 VERSIONS = {
     METHOD: VERSION,
     BIPLANE_METHOD: BIPLANE_VERSION,
@@ -63,6 +69,8 @@ VERSIONS = {
     EVIDENCE_BIPLANE_METHOD: EVIDENCE_BIPLANE_VERSION,
     BEST_START_METHOD: BEST_START_VERSION,
     BEST_START_BIPLANE_METHOD: BEST_START_BIPLANE_VERSION,
+    SIZE_SEARCH_METHOD: SIZE_SEARCH_VERSION,
+    SIZE_SEARCH_BIPLANE_METHOD: SIZE_SEARCH_BIPLANE_VERSION,
 }
 # Mirrors the browser engine: closer planes add too little to determine depth.
 MIN_PLANE_ANGLE_DEG = 30.0
@@ -261,6 +269,18 @@ class BestStartBiplaneRegistrationInputs(EvidenceBiplaneRegistrationInputs):
     method: Literal["vessel_evidence_best_start_biplane_v1"]
 
 
+class SizeSearchRegistrationInputs(EvidenceRegistrationInputs):
+    """Version 7. The fields of version 3."""
+
+    method: Literal["vessel_evidence_size_search_v1"]
+
+
+class SizeSearchBiplaneRegistrationInputs(EvidenceBiplaneRegistrationInputs):
+    """Version 8. The fields of version 4."""
+
+    method: Literal["vessel_evidence_size_search_biplane_v1"]
+
+
 _MODELS = {
     METHOD: RegistrationInputs,
     BIPLANE_METHOD: BiplaneRegistrationInputs,
@@ -268,6 +288,8 @@ _MODELS = {
     EVIDENCE_BIPLANE_METHOD: EvidenceBiplaneRegistrationInputs,
     BEST_START_METHOD: BestStartRegistrationInputs,
     BEST_START_BIPLANE_METHOD: BestStartBiplaneRegistrationInputs,
+    SIZE_SEARCH_METHOD: SizeSearchRegistrationInputs,
+    SIZE_SEARCH_BIPLANE_METHOD: SizeSearchBiplaneRegistrationInputs,
 }
 
 
@@ -281,7 +303,9 @@ class RegistrationRequest(StrictModel):
         | EvidenceRegistrationInputs
         | EvidenceBiplaneRegistrationInputs
         | BestStartRegistrationInputs
-        | BestStartBiplaneRegistrationInputs,
+        | BestStartBiplaneRegistrationInputs
+        | SizeSearchRegistrationInputs
+        | SizeSearchBiplaneRegistrationInputs,
         Field(discriminator="method"),
     ]
 
@@ -298,11 +322,18 @@ def is_evidence(inputs):
         EVIDENCE_BIPLANE_METHOD,
         BEST_START_METHOD,
         BEST_START_BIPLANE_METHOD,
+        SIZE_SEARCH_METHOD,
+        SIZE_SEARCH_BIPLANE_METHOD,
     )
 
 
 def is_biplane(inputs):
-    return _method(inputs) in (BIPLANE_METHOD, EVIDENCE_BIPLANE_METHOD, BEST_START_BIPLANE_METHOD)
+    return _method(inputs) in (
+        BIPLANE_METHOD,
+        EVIDENCE_BIPLANE_METHOD,
+        BEST_START_BIPLANE_METHOD,
+        SIZE_SEARCH_BIPLANE_METHOD,
+    )
 
 
 def bound_planes(inputs):
@@ -336,6 +367,9 @@ def _check_fit(value):
     # A dropped fit leaves every plane at its entered size.
     if outcome == "dropped" and any(entry["detector_scale"] != 1 for entry in planes):
         raise ValueError("A dropped detector fit leaves the scale at one")
+    # The size search is run only for a requested fit.
+    if _method(value) in (SIZE_SEARCH_METHOD, SIZE_SEARCH_BIPLANE_METHOD) and not any(requested):
+        raise ValueError("A size search requires a requested detector fit")
 
 
 def validate_registration(inputs):

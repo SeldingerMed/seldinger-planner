@@ -317,3 +317,81 @@ describe("best-start records", () => {
     expect(() => parse(answer)).toThrow(/Invalid/);
   });
 });
+
+/** The same records as found by the search of the field size. */
+describe("size-search records", () => {
+  const SINGLE = [
+      "vessel_evidence_size_search_v1",
+      "step-c4-evidence-size-search-registration-v7",
+    ] as const,
+    PAIR = [
+      "vessel_evidence_size_search_biplane_v1",
+      "step-c4-evidence-size-search-biplane-registration-v8",
+    ] as const,
+    fitted = {
+      fit_detector_scale: true,
+      geometry_source: "operator_entered",
+      detector_scale: 1.2,
+    },
+    named = (answer: unknown, method: string, version: string) =>
+      changed(answer, (c) => {
+        c.inputs.method = method;
+        c.result.method = method;
+        c.result.version = version;
+        c.dependencies.version = version;
+      }),
+    one = (change: Record<string, unknown> = {}) =>
+      named(single({ ...fitted, detector_fit: "kept", ...change }), ...SINGLE),
+    two = (plane: Record<string, unknown> = fitted, fit = "kept") =>
+      named(pairB(plane, { detector_fit: fit }), ...PAIR);
+
+  it("reads a single-plane and a two-plane record under their own versions", () => {
+    const a = parse(one()).current,
+      b = parse(two()).current;
+    if (a.status !== "current" || b.status !== "current")
+      throw new Error("not current");
+    expect(a.inputs.method).toBe(SINGLE[0]);
+    expect(isEvidence(a.inputs)).toBe(true);
+    expect(isBiplane(a.inputs)).toBe(false);
+    expect(b.inputs.method).toBe(PAIR[0]);
+    expect(isEvidence(b.inputs)).toBe(true);
+    expect(isBiplane(b.inputs)).toBe(true);
+    // A fit that was requested and dropped is a size-search record too.
+    expect(
+      parse(one({ detector_fit: "dropped", detector_scale: 1 })).current.status,
+    ).toBe("current");
+  });
+
+  it.each([
+    ["a single-plane record with no fit requested", named(single(), ...SINGLE)],
+    ["a pair with no fit requested", named(pair(), ...PAIR)],
+    [
+      "a single-plane record under the single-start version",
+      named(
+        single({ ...fitted, detector_fit: "kept" }),
+        SINGLE[0],
+        "step-c4-evidence-registration-v3",
+      ),
+    ],
+    [
+      "a best-start record under the size-search version",
+      named(
+        single({ ...fitted, detector_fit: "kept" }),
+        "vessel_evidence_best_start_v1",
+        SINGLE[1],
+      ),
+    ],
+    [
+      "a pair under the single-plane version",
+      named(pairB(fitted, { detector_fit: "kept" }), PAIR[0], SINGLE[1]),
+    ],
+    [
+      "a single-plane record named as a pair",
+      named(single({ ...fitted, detector_fit: "kept" }), ...PAIR),
+    ],
+    ["a size past what a record accepts", one({ detector_scale: 1.5 })],
+    ["a record with a sensitivity", one({ sensitivity: 0.5 })],
+  ])("refuses %s", (_name, answer) => {
+    expect(() => parse(answer)).toThrow(/Invalid/);
+  });
+});

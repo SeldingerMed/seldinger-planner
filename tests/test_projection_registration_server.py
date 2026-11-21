@@ -1040,3 +1040,90 @@ def test_a_best_start_record_is_held_to_the_rules_of_its_kind(
     for bad in (wrong, other):
         assert client.put(route, json=request_for(case, reference, bad)).status_code == 422
     assert client.get(route).json()["current"]["status"] == "not_confirmed"
+
+
+# The size-search methods: a requested fit of the field size searched from
+# several entered sizes. Their records have the fields of versions 3 and 4
+# under their own method names and versions, and always a requested fit.
+
+SIZE_SEARCH = [
+    ("vessel_evidence_size_search_v1", "step-c4-evidence-size-search-registration-v7"),
+    (
+        "vessel_evidence_size_search_biplane_v1",
+        "step-c4-evidence-size-search-biplane-registration-v8",
+    ),
+]
+FITTED = {"fit_detector_scale": True, "geometry_source": "operator_entered", "detector_scale": 1.2}
+
+
+def size_search_inputs(mask, listed, method, **change):
+    if "biplane" in method:
+        return evidence_pair_inputs(
+            mask, listed, a=FITTED, method=method, detector_fit="kept", **change
+        )
+    return evidence_inputs(mask, listed, method=method, detector_fit="kept", **FITTED, **change)
+
+
+@pytest.mark.parametrize(("method", "version"), SIZE_SEARCH)
+def test_size_search_registration_roundtrips_under_its_own_version(
+    tmp_path, monkeypatch, method, version
+):
+    two = "biplane" in method
+    client, case, reference, mask, listed, _ = (pair_ready if two else ready)(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    value = size_search_inputs(mask, listed, method)
+    older = dict(value, method=EVIDENCE_PAIR_METHOD if two else EVIDENCE_METHOD)
+    response = client.put(route, json=request_for(case, reference, value))
+    assert response.status_code == 200, response.text
+    current = response.json()["current"]
+    assert current["status"] == "current" and current["evidence"] == "verified"
+    assert current["inputs"] == value
+    assert current["dependencies"]["version"] == version
+    # The same numbers under the single-start method differ only in the names.
+    again = client.put(route, json=request_for(case, reference, older, 1))
+    assert again.status_code == 200, again.text
+    result = again.json()["current"]["result"]
+    assert current["result"] == {**result, "version": version, "method": method}
+    assert current["result"]["detector_fit"] == "kept"
+
+
+@pytest.mark.parametrize(("method", "version"), SIZE_SEARCH)
+def test_a_size_search_record_is_held_to_the_rules_of_its_kind(
+    tmp_path, monkeypatch, method, version
+):
+    two = "biplane" in method
+    client, case, reference, mask, listed, _ = (pair_ready if two else ready)(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    value = size_search_inputs(mask, listed, method)
+    # With no fit requested there was no size to search.
+    unfitted = (evidence_pair_inputs if two else evidence_inputs)(mask, listed, method=method)
+    # A sensitivity is no field of a vessel evidence record.
+    if two:
+        wrong = {
+            **value,
+            "planes": [{**value["planes"][0], "sensitivity": 0.5}, value["planes"][1]],
+        }
+        other = size_search_inputs(mask, listed, "vessel_evidence_size_search_v1") | {
+            "method": method
+        }
+        past = {
+            **value,
+            "planes": [{**value["planes"][0], "detector_scale": 1.5}, value["planes"][1]],
+        }
+    else:
+        wrong = {**value, "sensitivity": 0.5}
+        other = {**value, "method": "vessel_evidence_size_search_biplane_v1"}
+        past = {**value, "detector_scale": 1.5}
+    for bad in (unfitted, wrong, other, past):
+        assert client.put(route, json=request_for(case, reference, bad)).status_code == 422
+    assert client.get(route).json()["current"]["status"] == "not_confirmed"
+    # A fit that was requested and dropped is a size-search record too.
+    if two:
+        dropped = {
+            **value,
+            "detector_fit": "dropped",
+            "planes": [{**value["planes"][0], "detector_scale": 1.0}, value["planes"][1]],
+        }
+    else:
+        dropped = {**value, "detector_fit": "dropped", "detector_scale": 1.0}
+    assert client.put(route, json=request_for(case, reference, dropped)).status_code == 200
