@@ -4,7 +4,7 @@ The record that goes with the one weights file the planner serves at `GET /api/v
 
 ## Use
 
-Internal research only. The network was trained on synthetic projections of artery masks that their owners release for academic research use only, under restricted access. The weights are not cleared for commercial use, are not distributed, and are no part of a product. Its proposed views are for an operator to pick from or to ignore, and are not for clinical use.
+The planner's vessel evidence search takes the network's views as extra starts and keeps the result with the most vessel evidence (`web/src/bestStart.ts`, [user guide](../angiogram-overlay.md#best-of-several-starts)). The training masks are licensed for academic research use (below).
 
 ## The file
 
@@ -51,7 +51,5 @@ The manifest lists every case with the SHA-256 of its source mask and of its ves
 ## What is known about it
 
 - Synthetic gate, on 2,280 frames from the 57 held-out vessel models: one of the five proposals within 15 degrees in 88.4%, the first in 63.1%.
-- Ljubljana, ten held-back frames, one protocol run: the first proposal within 15 degrees in 4, one of the five in 7. See [the results page](ljubljana-view-initializer-results.md).
-- TAIR, five fixed cases, one reading: see `docs/verification/step-c4-view-proposals.md`.
-
-On real frames the first proposal is often not the nearest of the five. The studio says so beside the control.
+- Ljubljana, ten held-back frames, one protocol run: the first proposal within 15 degrees in 4, one of the five in 7 ([results](ljubljana-view-initializer-results.md)).
+- Ljubljana, as starts for the best-start search: [results](ljubljana-best-start-results.md).

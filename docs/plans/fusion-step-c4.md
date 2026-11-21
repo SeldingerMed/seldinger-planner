@@ -125,6 +125,7 @@ A frame with no geometry tags gets its view from the operator, and the search th
 - [x] 4.6 Ljubljana: development on 01 to 05, protocol committed, one run on 06 to 10, results page.
 - [x] 4.7 First pull request: everything above, nothing offered in the studio.
 - [x] 4.8 Second pull request: weights under their contract, the studio's view proposals, the TAIR reading, the verification record, mutation pass and reviews.
+- [x] 4.9 Third pull request: the view picker replaced by the best of several starts, with its record versions and its Ljubljana protocol.
 
 ### Design
 
@@ -168,6 +169,17 @@ Written on 2026-11-20, before the network was run on any TAIR frame. One reading
 - A software fault found by a real case is fixed with a test that fails without the fix, the case is run again, and the note says so. There are no other reruns.
 - Whatever it shows, the network stays as it is. A finding is an input to the next network and to the decision about a record version.
 - Images, per-case files and the runtime stay on external storage. The repository gets the table and the reading.
+
+### Third pull request: best of several starts
+
+Written on 2026-11-21. It replaces the studio control of the second pull request.
+
+1. **One press, one proposal.** With the view network installed, Propose overlay by vessel evidence runs the unchanged search from the volume's own position and from each view the network proposes for the frame or frames, and keeps the result with the highest mean vessel evidence under the projected points. Nothing is listed and nothing is picked.
+2. **Why this rule.** The network's five views usually hold a near one, and its ranking does not say which. The search's own score does: on subjects 01 to 05 the kept result was the nearest or within 0.3 mm of the nearest of all starts in every two-plane run, and no run ended farther from the reference than the single start.
+3. **The first start stays the default.** A later start replaces the volume's own position only when its result has more evidence, so a proposal is never worse by the search's own measure than the single-start one.
+4. **Records.** A best-start proposal is saved under `vessel_evidence_best_start_v1` (record version 5) or `vessel_evidence_best_start_biplane_v1` (version 6), with the fields of versions 3 and 4. It is described against the volume's own position. Versions 1 to 4 and their methods are unchanged.
+5. **Without the weights** the search runs from the volume's own position under the single-start methods.
+6. **Evidence.** Protocol `ljubljana-best-start-v1`, committed before its one run on subjects 06 to 10.
 
 ## Parts 2 to 6
 
@@ -220,3 +232,5 @@ Each gets its own acceptance criteria here when it starts. Known inputs:
 - 2026-11-20. The record version for a proposal started from a picked view is not built. Nothing in the reading supports saving one. The control stays in the studio as a research aid, worded as one.
 - 2026-11-20. Mutation pass on the weights route, the browser's file check, the start from a picked view and the studio control: 51 changes, 46 caught after tests were added for a link to nothing, a change of frame, and the two-plane path. The five that survive each remove a second guard behind a first one.
 - 2026-11-20. The planner server counts as a research job to the workstation's job governor and was paused four times during the reading. A reading that drives the studio should be run when no other research job is near the memory budget, or with the server exempted for its length.
+- 2026-11-21. The view picker is removed and replaced by the best of several starts (design above). Colin's direction: no picking, one proposal, the best one. The picker's verification record went with it.
+- 2026-11-21. Development run of the best-start rule on subjects 01 to 05 (harness `ljubljanaBestStart.eval.ts`). Two planes under 1 mm: 3 of 5 from the single start, 4 of 5 from the best start (subject 01 from 2.6 mm to 0.5 mm). A lateral frame started as a frontal one: median 45.4 mm from the single start, 22.1 mm from the best start. No arm had a run that ended farther from the reference.
