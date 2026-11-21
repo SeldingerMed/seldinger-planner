@@ -8,6 +8,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from planner import view_network_server
 from planner.model_assets import VIEW_NETWORK, CheckpointSpec
 from planner.view_network_server import VIEW_NETWORK_FILE, register_view_network_routes
 
@@ -83,6 +84,34 @@ def test_a_link_in_place_of_the_file_is_refused(tmp_path):
 def test_a_link_to_nothing_is_a_fault_and_not_an_absence(tmp_path):
     path = tmp_path / "view-network.bin"
     path.symlink_to(tmp_path / "gone.bin")
+    answer = client(path, spec()).get("/api/view-network")
+    assert answer.status_code == 503
+    assert answer.json() == {"detail": "View network failed integrity checks"}
+
+
+def test_a_file_that_goes_while_it_is_being_read_is_not_installed(tmp_path, monkeypatch):
+    """Absence is decided where the read fails, not by a look beforehand."""
+    path = tmp_path / "view-network.bin"
+    path.write_bytes(BYTES)
+
+    def gone(file, *, expected):
+        file.unlink()
+        raise view_network_server.ModelArtifactError("Cannot open registered checkpoint")
+
+    monkeypatch.setattr(view_network_server, "verified_checkpoint", gone)
+    answer = client(path, spec()).get("/api/view-network")
+    assert answer.status_code == 404
+    assert answer.json() == {"detail": "View network is not installed"}
+
+
+def test_a_file_that_fails_its_check_and_stays_is_a_fault(tmp_path, monkeypatch):
+    path = tmp_path / "view-network.bin"
+    path.write_bytes(BYTES)
+
+    def refused(file, *, expected):
+        raise view_network_server.ModelArtifactError("Checkpoint hash mismatch")
+
+    monkeypatch.setattr(view_network_server, "verified_checkpoint", refused)
     answer = client(path, spec()).get("/api/view-network")
     assert answer.status_code == 503
     assert answer.json() == {"detail": "View network failed integrity checks"}
