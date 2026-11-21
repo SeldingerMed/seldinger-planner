@@ -2804,3 +2804,69 @@ test.each(["one plane", "two planes"])(
   },
   90000,
 );
+
+// The 2D and 3D comparison of a saved proposal.
+
+test("compares the frame and the mask of a saved proposal while the report waits, and saves nothing", async () => {
+  const api = server({
+    registration: () => json(currentAnswer()),
+    bundle: () =>
+      json(
+        bundleAnswer({
+          planes: [
+            {
+              ...bundleAnswer().manifest.planes[0],
+              frames: [
+                { index: 12, sha256: hex(gray), input_sha256: "c".repeat(64) },
+              ],
+            },
+          ],
+        }),
+      ),
+  });
+  const view = render(<Harness />);
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toMatch(
+      /^No vessel presence report/,
+    ),
+  );
+  const other = screen.getByRole("button", { name: "Other workspace action" }),
+    report = () =>
+      within(group()).getByRole("button", { name: "Compute vessel presence" }),
+    comparison = () =>
+      within(screen.getByRole("group", { name: "2D and 3D comparison" }));
+  await waitFor(() => expect(other).toHaveProperty("disabled", false));
+  fireEvent.click(
+    comparison().getByRole("button", { name: "Compare 2D and 3D" }),
+  );
+  expect(report()).toHaveProperty("disabled", true);
+  expect(other).toHaveProperty("disabled", true);
+  expect(
+    screen.getByRole("button", { name: "Show saved overlay" }),
+  ).toHaveProperty("disabled", true);
+  await waitFor(
+    () => comparison().getByRole("table", { name: "Segment comparison" }),
+    { timeout: 30000 },
+  );
+  await waitFor(() => expect(report()).toHaveProperty("disabled", false));
+  expect(other).toHaveProperty("disabled", false);
+  expect(api.keys()).toEqual(
+    expect.arrayContaining([
+      "GET /api/projection-frames/phantom-run/planes/single/frames/12",
+      `GET ${maskEntry.mask_url}`,
+      `GET /api/cases/${identity.case_id}/device-scenarios`,
+    ]),
+  );
+  expect(api.keys().filter((key) => !key.startsWith("GET "))).toEqual([]);
+  // A stale proposal has no comparison.
+  view.unmount();
+  server({
+    registration: () =>
+      json(registrationAnswer({ status: "stale", registration_id: "r-0" }, 2)),
+  });
+  render(<Harness />);
+  await screen.findByText(/confirmed for an earlier revision of this case/);
+  expect(
+    screen.queryByRole("group", { name: "2D and 3D comparison" }),
+  ).toBeNull();
+}, 60000);

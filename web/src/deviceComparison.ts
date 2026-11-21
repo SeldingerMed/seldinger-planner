@@ -31,15 +31,14 @@ export type DeviceComparison = {
   ends: [DeviceEnd, DeviceEnd];
 };
 
-export function compareDevice(
-  planned: PlannedSpan,
-  marked: readonly [Vec3, Vec3],
-): DeviceComparison {
-  const { path, offset, length } = planned,
-    finite = (p: unknown) =>
-      Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+const finite = (p: unknown) =>
+  Array.isArray(p) && p.length === 3 && p.every(Number.isFinite);
+
+/** Arc length along the path at each of its points, or null for a device
+ * that does not lie on its path. */
+function lengths({ path, offset, length }: PlannedSpan): number[] | null {
   if (!Array.isArray(path) || path.length < 2 || !path.every(finite))
-    throw new Error("Invalid planned device");
+    return null;
   const cum = [0];
   for (let i = 1; i < path.length; i++)
     cum.push(
@@ -50,15 +49,25 @@ export function compareDevice(
           path[i][2] - path[i - 1][2],
         ),
     );
-  const whole = cum[cum.length - 1];
-  if (
-    !Number.isFinite(offset) ||
-    !Number.isFinite(length) ||
-    offset < 0 ||
-    length <= 0 ||
-    offset + length > whole + 1e-6
-  )
-    throw new Error("Invalid planned device");
+  return Number.isFinite(offset) &&
+    Number.isFinite(length) &&
+    offset >= 0 &&
+    length > 0 &&
+    offset + length <= cum[cum.length - 1] + 1e-6
+    ? cum
+    : null;
+}
+
+/** Whether a planned device lies on its path from end to end. */
+export const liesOnPath = (planned: PlannedSpan) => lengths(planned) !== null;
+
+export function compareDevice(
+  planned: PlannedSpan,
+  marked: readonly [Vec3, Vec3],
+): DeviceComparison {
+  const { path, offset, length } = planned,
+    cum = lengths(planned);
+  if (!cum) throw new Error("Invalid planned device");
   if (!Array.isArray(marked) || marked.length !== 2 || !marked.every(finite))
     throw new Error("Two marked ends are required");
   /** The nearest place of the path to a point: how far along, how far off. */

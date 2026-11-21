@@ -1,6 +1,10 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { compareDevice, type PlannedSpan } from "./deviceComparison";
+import {
+  compareDevice,
+  liesOnPath,
+  type PlannedSpan,
+} from "./deviceComparison";
 import type { Vec3 } from "./obliqueSlice";
 
 // 30 mm along x, then 30 mm along y.
@@ -49,10 +53,13 @@ describe("a planned device against its marked ends", () => {
       { ...planned, offset: NaN },
       { ...planned, path: [path[0]] },
       { ...planned, path: [path[0], [1, NaN, 0] as Vec3] },
-    ])
+    ]) {
+      expect(liesOnPath(bad)).toBe(false);
       expect(() => compareDevice(bad, [end, end])).toThrow(
         "Invalid planned device",
       );
+    }
+    expect(liesOnPath(planned)).toBe(true);
     expect(() =>
       compareDevice(planned, [end] as unknown as [Vec3, Vec3]),
     ).toThrow("Two marked ends are required");

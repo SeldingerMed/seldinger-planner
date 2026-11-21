@@ -249,6 +249,35 @@ When a saved report is read back, the browser recomputes it from the frames, the
 
 The local brief gains the section **Angiogram registration and vessel presence**: the proposal's status, revision, method, number of planes and the angle between them, each plane's geometry source, and for a current report the counts and lengths by class per plane. It carries no image, no pose, no coordinates and no fit scores, and it states that the proposal is not a validated registration and that its accuracy is not measured.
 
+## 2D and 3D comparison
+
+Beside a current saved proposal, under the vessel-presence report, the studio offers **2D and 3D comparison**. **Compare 2D and 3D** reads every admitted frame of the proposal's planes and the accepted vessel mask, and measures the same vessels twice: in the 3D mask and in each frame. It uses the segments of the vessel-presence report and their axis samples, one per millimeter. Nothing is saved and nothing is sent; every number is computed again from the saved proposal each time.
+
+### Diameters
+
+| Side     | How it is measured                                                                                                                                                                                                                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3D mask  | The mask is cut by a slab 2 mm thick across the axis at each sample, centered where the mask is deepest about the sample. The cut holds the mask of the one vessel there, also where the mask runs two vessels into each other. The diameter is that of the circle with the area of the cut (`mask_vessel_slab_area_v1`). |
+| 2D frame | The brightness profile across the vessel where the mask's cut is centered. Its width at half depth, each side against its own background, divided by 0.866 (a round vessel filled evenly), times the size of a pixel at the sample's depth (`profile_half_depth_v1`).                                                     |
+
+A sample is measured in a frame when the vessel shows there at least 8 brightness levels deep, runs across the beam, and no other vessel lies over it: none whose axis is nearer in the frame than the two radii and 1 mm. A vessel under a third of the sample's diameter is measured through. The frame is drawn with the axis cyan where it was measured and grey elsewhere.
+
+The **Segments** table gives each segment's length and the median diameter from the mask and from each plane. **Narrowest place of each vessel run** lists, for each unbranched run, the narrowest place found in the mask and in each frame against the run's own median, with the largest narrowing first. Diameters along a run are smoothed over 5 mm, and a run shorter than 10 mm has no narrowest place.
+
+On five public clinical subjects with a reference pose, two planes each, the two sides agree within 0.5 mm on 785 of 1,136 measured segments and within 1 mm on 1,009; the median difference is 0.2 mm.
+
+### Contrast arrival
+
+With three or more admitted frames in a plane, the Segments table also gives the frame at which contrast reaches each segment. A segment's filling in a frame is the mean brightness under its axis samples against the frame of the run in which it is least filled. Its arrival is where the filling first reaches half its peak, between two source frame numbers when it crosses between them. A segment already filled to that level in the first frame reads **from the first**, one whose brightness changes by less than 6 levels over the run reads **no change**, and one with under half its samples in the frame reads **outside**.
+
+### A place carried into 3D
+
+Click a vessel in a frame. The axis sample nearest the click, within 3 mm at the sample's depth, is the carried place: the studio names its segment and its position in the volume, and draws it in every plane. With two planes, a click on the same place in the second plane fixes it in space. With one plane the studio says how many other vessels lie under the click.
+
+### Planned and deployed device
+
+When the case has saved device scenarios with a device that lies along a vessel, choose **Device end 1** and **Device end 2** and click the two ends of the deployed device in a frame. Each end is carried to the 3D model and dropped onto the planned device's path. The table gives the planned length, the length along the path between the marked ends, and how far along the vessel each end lies from where it was planned (positive toward the far end of the path).
+
 ## Limits
 
 - Rigid, and one frame per plane. No vessel deformation, cardiac or respiratory motion, or table movement.

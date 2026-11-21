@@ -6,6 +6,7 @@
  * vessel filled evenly the profile is half an ellipse and its width at half
  * depth is 0.866 of the diameter. A pixel is as many millimeters as it
  * spans at the sample's distance from the source. */
+import type { AxisCuts } from "./axisDiameter";
 import type { PlacedSamples } from "./framePlacement";
 import type { Polarity } from "./vesselness2d";
 import type { VesselSegments } from "./vesselSegments";
@@ -21,10 +22,20 @@ export const FRAME_DIAMETER_LIMITS = {
   min_depth: 8,
   /** Width at half depth over diameter, for a round vessel filled evenly. */
   half_depth_ratio: Math.sqrt(3) / 2,
-  /** A sample with another vessel's axis this near in the frame is not
-   * measured. Another vessel: of another run, or apart in the volume. */
-  clear_mm: 3,
-  apart_mm: 6,
+  /** A sample is not measured when another vessel lies over it in the
+   * frame: when the two axes are nearer than the two radii and this margin.
+   * Another vessel: of another run, or of the same run and this many times
+   * farther off in the volume than it is in the frame's clearing distance,
+   * as where a vessel folds back over itself. */
+  clear_margin_mm: 1,
+  folded: 2,
+  /** A cut counts as centered on this vessel's axis when it lies off it by
+   * no more than the vessel's radius and this share of its distance along
+   * the axis. */
+  axis_slack: 0.25,
+  /** A vessel under this share of the sample's diameter is measured
+   * through: it adds little to the depth of the wider one's profile. */
+  thinner_ignored: 1 / 3,
   /** The axis must show at least this share of its length in the frame. */
   min_shown: 0.3,
 } as const;
@@ -37,12 +48,21 @@ export type FrameForDiameter = {
   polarity: Polarity;
 };
 
+/** The mask's cut at each sample, and where its center lies in the frame
+ * (two pixel coordinates per sample). */
+export type CutsInFrame = AxisCuts & { pixels: Float32Array };
+
 /** Vessel diameter in millimeters at each axis sample, NaN where it was
- * not measured. */
+ * not measured. `placed` is the axis in the frame; it gives the direction
+ * the profile is read across. `cuts` is the mask's cut at each sample
+ * (`axisCuts`): the profile is read where the cut is centered, its
+ * diameters say which vessels lie over which, and a sample without a cut
+ * is not measured. */
 export function frameDiameters(
   frame: FrameForDiameter,
   placed: PlacedSamples,
   segments: VesselSegments,
+  cuts: CutsInFrame,
 ): Float32Array {
   const L = FRAME_DIAMETER_LIMITS,
     { width: w, height: h, gray } = frame,
@@ -61,10 +81,14 @@ export function frameDiameters(
   if (
     points.length !== 3 * count ||
     pixels.length !== 2 * count ||
-    mm_per_px.length !== count
+    mm_per_px.length !== count ||
+    cuts.mm.length !== count ||
+    cuts.centers.length !== 3 * count ||
+    cuts.pixels.length !== 2 * count
   )
     throw new Error("Invalid vessel segments");
-  const run = (k: number) => segments.segments[labels[k]].run,
+  const { mm: mask_mm, centers, pixels: middle } = cuts,
+    run = (k: number) => segments.segments[labels[k]].run,
     sign = frame.polarity === "dark" ? -1 : 1,
     // Brightness with the vessel counted upward, between pixel centers.
     at = (x: number, y: number) => {
@@ -90,10 +114,12 @@ export function frameDiameters(
         points[3 * a + 2] - points[3 * b + 2],
       );
   for (let k = 0; k < count; k++) {
-    const x = pixels[2 * k],
-      y = pixels[2 * k + 1],
+    const x = middle[2 * k],
+      y = middle[2 * k + 1],
       mm = mm_per_px[k];
     if (!(x >= 0 && y >= 0 && x <= w && y <= h) || !(mm > 0)) continue;
+    const wide = mask_mm[k];
+    if (!(wide > 0)) continue;
     // The axis in the frame, from the samples before and after on the run.
     const before = k > 0 && run(k - 1) === run(k) ? k - 1 : k,
       after = k + 1 < count && run(k + 1) === run(k) ? k + 1 : k;
@@ -102,11 +128,30 @@ export function frameDiameters(
       ty = pixels[2 * after + 1] - pixels[2 * before + 1],
       shown = Math.hypot(tx, ty);
     if (!(shown * mm >= L.min_shown * apart(before, after))) continue;
+    // The axis in the volume, to tell a cut of this vessel from another's.
+    const t = [0, 1, 2].map(
+        (i) => points[3 * after + i] - points[3 * before + i],
+      ),
+      length = Math.hypot(t[0], t[1], t[2]);
     let over = false;
-    for (let j = 0; j < count && !over; j++)
-      over =
-        (run(j) !== run(k) || apart(j, k) >= L.apart_mm) &&
-        Math.hypot(pixels[2 * j] - x, pixels[2 * j + 1] - y) * mm <= L.clear_mm;
+    for (let j = 0; j < count && !over; j++) {
+      if (!(mask_mm[j] >= L.thinner_ignored * wide)) continue;
+      const clear = (wide + mask_mm[j]) / 2 + L.clear_margin_mm;
+      if (!(Math.hypot(middle[2 * j] - x, middle[2 * j + 1] - y) * mm <= clear))
+        continue;
+      // A cut farther along this vessel is not another vessel: one of the
+      // same run, or one centered on this axis.
+      const d = [0, 1, 2].map((i) => centers[3 * j + i] - centers[3 * k + i]),
+        along = (d[0] * t[0] + d[1] * t[1] + d[2] * t[2]) / length,
+        off = Math.sqrt(
+          Math.max(0, d[0] * d[0] + d[1] * d[1] + d[2] * d[2] - along * along),
+        ),
+        near = Math.abs(along) < L.folded * clear;
+      over = !(
+        (run(j) === run(k) && apart(j, k) < L.folded * clear) ||
+        (near && off <= wide / 2 + L.axis_slack * Math.abs(along))
+      );
+    }
     if (over) continue;
     const nx = -ty / shown,
       ny = tx / shown,

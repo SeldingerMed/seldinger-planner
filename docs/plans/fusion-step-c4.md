@@ -229,10 +229,50 @@ Read from a confirmed registration, its frames and the accepted vessel mask, und
 
 1. **A sample in a frame** (`framePlacement.ts`). The frame pixel of every axis sample under the registration, and the size of one frame pixel in millimeters at that sample's depth.
 2. **A mark carried into 3D** (`carryPoint.ts`). The operator clicks a place in a frame. The axis sample nearest the mark in the frame, within 3 mm at the sample's depth, is the carried point. With a mark in each of two planes it is the sample nearest both. One plane cannot tell two vessels that cross under the mark apart, so the number of other vessels under it is given with the point.
-3. **Diameter, 3D against 2D** (`axisRadius.ts`, `frameDiameter.ts`, `diameterComparison.ts`). 3D: the distance from each axis sample to the edge of the mask. 2D: the brightness profile across the vessel at the sample; its width at half depth, divided by 0.866 (a round vessel filled evenly), times the pixel size at the sample's depth. A sample another vessel lies over in the frame is not measured. Per segment the median of each, and per unbranched run the narrowest place of each against the run's own median.
+
+## Part 3: devices in the frame
+
+A small network that marks catheter and guidewire pixels in one frame, so that vessel evidence is not read from them. Built and measured on the branch `research/device-network-v1`; nothing of it is in the planner.
+
+- Training: the WEISS fluoroscopy set (CC BY 4.0; a phantom and six aortic procedures, split by procedure), with synthetic vessels, drawn devices and drawn vessel trees laid over.
+- Gate, fixed before the second network was gated: on held-out procedures and vessel pictures the network marks under 2% of vessel pixels and under 5% of the frame.
+- Use: devices of the validation procedure laid over the Ljubljana frames of subjects 01 to 05, registered with the marked pixels left in and taken out.
+
+Outcome, 2026-11-21. The fifth network marks 0.03% of the vessel pixels of held-out vessel pictures and 7.6% of drawn thin vessel trees, and finds 35% of the labelled device pixels of the two held-out procedures. On the Ljubljana frames it finds a mean of 6% of the laid-over devices. Runs under 1 mm: 144 of 150 with the marked pixels left in and 144 of 150 with them taken out; no run moved by more than 0.5 mm either way. The search already ends in the same place with a catheter in the frame, so the step has nothing to gain there and is not built into the planner. Protocol `ljubljana-device-removal-v1` was not committed or run; subjects 06 to 10 were not read.
+
+## Part 5: comparison layer
+
+Read from a confirmed registration, its frames and the accepted vessel mask, under the vessel presence report. The 3D side is the unnamed segments of `vesselSegments.ts` and their axis samples, one per millimeter.
+
+### Design
+
+1. **A sample in a frame** (`framePlacement.ts`). The frame pixel of every axis sample under the registration, and the size of one frame pixel in millimeters at that sample's depth.
+2. **A mark carried into 3D** (`carryPoint.ts`). The operator clicks a place in a frame. The axis sample nearest the mark in the frame, within 3 mm at the sample's depth, is the carried point. With a mark in each of two planes it is the sample nearest both. One plane cannot tell two vessels that cross under the mark apart, so the number of other vessels under it is given with the point.
+3. **Diameter, 3D against 2D** (`axisDiameter.ts`, `frameDiameter.ts`, `diameterComparison.ts`). 3D: the mask is cut by a slab 2 mm thick across the axis at each sample, and the diameter is that of the circle with the area of the cut. The cut is of one vessel: it is centered where the mask is deepest about the sample, and holds the mask that joins that place and is as deep in the mask as a round vessel of the center's depth would have it at that distance from the center. Two earlier forms were dropped on measurement. The distance from the axis to the mask's edge moved by a voxel with the place of the axis. A cut of all the mask within reach of the axis sample read 2 mm wide on the large vessels of the Ljubljana subjects 01 to 05: the axis samples come from a pooled grid and lie off the vessel's middle, and the mask runs neighboring vessels into each other. 2D: the brightness profile across the vessel where the cut is centered; its width at half depth, divided by 0.866 (a round vessel filled evenly), times the pixel size at the sample's depth. A sample another vessel lies over in the frame is not measured: one whose axis is nearer than the two radii and 1 mm, unless it is under a third of the sample's diameter. Per segment the median of each, and per unbranched run the narrowest place of each against the run's own median. Development figures on subjects 01 to 05 at the reference pose (`comparisonDev.eval.ts`, results under `fusion-c4/comparison/dev-9`): 1,136 of 5,606 segment and plane rows measured on both sides; 785 within 0.5 mm and 1,009 within 1 mm; median difference 0.22 mm; for mask diameters of 4 mm and over, 62 rows with a median absolute difference of 0.45 mm.
 4. **Contrast arrival** (`contrastArrival.ts`). From the frames of a plane's run in the bundle, in acquisition order: the filling of a segment in a frame is the mean darkening under its axis samples against the brightest that place gets in the run. A segment's arrival is the frame position at which its filling first reaches half its peak. The answer is in source frame numbers; the bundle carries no frame times.
 5. **Planned against deployed device** (`deviceComparison.ts`). The operator marks the two ends of the deployed device; each is carried to the vessel axis. They are compared with the ends of a saved planned device that lies along a vessel: the distance of each marked end to the planned end, and the two lengths.
 6. **Studio.** One section under the presence report. Nothing is saved; every number is recomputed from the confirmed record.
+
+### Acceptance criteria
+
+- On the synthetic phantom, whose tube radii are known: a mark carried from two planes returns the sample it was made on; segment diameters from the frame and from the mask are each within 0.6 mm of the tube's; a narrowed stretch is found as the narrowest place of its run in both; segments fill in the order contrast was drawn to reach them.
+- Records of versions 1 to 8 and the presence report are unchanged.
+
+## Part 6: overlay on a replayed recording
+
+The studio plays a recording file the operator opens from disk and draws the registered vessel axis over every frame. The file is decoded by the browser and is not sent anywhere.
+
+### Design
+
+1. **Sidecar** (`recordingSidecar.ts`). The public TAIR recordings come with one row per frame read off the screen text: the kind of frame, the C-arm angles and the field size. The reader takes what parses, and carries the last good angles over frames whose text does not parse.
+2. **Overlay per frame** (`replayOverlay.ts`). The confirmed pose is kept. For a frame at other C-arm angles than the confirmed frame the axis is projected at that frame's angles, so the overlay turns with the C-arm.
+3. **Latency** (`replayLatency.ts`). For every frame the browser presents: the time from its presentation to the overlay drawn, and the frames the browser presented and the page did not draw. Shown as median, 95th percentile and worst, and written to a small JSON the operator can save.
+4. **Measured run.** Three TAIR recordings replayed in the studio on this workstation; the numbers go into `docs/verification/step-c4-replay.md`.
+
+### Acceptance criteria
+
+- A replayed recording shows the overlay on every drawn frame, and the latency figures are from the run shown.
+- With angles in the sidecar the overlay at the confirmed frame's angles equals the confirmed overlay.
 
 ### Acceptance criteria
 
