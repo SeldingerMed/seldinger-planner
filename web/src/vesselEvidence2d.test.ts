@@ -214,6 +214,91 @@ describe("vessel evidence", () => {
     expect([odd.width, odd.height, odd.scale]).toEqual([384, 384, 2]);
   });
 
+  describe("with excluded pixels", () => {
+    const side = 200,
+      // A faint line at column 60 and one eight times as deep at 140.
+      gray = lines(
+        side,
+        [
+          [60, 2, 20],
+          [140, 2, 160],
+        ],
+        4,
+      ),
+      band = (from: number, to: number) => {
+        const mask = new Uint8Array(side * side);
+        for (let y = 0; y < side; y++)
+          for (let x = from; x <= to; x++) mask[y * side + x] = 1;
+        return mask;
+      };
+
+    it("gives them no evidence and leaves the other lines theirs", () => {
+      const plain = vesselEvidence(gray, side, side, "dark"),
+        e = vesselEvidence(gray, side, side, "dark", band(134, 146));
+      expect(columnMean(finest(plain), side, 140)).toBeGreaterThan(0.8);
+      expect(columnMean(finest(e), side, 140)).toBe(0);
+      // The line left in is no weaker for it: the deep line no longer sets
+      // the scale.
+      expect(columnMean(finest(e), side, 60)).toBeGreaterThanOrEqual(
+        columnMean(finest(plain), side, 60),
+      );
+      expect(columnMean(finest(e), side, 60)).toBeGreaterThan(0.8);
+    });
+
+    it("changes nothing when no pixel is excluded", () => {
+      expect(
+        vesselEvidence(gray, side, side, "dark", new Uint8Array(side * side)),
+      ).toEqual(vesselEvidence(gray, side, side, "dark"));
+    });
+
+    it("takes a working pixel out for one excluded frame pixel in its block", () => {
+      const big = 1000,
+        frame = lines(big, [[500, 6, 80]]),
+        mask = new Uint8Array(big * big);
+      // One pixel of each two-by-two block across the line and beside it.
+      for (let y = 0; y < big; y += 2)
+        for (let x = 480; x <= 520; x += 2) mask[(y + 1) * big + x + 1] = 1;
+      const plain = vesselEvidence(frame, big, big, "dark"),
+        other = lines(big, [
+          [500, 6, 80],
+          [200, 6, 80],
+        ]),
+        e = vesselEvidence(other, big, big, "dark", mask);
+      expect(plain.scale).toBe(2);
+      expect(columnMean(plain.levels[0], 500, 250)).toBeGreaterThan(0.8);
+      expect(columnMean(finest(e), 500, 250)).toBe(0);
+      expect(columnMean(finest(e), 500, 100)).toBeGreaterThan(0.8);
+    });
+
+    it("refuses a mask that is not the frame's, and a frame with nothing left", () => {
+      expect(() =>
+        vesselEvidence(gray, side, side, "dark", new Uint8Array(side)),
+      ).toThrow("Excluded pixels do not match the frame");
+      expect(() =>
+        vesselEvidence(
+          gray,
+          side,
+          side,
+          "dark",
+          Array.from(band(0, 0)) as unknown as Uint8Array,
+        ),
+      ).toThrow("Excluded pixels do not match the frame");
+      expect(() =>
+        vesselEvidence(gray, side, side, "dark", band(0, side - 1)),
+      ).toThrow("No line-like vessels were found in this frame");
+    });
+
+    it("runs in steps to the same result", () => {
+      const mask = band(134, 146),
+        steps = vesselEvidenceSteps(gray, side, side, "dark", mask);
+      let next = steps.next();
+      while (!next.done) next = steps.next();
+      expect(next.value).toEqual(
+        vesselEvidence(gray, side, side, "dark", mask),
+      );
+    });
+  });
+
   it("runs in steps to the same result", () => {
     const side = 200,
       gray = lines(side, [[100, 2, 80]], 6),

@@ -97,7 +97,7 @@ export function* vesselEvidenceSteps(
   height: number,
   polarity: Polarity,
   /** Frame pixels that are not vessel, nonzero where so: a device. They
-   * carry no evidence and do not count toward its scale. */
+   * carry no evidence, and their response does not set its scale. */
   exclude?: Uint8Array,
 ): Generator<void, VesselEvidence> {
   const L = VESSEL_EVIDENCE_LIMITS;
