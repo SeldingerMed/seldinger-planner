@@ -17,6 +17,8 @@ import { angleLabel, validateView, type ViewNumbers } from "./carmGeometry";
 import {
   EVIDENCE_BEST_START_BIPLANE_METHOD,
   EVIDENCE_BEST_START_METHOD,
+  EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD,
+  EVIDENCE_SIZE_SEARCH_METHOD,
   EVIDENCE_REGISTRATION_LIMITS as EVIDENCE_LIMITS,
   type EvidenceRegistrationProposal,
 } from "./evidenceRegistration";
@@ -313,7 +315,10 @@ function evidenceWords(found: EvidenceRegistrationProposal): string {
     found.method === EVIDENCE_BEST_START_METHOD ||
     found.method === EVIDENCE_BEST_START_BIPLANE_METHOD
       ? `by vessel evidence, the best of the searches from the volume's own position and from each view proposed for ${found.planes.length === 2 ? "either frame" : "the frame"}`
-      : "by vessel evidence";
+      : found.method === EVIDENCE_SIZE_SEARCH_METHOD ||
+          found.method === EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD
+        ? "by vessel evidence, with the field size searched from several sizes around the entered one"
+        : "by vessel evidence";
   if (found.planes.length === 2)
     return `Unsaved two-plane proposal ${by}: ${moved}, with central rays ${(found.plane_angle_deg ?? 0).toFixed(0)}° apart. Plane A: ${plane(0)}. Plane B: ${plane(1)}.${fitted} ${caution} Review both overlays before confirming.`;
   return `Unsaved proposal ${by}: ${moved}. Its ${plane(0, "is ")}.${fitted} ${caution} Review the overlay before confirming.`;
@@ -1542,9 +1547,10 @@ export default function ProjectionOverlayStudio({
                     {LIMITS.detector_scale[1]} times the entered width)
                   </label>
                   <p className="carm-note">
-                    A fitted field size can be wrong by a wide margin. Enter a
-                    measured field size where one is available. These values are
-                    assumed, not read from the acquisition
+                    {method === "vessel_evidence"
+                      ? "With the fit, the search is run from several sizes around the entered one, and the size that matches the frame best is kept."
+                      : "A fitted field size can be wrong by a wide margin. Enter a measured field size where one is available."}{" "}
+                    These values are assumed, not read from the acquisition
                     {plane.cropped
                       ? ", and the frame was cropped, so its center need not be the central ray"
                       : ""}
