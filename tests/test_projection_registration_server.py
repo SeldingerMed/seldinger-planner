@@ -980,3 +980,63 @@ def test_the_shared_records_cover_both_methods_and_every_fit_outcome():
     seen = {(case["inputs"]["method"], case["inputs"]["detector_fit"]) for case in EVIDENCE_RECORDS}
     assert {method for method, _ in seen} == {EVIDENCE_METHOD, EVIDENCE_PAIR_METHOD}
     assert {outcome for _, outcome in seen} == {"not_requested", "kept", "dropped"}
+
+
+# The best-start methods: the vessel evidence search run from several starts,
+# the result with the most evidence kept. Their records have the fields of
+# versions 3 and 4 under their own method names and versions.
+
+BEST_START = [
+    ("vessel_evidence_best_start_v1", "step-c4-evidence-best-start-registration-v5"),
+    (
+        "vessel_evidence_best_start_biplane_v1",
+        "step-c4-evidence-best-start-biplane-registration-v6",
+    ),
+]
+
+
+@pytest.mark.parametrize(("method", "version"), BEST_START)
+def test_best_start_registration_roundtrips_under_its_own_version(
+    tmp_path, monkeypatch, method, version
+):
+    two = "biplane" in method
+    client, case, reference, mask, listed, _ = (pair_ready if two else ready)(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    value = (evidence_pair_inputs if two else evidence_inputs)(mask, listed, method=method)
+    older = dict(value, method=EVIDENCE_PAIR_METHOD if two else EVIDENCE_METHOD)
+    response = client.put(route, json=request_for(case, reference, value))
+    assert response.status_code == 200, response.text
+    current = response.json()["current"]
+    assert current["status"] == "current" and current["evidence"] == "verified"
+    assert current["inputs"] == value
+    assert current["dependencies"]["version"] == version
+    # The same numbers under the single-start method differ only in the names.
+    again = client.put(route, json=request_for(case, reference, older, 1))
+    assert again.status_code == 200, again.text
+    result = again.json()["current"]["result"]
+    assert result["version"] == (EVIDENCE_PAIR_VERSION if two else EVIDENCE_VERSION)
+    assert current["result"] == {**result, "version": version, "method": method}
+    assert client.get(route).json() == again.json()
+
+
+@pytest.mark.parametrize(("method", "version"), BEST_START)
+def test_a_best_start_record_is_held_to_the_rules_of_its_kind(
+    tmp_path, monkeypatch, method, version
+):
+    two = "biplane" in method
+    client, case, reference, mask, listed, _ = (pair_ready if two else ready)(tmp_path, monkeypatch)
+    route = f"/api/cases/{case['case_id']}/projection-registration"
+    value = (evidence_pair_inputs if two else evidence_inputs)(mask, listed, method=method)
+    # A sensitivity is no field of a vessel evidence record.
+    if two:
+        wrong = {
+            **value,
+            "planes": [{**value["planes"][0], "sensitivity": 0.5}, value["planes"][1]],
+        }
+        other = dict(evidence_inputs(mask, listed), method=method)
+    else:
+        wrong = {**value, "sensitivity": 0.5}
+        other = {**value, "method": "vessel_evidence_best_start_biplane_v1"}
+    for bad in (wrong, other):
+        assert client.put(route, json=request_for(case, reference, bad)).status_code == 422
+    assert client.get(route).json()["current"]["status"] == "not_confirmed"

@@ -256,3 +256,64 @@ describe("the studio's own records, as the server summarizes them", () => {
     }
   });
 });
+
+/** The same records as found from the best of several starts. */
+describe("best-start records", () => {
+  const SINGLE = [
+      "vessel_evidence_best_start_v1",
+      "step-c4-evidence-best-start-registration-v5",
+    ] as const,
+    PAIR = [
+      "vessel_evidence_best_start_biplane_v1",
+      "step-c4-evidence-best-start-biplane-registration-v6",
+    ] as const,
+    named = (answer: unknown, method: string, version: string) =>
+      changed(answer, (c) => {
+        c.inputs.method = method;
+        c.result.method = method;
+        c.result.version = version;
+        c.dependencies.version = version;
+      });
+
+  it("reads a single-plane and a two-plane record under their own versions", () => {
+    const one = parse(named(single(), ...SINGLE)).current,
+      two = parse(named(pair(), ...PAIR)).current;
+    if (one.status !== "current" || two.status !== "current")
+      throw new Error("not current");
+    expect(one.inputs.method).toBe(SINGLE[0]);
+    expect(isEvidence(one.inputs)).toBe(true);
+    expect(isBiplane(one.inputs)).toBe(false);
+    expect(two.inputs.method).toBe(PAIR[0]);
+    expect(isEvidence(two.inputs)).toBe(true);
+    expect(isBiplane(two.inputs)).toBe(true);
+    expect(two.result.plane_angle_deg).not.toBeNull();
+  });
+
+  it.each([
+    [
+      "a single-plane record under the single-start version",
+      named(single(), SINGLE[0], "step-c4-evidence-registration-v3"),
+    ],
+    [
+      "a single-start record under the best-start version",
+      named(single(), "vessel_evidence_compass_v1", SINGLE[1]),
+    ],
+    [
+      "a pair under the single-start version",
+      named(pair(), PAIR[0], "step-c4-evidence-biplane-registration-v4"),
+    ],
+    [
+      "a pair under the single-plane version",
+      named(pair(), PAIR[0], SINGLE[1]),
+    ],
+    ["a single-plane record named as a pair", named(single(), ...PAIR)],
+    [
+      "a record with a sensitivity",
+      changed(named(single(), ...SINGLE), (c) => {
+        c.inputs.sensitivity = 0.5;
+      }),
+    ],
+  ])("refuses %s", (_name, answer) => {
+    expect(() => parse(answer)).toThrow(/Invalid/);
+  });
+});

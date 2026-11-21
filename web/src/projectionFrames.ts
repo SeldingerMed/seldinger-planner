@@ -12,6 +12,8 @@ import {
 import { sha256Hex } from "./browserCrypto";
 import { validateView, type ViewNumbers } from "./carmGeometry";
 import {
+  EVIDENCE_BEST_START_BIPLANE_METHOD,
+  EVIDENCE_BEST_START_METHOD,
   EVIDENCE_BIPLANE_REGISTRATION_METHOD,
   EVIDENCE_REGISTRATION_METHOD,
   type EvidenceRegistrationProposal,
@@ -37,6 +39,10 @@ export const FRAME_LIMITS = {
 export const REGISTRATION_VERSION = "step-c1-projection-registration-v1";
 export const BIPLANE_REGISTRATION_VERSION = "step-c2-biplane-registration-v2";
 export const EVIDENCE_REGISTRATION_VERSION = "step-c4-evidence-registration-v3";
+export const EVIDENCE_BEST_START_VERSION =
+  "step-c4-evidence-best-start-registration-v5";
+export const EVIDENCE_BEST_START_BIPLANE_VERSION =
+  "step-c4-evidence-best-start-biplane-registration-v6";
 export const EVIDENCE_BIPLANE_REGISTRATION_VERSION =
   "step-c4-evidence-biplane-registration-v4";
 export const FRAME_SOURCE_ID = /^[a-z0-9][a-z0-9_-]{1,63}$/;
@@ -508,21 +514,26 @@ type EvidencePlaneFields = Omit<
 };
 /** What became of a requested detector-size fit. */
 export type DetectorFit = EvidenceRegistrationProposal["detector_fit"];
-/** Version 3: one pose against one frame, by vessel evidence. */
+/** Version 3: one pose against one frame, by vessel evidence. Version 5 has
+ * the same fields: the search was run from several starts. */
 export type EvidenceRegistrationInputs = SharedFields &
   EvidencePlaneFields & {
     plane: PlaneLabel;
-    method: typeof EVIDENCE_REGISTRATION_METHOD;
+    method:
+      typeof EVIDENCE_REGISTRATION_METHOD | typeof EVIDENCE_BEST_START_METHOD;
     detector_fit: DetectorFit;
   };
 export type EvidenceBiplanePlaneInputs = EvidencePlaneFields & {
   plane: "a" | "b";
 };
 /** Version 4: one pose against one frame from each plane, by vessel
- * evidence. One fit outcome covers both planes. */
+ * evidence. One fit outcome covers both planes. Version 6 has the same
+ * fields: the search was run from several starts. */
 export type EvidenceBiplaneRegistrationInputs = SharedFields & {
   same_position_attested: true;
-  method: typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+  method:
+    | typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD
+    | typeof EVIDENCE_BEST_START_BIPLANE_METHOD;
   detector_fit: DetectorFit;
   planes: [EvidenceBiplanePlaneInputs, EvidenceBiplanePlaneInputs];
 };
@@ -531,21 +542,29 @@ export type SavedInputs =
   | BiplaneRegistrationInputs
   | EvidenceRegistrationInputs
   | EvidenceBiplaneRegistrationInputs;
+const evidencePairMethod = (method: unknown) =>
+  method === EVIDENCE_BIPLANE_REGISTRATION_METHOD ||
+  method === EVIDENCE_BEST_START_BIPLANE_METHOD;
+const evidenceMethod = (method: unknown) =>
+  method === EVIDENCE_REGISTRATION_METHOD ||
+  method === EVIDENCE_BEST_START_METHOD ||
+  evidencePairMethod(method);
 export const isBiplane = (
   inputs: SavedInputs,
 ): inputs is BiplaneRegistrationInputs | EvidenceBiplaneRegistrationInputs =>
   inputs.method === BIPLANE_REGISTRATION_METHOD ||
-  inputs.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+  evidencePairMethod(inputs.method);
 export const isEvidence = (
   inputs: SavedInputs,
 ): inputs is EvidenceRegistrationInputs | EvidenceBiplaneRegistrationInputs =>
-  inputs.method === EVIDENCE_REGISTRATION_METHOD ||
-  inputs.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+  evidenceMethod(inputs.method);
 const VERSIONS: Record<SavedInputs["method"], string> = {
   [PROJECTION_REGISTRATION_METHOD]: REGISTRATION_VERSION,
   [BIPLANE_REGISTRATION_METHOD]: BIPLANE_REGISTRATION_VERSION,
   [EVIDENCE_REGISTRATION_METHOD]: EVIDENCE_REGISTRATION_VERSION,
   [EVIDENCE_BIPLANE_REGISTRATION_METHOD]: EVIDENCE_BIPLANE_REGISTRATION_VERSION,
+  [EVIDENCE_BEST_START_METHOD]: EVIDENCE_BEST_START_VERSION,
+  [EVIDENCE_BEST_START_BIPLANE_METHOD]: EVIDENCE_BEST_START_BIPLANE_VERSION,
 };
 export type RegistrationResult = {
   status: "operator_confirmed_proposal";
@@ -691,15 +710,13 @@ function checkPlane(
 
 function parseInputs(value: unknown): SavedInputs {
   if (!isObject(value)) throw new Error("Invalid registration");
-  const evidence =
-      value.method === EVIDENCE_REGISTRATION_METHOD ||
-      value.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD,
+  const evidence = evidenceMethod(value.method),
     planeKeys = evidence ? EVIDENCE_PLANE_KEYS : PLANE_KEYS,
     // A vessel evidence record also states what became of a requested fit.
     sharedKeys = evidence ? [...SHARED_KEYS, "detector_fit"] : SHARED_KEYS;
   if (
     value.method === BIPLANE_REGISTRATION_METHOD ||
-    value.method === EVIDENCE_BIPLANE_REGISTRATION_METHOD
+    evidencePairMethod(value.method)
   ) {
     const planes = value.planes;
     if (
@@ -725,8 +742,7 @@ function parseInputs(value: unknown): SavedInputs {
   }
   if (
     !exact(value, [...sharedKeys, ...planeKeys]) ||
-    (value.method !== PROJECTION_REGISTRATION_METHOD &&
-      value.method !== EVIDENCE_REGISTRATION_METHOD)
+    (value.method !== PROJECTION_REGISTRATION_METHOD && !evidence)
   )
     throw new Error("Invalid registration");
   checkShared(value);

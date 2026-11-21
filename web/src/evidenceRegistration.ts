@@ -38,6 +38,11 @@ import {
 export const EVIDENCE_REGISTRATION_METHOD = "vessel_evidence_compass_v1";
 export const EVIDENCE_BIPLANE_REGISTRATION_METHOD =
   "vessel_evidence_compass_biplane_v1";
+/** The same search run from several starts, the result with the most vessel
+ * evidence kept (bestStart.ts). */
+export const EVIDENCE_BEST_START_METHOD = "vessel_evidence_best_start_v1";
+export const EVIDENCE_BEST_START_BIPLANE_METHOD =
+  "vessel_evidence_best_start_biplane_v1";
 export const EVIDENCE_REGISTRATION_LIMITS = {
   min_points: 30,
   /** Points scored in the refinement. */
@@ -112,7 +117,9 @@ export type EvidencePlaneProposal = {
 export type EvidenceRegistrationProposal = {
   method:
     | typeof EVIDENCE_REGISTRATION_METHOD
-    | typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+    | typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD
+    | typeof EVIDENCE_BEST_START_METHOD
+    | typeof EVIDENCE_BEST_START_BIPLANE_METHOD;
   /** Rigid volume-RAS to C-arm-RAS matrix, one for every plane. */
   matrix: number[][];
   planes: EvidencePlaneProposal[];

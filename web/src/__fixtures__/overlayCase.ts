@@ -111,13 +111,16 @@ const evidenceSummary = (inputs: Record<string, any>) => ({
 });
 /** The server's own summary of confirmed inputs, mirroring `summarize`. */
 export function savedResult(inputs: Record<string, any> = savedInputs()) {
-  const evidence = inputs.method === EVIDENCE_METHOD;
+  const best = inputs.method === "vessel_evidence_best_start_v1",
+    evidence = best || inputs.method === EVIDENCE_METHOD;
   return {
-    version: evidence
-      ? "step-c4-evidence-registration-v3"
-      : "step-c1-projection-registration-v1",
+    version: best
+      ? "step-c4-evidence-best-start-registration-v5"
+      : evidence
+        ? "step-c4-evidence-registration-v3"
+        : "step-c1-projection-registration-v1",
     convention: "dicom_xa_patient_longitude_latitude_ras_v1",
-    method: evidence ? EVIDENCE_METHOD : "centerline_distance_compass_v1",
+    method: evidence ? inputs.method : "centerline_distance_compass_v1",
     status: "operator_confirmed_proposal",
     validated: false,
     geometry_source: inputs.geometry_source,
@@ -377,15 +380,16 @@ export function savedPairInputs(change: Record<string, unknown> = {}) {
 export function savedPairResult(inputs: Record<string, any>) {
   const primary = (k: number) => inputs.planes[k]?.view?.primary_deg ?? 0,
     apart = Math.abs(primary(0) - primary(1)),
-    evidence = inputs.method === EVIDENCE_PAIR_METHOD;
+    best = inputs.method === "vessel_evidence_best_start_biplane_v1",
+    evidence = best || inputs.method === EVIDENCE_PAIR_METHOD;
   return {
-    version: evidence
-      ? "step-c4-evidence-biplane-registration-v4"
-      : "step-c2-biplane-registration-v2",
+    version: best
+      ? "step-c4-evidence-best-start-biplane-registration-v6"
+      : evidence
+        ? "step-c4-evidence-biplane-registration-v4"
+        : "step-c2-biplane-registration-v2",
     convention: "dicom_xa_patient_longitude_latitude_ras_v1",
-    method: evidence
-      ? EVIDENCE_PAIR_METHOD
-      : "centerline_distance_compass_biplane_v1",
+    method: evidence ? inputs.method : "centerline_distance_compass_biplane_v1",
     status: "operator_confirmed_proposal",
     validated: false,
     same_position: "operator_attested_not_checked",

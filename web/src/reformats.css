@@ -121,14 +121,6 @@
 .carm-studio .carm-figure {
   max-width: 420px;
 }
-.carm-studio .view-proposals {
-  margin: 10px 0;
-}
-.carm-studio .view-proposals fieldset {
-  display: grid;
-  gap: 4px;
-  margin: 8px 0;
-}
 .carm-table {
   width: 100%;
   border-collapse: collapse;
