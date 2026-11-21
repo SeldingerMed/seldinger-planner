@@ -74,8 +74,9 @@ export function* bestStartSteps(
         : EVIDENCE_BEST_START_METHOD,
     ends = { searched: starts.length, kept: best.k };
   if (best.k === 0) return { proposal: { ...best.proposal, method }, ...ends };
-  // The first start can be scored when enough of the points are inside
-  // every frame there. Its search may find a pose even when they are not.
+  // The first start's scores are reported when its search found a pose and
+  // enough of the points are inside every frame there. Its search may find
+  // a pose even when they are not.
   const scored =
       own &&
       own.planes.every(
