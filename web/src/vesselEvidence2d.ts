@@ -96,8 +96,16 @@ export function* vesselEvidenceSteps(
   width: number,
   height: number,
   polarity: Polarity,
+  /** Frame pixels that are not vessel, nonzero where so: a device. They
+   * carry no evidence and do not count toward its scale. */
+  exclude?: Uint8Array,
 ): Generator<void, VesselEvidence> {
   const L = VESSEL_EVIDENCE_LIMITS;
+  if (
+    exclude &&
+    (!(exclude instanceof Uint8Array) || exclude.length !== gray.length)
+  )
+    throw new Error("Excluded pixels do not match the frame");
   if (
     !Number.isInteger(width) ||
     !Number.isInteger(height) ||
@@ -173,6 +181,16 @@ export function* vesselEvidenceSteps(
       }
     yield;
   }
+  // A working pixel with an excluded frame pixel in its block has no response.
+  if (exclude)
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        block: for (let j = 0; j < scale; j++)
+          for (let i = 0; i < scale; i++)
+            if (exclude[(y * scale + j) * width + x * scale + i]) {
+              response[y * w + x] = 0;
+              break block;
+            }
   // `sorted` holds every pixel of the working grid, at least `min_side_px`
   // squared, so the pixel `peak_rank` from the top always exists.
   const sorted = Float32Array.from(response).sort(),
@@ -240,8 +258,9 @@ export function vesselEvidence(
   width: number,
   height: number,
   polarity: Polarity,
+  exclude?: Uint8Array,
 ): VesselEvidence {
-  const steps = vesselEvidenceSteps(gray, width, height, polarity);
+  const steps = vesselEvidenceSteps(gray, width, height, polarity, exclude);
   for (;;) {
     const next = steps.next();
     if (next.done) return next.value;

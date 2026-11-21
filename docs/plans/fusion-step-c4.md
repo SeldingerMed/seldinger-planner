@@ -211,11 +211,43 @@ The fit of part 1 starts at the entered size and follows the cost downhill. When
 - [x] 2.3 Protocol committed at `cb8a241`, then one run: held-back two-plane runs under 1 mm with the sizes entered wrong, 37 of 50 against 25 of 50.
 - [x] 2.4 Results page, guide, verification record, pull request.
 
-## Parts 3, 5 and 6
+## Part 3: devices in the frame
+
+### Why
+
+Vessel evidence is high on any line-like structure. A catheter or a guidewire in the frame pulls the projected vessel tree toward itself: on the five clinical cases of part 1, part of the tree settled on a tube in one. The frame has to say which lines are devices before the lines are scored as vessels.
+
+### Acceptance criteria
+
+- A network marks the pixels of catheters and guidewires in one frame. On frames of procedures it was not trained on, and on vessel pictures with no device, it marks under 2% of vessel pixels and under 5% of the frame.
+- With devices laid over frames that have a reference pose, more two-plane runs end under 1 mm with the marked pixels taken out of the vessel evidence than with them left in, on subjects 01 to 05 and, under a protocol committed first, on the subjects held back.
+- On the same frames as stored, taking the marked pixels out moves no run more than 0.5 mm farther from the reference.
+- Older records replay to the same numbers. A proposal made with pixels taken out has its own method names and record versions.
+- No dataset files or weights in the repository.
+
+### Design
+
+1. **Data.** The WEISS Catheter Segmentation in Fluoroscopy Dataset (UCL, doi 10.5522/04/24624243, CC BY 4.0): a silicone aortic phantom (2,000 frames) and six procedures (1,207 frames), 256 by 256, with masks of catheters and guidewires. The split is by procedure: the phantom and procedures one to three for training, the fourth for validation, the fifth and sixth held out. Guide3D and CathAction are not used: their licences are non-commercial.
+2. **What is added in training** (`scripts/research/device_detector/`). Synthetic contrast-filled vessels from the vessel models of part 4, laid over most pictures and alone on a plain ground in one of five, with nothing to mark. Drawn devices, random smooth curves of one width, laid over pictures of either kind and marked. Six procedures show few devices in few places; the drawn ones stand on every ground, vessels included.
+3. **Network.** U-shaped, five levels of 8 to 96 channels, one 256 by 256 input, a likelihood per pixel. Stored as one file, format `seldinger-device-network-v1`, norms folded into the convolutions, about 1.6 MB. The network after the last epoch is kept; validation is logged and chooses nothing.
+4. **Gate** (`device_detector.gate`), once per file: the limits of the first criterion, on the held-out procedures and on pictures of the held-out vessel models. The share of labelled device pixels found is reported beside them.
+5. **In the planner.** The weights are served at `GET /api/device-network` and checked in the browser against a size and SHA-256 fixed in the code, as the view network is. `web/src/deviceNetwork.ts` runs the network on a frame and gives the marked pixels at the frame's size, grown by one cell of the network's grid. `vesselEvidence2d.ts` takes them as pixels with no evidence. The overlay jobs mark each frame before its evidence is computed.
+6. **Records.** `vessel_evidence_devices_v1` under `step-c4-evidence-devices-registration-v9` and `vessel_evidence_devices_biplane_v1` under `step-c4-evidence-devices-biplane-registration-v10`. Fields as versions 3 and 4, and for each plane `device_fraction`, the share of the frame's pixels taken out. A proposal for which no pixel was marked in any frame keeps the method and version it would have had.
+7. **Studio.** No new control. With vessel evidence chosen and the network installed, devices are marked and left out; the marked pixels are drawn over the frame and the status says what share of each frame they are.
+8. **Evidence.** Protocol `ljubljana-device-removal-v1`, committed before its one run on subjects 06 to 10: devices of the held-out procedures laid over the Ljubljana frames (`device_detector.transplant`), registered with the marked pixels left in and taken out, and the frames as stored the same two ways. The marks are made by the browser's code from the stored file.
+
+### Phases
+
+- [ ] 3.1 Data, training code, gate.
+- [ ] 3.2 Development on subjects 01 to 05 with devices of the validation procedure.
+- [ ] 3.3 Weights route, browser forward pass, evidence, jobs, records, studio.
+- [ ] 3.4 Protocol committed, then one run.
+- [ ] 3.5 Results page, guide, verification record, pull request.
+
+## Parts 5 and 6
 
 Each gets its own acceptance criteria here when it starts. Known inputs:
 
-- Part 3. Candidate public data: Guide3D and CathAction (guidewires and catheters). Licences are checked before any download. No public labelled set for implanted devices has been identified.
 - Part 5. Frame admission is capped at 8 frames per plane, so contrast timing needs a bounded time-series path. TAIR has no calibrated pixels and no trusted frame times.
 - Part 6. Latency is measured and reported.
 
