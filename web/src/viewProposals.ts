@@ -15,11 +15,7 @@ import {
 import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
 import { vesselEvidence } from "./vesselEvidence2d";
 import type { Polarity } from "./vesselness2d";
-import {
-  loadViewNetwork,
-  VIEW_NETWORK_ABSENT,
-  VIEW_NETWORK_UNREADABLE,
-} from "./viewNetworkFile";
+import { loadViewNetwork } from "./viewNetworkFile";
 
 /** The deadline of the studio's other requests. */
 export const VIEW_NETWORK_TIMEOUT_MS = STUDIO_REQUEST_TIMEOUT_MS;
@@ -34,20 +30,16 @@ let installed: Promise<ViewNetwork> | null = null;
 export function viewNetwork(): Promise<ViewNetwork> {
   if (!installed) {
     const control = new AbortController();
-    let late = false;
-    const deadline = setTimeout(() => {
-        late = true;
-        control.abort();
-      }, VIEW_NETWORK_TIMEOUT_MS),
+    const deadline = setTimeout(() => control.abort(), VIEW_NETWORK_TIMEOUT_MS),
       loading = loadViewNetwork(control.signal)
         .catch((error: unknown) => {
-          // What the check itself found is reported as that, even when it
-          // is found after the deadline. Anything else by then is the stop.
-          const found =
-            error instanceof Error &&
-            (error.message === VIEW_NETWORK_ABSENT ||
-              error.message === VIEW_NETWORK_UNREADABLE);
-          throw late && !found ? new Error(VIEW_NETWORK_LATE) : error;
+          // Only the stop made here is lateness: an abort, once this
+          // deadline has passed. Whatever else went wrong is reported as
+          // what it is, even when it surfaces afterwards.
+          const stopped =
+            control.signal.aborted &&
+            (error as { name?: unknown } | null)?.name === "AbortError";
+          throw stopped ? new Error(VIEW_NETWORK_LATE) : error;
         })
         .finally(() => clearTimeout(deadline));
     installed = loading;

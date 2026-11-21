@@ -156,3 +156,40 @@ it("reports what the check found as that, even when it is found after the deadli
   await vi.advanceTimersByTimeAsync(VIEW_NETWORK_TIMEOUT_MS + 5);
   await refused;
 });
+
+it("reports as late only the stop it made itself", async () => {
+  vi.useFakeTimers();
+  // Something else goes wrong just after the deadline: it is not lateness
+  // and is not told from lateness by its wording.
+  const other = new TypeError("Failed to fetch");
+  vi.spyOn(files, "loadViewNetwork").mockImplementation(
+    () =>
+      new Promise<typeof network>((_, reject) =>
+        setTimeout(() => reject(other), VIEW_NETWORK_TIMEOUT_MS + 5),
+      ),
+  );
+  const pending = viewNetwork(),
+    refused = expect(pending).rejects.toBe(other);
+  await vi.advanceTimersByTimeAsync(VIEW_NETWORK_TIMEOUT_MS + 5);
+  await refused;
+});
+
+it("reports the stop as late when the fetch rejects with the signal's own reason", async () => {
+  vi.useFakeTimers();
+  vi.spyOn(files, "loadViewNetwork").mockImplementation(
+    (signal?: AbortSignal) =>
+      new Promise<typeof network>((_, reject) =>
+        signal!.addEventListener("abort", () => reject(signal!.reason)),
+      ),
+  );
+  const pending = viewNetwork(),
+    late = expect(pending).rejects.toThrow(VIEW_NETWORK_LATE);
+  await vi.advanceTimersByTimeAsync(VIEW_NETWORK_TIMEOUT_MS);
+  await late;
+});
+
+it("does not call an abort it did not make lateness", async () => {
+  const foreign = new DOMException("The operation was aborted", "AbortError");
+  vi.spyOn(files, "loadViewNetwork").mockRejectedValue(foreign);
+  await expect(viewNetwork()).rejects.toBe(foreign);
+});
