@@ -37,6 +37,9 @@ def register_view_network_routes(app, *, path=None, expected=VIEW_NETWORK):
             if not file.is_symlink() and not file.exists():
                 raise HTTPException(404, "View network is not installed") from None
             raise HTTPException(503, "View network failed integrity checks") from None
+        except OSError:
+            # The bytes could not be read to be verified, so none are served.
+            raise HTTPException(503, "View network failed integrity checks") from None
         return Response(
             data,
             media_type="application/octet-stream",

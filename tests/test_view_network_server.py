@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from planner import view_network_server
-from planner.model_assets import VIEW_NETWORK, CheckpointSpec
+from planner.model_assets import VIEW_NETWORK, VIEW_NETWORK_REVISION, CheckpointSpec
 from planner.view_network_server import VIEW_NETWORK_FILE, register_view_network_routes
 
 REPO = Path(__file__).resolve().parents[1]
@@ -115,6 +115,28 @@ def test_a_file_that_fails_its_check_and_stays_is_a_fault(tmp_path, monkeypatch)
     answer = client(path, spec()).get("/api/view-network")
     assert answer.status_code == 503
     assert answer.json() == {"detail": "View network failed integrity checks"}
+
+
+def test_bytes_that_cannot_be_read_are_a_fault_and_none_are_served(tmp_path, monkeypatch):
+    """The file is on an external volume. A read error there is not a crash."""
+    path = tmp_path / "view-network.bin"
+    path.write_bytes(BYTES)
+
+    def unreadable(file, *, expected):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(view_network_server, "verified_checkpoint", unreadable)
+    answer = client(path, spec()).get("/api/view-network")
+    assert answer.status_code == 503
+    assert answer.json() == {"detail": "View network failed integrity checks"}
+
+
+def test_the_record_of_the_weights_names_the_same_file_and_training_commit():
+    record = (REPO / "docs" / "research" / "view-network-v1.md").read_text()
+    assert f"{VIEW_NETWORK.size_bytes:,} bytes" in record
+    assert f"`{VIEW_NETWORK.sha256}`" in record
+    assert re.fullmatch(r"[0-9a-f]{40}", VIEW_NETWORK_REVISION)
+    assert f"commit `{VIEW_NETWORK_REVISION}`" in record
 
 
 def test_the_file_and_its_fixed_identity():

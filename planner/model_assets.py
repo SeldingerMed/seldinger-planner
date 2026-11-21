@@ -44,6 +44,9 @@ VIEW_NETWORK = CheckpointSpec(
     7097120,
     "1c76811cc68707e9a55c8ad99b75e13eeaf9b292c1fb10db75c0e7872a2b8b56",
 )
+# The commit of the training code. Provenance only: no record is stamped with
+# it, because a proposal started from a proposed view is not saved. A test
+# holds it, the size and the hash equal to the record of the weights.
 VIEW_NETWORK_REVISION = "c9e01d286c63f7121c2a2994b027dfab37a0be62"
 
 
