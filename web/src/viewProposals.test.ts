@@ -138,3 +138,21 @@ it("reports a fetch that failed in time as what it was", async () => {
   await expect(viewNetwork()).rejects.toThrow(files.VIEW_NETWORK_UNREADABLE);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it("reports what the check found as that, even when it is found after the deadline", async () => {
+  vi.useFakeTimers();
+  // The bytes arrived in time and fail their check just after the deadline.
+  vi.spyOn(files, "loadViewNetwork").mockImplementation(
+    () =>
+      new Promise<typeof network>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(files.VIEW_NETWORK_UNREADABLE)),
+          VIEW_NETWORK_TIMEOUT_MS + 5,
+        ),
+      ),
+  );
+  const pending = viewNetwork(),
+    refused = expect(pending).rejects.toThrow(files.VIEW_NETWORK_UNREADABLE);
+  await vi.advanceTimersByTimeAsync(VIEW_NETWORK_TIMEOUT_MS + 5);
+  await refused;
+});

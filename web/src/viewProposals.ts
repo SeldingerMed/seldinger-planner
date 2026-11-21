@@ -15,7 +15,11 @@ import {
 import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
 import { vesselEvidence } from "./vesselEvidence2d";
 import type { Polarity } from "./vesselness2d";
-import { loadViewNetwork } from "./viewNetworkFile";
+import {
+  loadViewNetwork,
+  VIEW_NETWORK_ABSENT,
+  VIEW_NETWORK_UNREADABLE,
+} from "./viewNetworkFile";
 
 /** The deadline of the studio's other requests. */
 export const VIEW_NETWORK_TIMEOUT_MS = STUDIO_REQUEST_TIMEOUT_MS;
@@ -37,7 +41,13 @@ export function viewNetwork(): Promise<ViewNetwork> {
       }, VIEW_NETWORK_TIMEOUT_MS),
       loading = loadViewNetwork(control.signal)
         .catch((error: unknown) => {
-          throw late ? new Error(VIEW_NETWORK_LATE) : error;
+          // What the check itself found is reported as that, even when it
+          // is found after the deadline. Anything else by then is the stop.
+          const found =
+            error instanceof Error &&
+            (error.message === VIEW_NETWORK_ABSENT ||
+              error.message === VIEW_NETWORK_UNREADABLE);
+          throw late && !found ? new Error(VIEW_NETWORK_LATE) : error;
         })
         .finally(() => clearTimeout(deadline));
     installed = loading;
