@@ -38,8 +38,9 @@ export type AxisCuts = {
   centers: Float32Array;
 };
 
-/** Millimeters at each axis sample, NaN at a sample with no neighbor on its
- * run to give the axis a direction and at one that lies off the mask. Yields between slices of samples. */
+/** The cut at each axis sample. A sample with no neighbor on its run to
+ * give the axis a direction is not measured, nor one that lies off the
+ * mask. Yields between slices of samples. */
 export function* axisDiameterSteps(
   mask: Uint8Array,
   shape: readonly [number, number, number],
@@ -244,7 +245,10 @@ export function* axisDiameterSteps(
     out[k] = 2 * Math.sqrt((tail * cell) / (2 * half) / Math.PI);
     for (let i = 0; i < 3; i++)
       centers[3 * k + i] =
-        a[i][0] * middle[0] + a[i][1] * middle[1] + a[i][2] * middle[2] + a[i][3];
+        a[i][0] * middle[0] +
+        a[i][1] * middle[1] +
+        a[i][2] * middle[2] +
+        a[i][3];
   }
   return { mm: out, centers };
 }

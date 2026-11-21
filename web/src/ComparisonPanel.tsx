@@ -123,7 +123,7 @@ const mm = (value: number | null | undefined) =>
     : value.toFixed(1);
 
 /** One frame with the vessel axis over it: cyan where the vessel was
- * measured in the frame, grey elsewhere; the marks and the points they were
+ * measured in the frame, orange elsewhere; the marks and the points they were
  * carried to. */
 function ComparisonCanvas({
   frame,
@@ -161,7 +161,7 @@ function ComparisonCanvas({
       if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
       context.fillStyle = Number.isFinite(frame_mm[k])
         ? "rgba(0, 229, 255, 0.9)"
-        : "rgba(158, 158, 158, 0.8)";
+        : "rgba(255, 167, 38, 0.9)";
       context.fillRect(x - size / 2, y - size / 2, size, size);
     }
     context.lineWidth = size;
@@ -513,7 +513,7 @@ export default function ComparisonPanel({
             </div>
             <figcaption>
               Vessel axis under the saved proposal. Cyan: measured in the frame.
-              Grey: another vessel lies over it, or no vessel shows.
+              Orange: another vessel lies over it, or no vessel shows.
             </figcaption>
           </figure>
           <div
