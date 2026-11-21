@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  type FrameOptions,
   nearestTube,
   renderFrame,
   TREE,
@@ -76,6 +77,81 @@ const along = (s: number): Vec3 => {
     { path: [along(-6), along(6)], radius: 1 },
     { path: [along(6), along(30)], radius: 2 },
   ];
+
+/** Axis samples given by hand: one segment and one run per list of points. */
+const axis = (runs: number[][][]): VesselSegments => ({
+    segments: runs.map((points, index) => ({
+      index,
+      length_mm: points.length - 1,
+      mean_radius_mm: 1,
+      sample_count: points.length,
+      run: index,
+    })),
+    points: Float32Array.from(runs.flat(2)),
+    labels: Int32Array.from(
+      runs.flatMap((points, index) => points.map(() => index)),
+    ),
+    unassigned_fraction: 0,
+    pooling: 1,
+  }),
+  /** The mask's cuts and the frame's diameters at hand-given samples of a
+   * tree drawn about the isocenter; the frame may be cut to a window. */
+  measured = (
+    tree: Tube[],
+    set: VesselSegments,
+    options: Partial<FrameOptions> = {},
+    window = { x: 0, y: 0, width: SIDE, height: SIDE },
+  ) => {
+    const grid = treeMask(0.5, tree),
+      cuts = axisCuts(grid.mask, grid.shape, grid.affine, set),
+      whole = renderFrame(VIEW, [0, 0, 0], IDENTITY, {
+        ...size,
+        polarity: "dark",
+        noise: 12,
+        seed: 5,
+        tree,
+        ...options,
+      }),
+      cut = new Uint8Array(window.width * window.height),
+      moved = (pixels: Float32Array) =>
+        pixels.map((value, i) => value - (i % 2 ? window.y : window.x)),
+      at = placedSamples(VIEW, [0, 0, 0], IDENTITY, set.points, size);
+    for (let y = 0; y < window.height; y++)
+      for (let x = 0; x < window.width; x++)
+        cut[y * window.width + x] = whole[(y + window.y) * SIDE + x + window.x];
+    return {
+      cuts,
+      found: frameDiameters(
+        {
+          width: window.width,
+          height: window.height,
+          gray: cut,
+          polarity: "dark",
+        },
+        { pixels: moved(at.pixels), mm_per_px: at.mm_per_px },
+        set,
+        {
+          ...cuts,
+          pixels: moved(seen(cuts, [0, 0, 0], IDENTITY).pixels),
+        },
+      ),
+    };
+  },
+  /** Samples a millimeter apart from one point to another. */
+  line = (from: number[], to: number[]) => {
+    const length = Math.round(
+      Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2]),
+    );
+    return Array.from({ length: length + 1 }, (_, k) =>
+      from.map((value, i) => value + ((to[i] - value) * k) / length),
+    );
+  },
+  middle = (values: Float32Array | number[]) => {
+    const sorted = Array.from(values)
+      .filter(Number.isFinite)
+      .sort((a, b) => a - b);
+    return sorted[sorted.length >> 1];
+  };
 
 describe("diameters at the axis samples of the 3D mask", () => {
   it("gives each tube of the phantom its diameter", () => {
@@ -180,6 +256,9 @@ describe("diameters at the axis samples of the 3D mask", () => {
     // More than a millimeter from any mask.
     expect(at(0, 3.5)).toBeNaN();
     expect(at(2, 3)).toBeNaN();
+    // And so where mask lies in the box of voxels searched about the
+    // sample, at its corner.
+    expect(at(1.95, 1.95)).toBeNaN();
   });
 
   it("measures the vessel a sample lies in where two run side by side and touch", () => {
@@ -287,6 +366,126 @@ describe("diameters in a frame", () => {
     expect(flat.every(Number.isNaN)).toBe(true);
   });
 
+  it("does not measure a sample the mask has no cut at", () => {
+    const k = Array.from(frameMm).findIndex(
+        (value, j) => j > 20 && Number.isFinite(value),
+      ),
+      found = frameDiameters(
+        { ...size, gray, polarity: "dark" },
+        placed,
+        segments,
+        { ...maskCuts, mm: maskCuts.mm.map((mm, j) => (j === k ? NaN : mm)) },
+      );
+    expect(k).toBeGreaterThan(20);
+    expect(found[k]).toBeNaN();
+    expect(found[k + 1]).toBeCloseTo(frameMm[k + 1], 5);
+  });
+
+  it("does not measure a vessel seen end-on", () => {
+    // 8 mm of a 4 mm vessel along the beam, 20 mm beside the isocenter.
+    const tree: Tube[] = [
+        {
+          path: [
+            [20, -4, 0],
+            [20, 4, 0],
+          ],
+          radius: 2,
+        },
+      ],
+      { cuts, found } = measured(tree, axis([line([20, -4, 0], [20, 4, 0])]));
+    expect(Math.abs(cuts.mm[4] - 4)).toBeLessThan(0.6);
+    expect(found.every(Number.isNaN)).toBe(true);
+  });
+
+  it("does not measure a vessel that shows under 8 brightness levels deep", () => {
+    const tree: Tube[] = [
+        {
+          path: [
+            [0, 0, -25],
+            [0, 0, 25],
+          ],
+          radius: 1.5,
+        },
+      ],
+      set = axis([line([0, 0, -20], [0, 0, 20])]),
+      full = measured(tree, set, { noise: 0 }).found,
+      // Drawn at the contrast of a vessel twenty times as deep: under 6
+      // levels.
+      faint = measured(tree, set, {
+        noise: 0,
+        contrast_of: [{ path: tree[0].path, radius: 30 }],
+      }).found;
+    expect(Math.abs(middle(full) - 3)).toBeLessThan(0.6);
+    expect(full.subarray(5, 36).every(Number.isFinite)).toBe(true);
+    expect(faint.every(Number.isNaN)).toBe(true);
+  });
+
+  it("measures a vessel beside a short bend of its own run toward the beam", () => {
+    // 20 mm along z, then 5 mm along the beam: in the frame the bend lies
+    // within the clearing distance of the samples before it.
+    const tree: Tube[] = [
+        {
+          path: [
+            [0, 0, -20],
+            [0, 0, 0],
+          ],
+          radius: 1.5,
+        },
+        {
+          path: [
+            [0, 0, 0],
+            [0, 5, 0],
+          ],
+          radius: 1.5,
+        },
+      ],
+      { found } = measured(
+        tree,
+        axis([
+          [...line([0, 0, -20], [0, 0, 0]), ...line([0, 1, 0], [0, 5, 0])],
+        ]),
+      );
+    // 3 mm before the bend.
+    expect(Math.abs(found[17] - 3)).toBeLessThan(0.6);
+  });
+
+  it("does not measure a sample whose profile would leave the frame at any side", () => {
+    // A 3 mm vessel up the frame and one across it, each in a window of
+    // the frame 100 pixels wide: in its middle, then 5 pixels from a side.
+    const up: Tube[] = [
+        {
+          path: [
+            [0, 0, -25],
+            [0, 0, 25],
+          ],
+          radius: 1.5,
+        },
+      ],
+      across: Tube[] = [
+        {
+          path: [
+            [-25, 0, 0],
+            [25, 0, 0],
+          ],
+          radius: 1.5,
+        },
+      ],
+      upAxis = axis([line([0, 0, -10], [0, 0, 10])]),
+      acrossAxis = axis([line([-10, 0, 0], [10, 0, 0])]),
+      at = (tree: Tube[], set: VesselSegments, x: number, y: number) =>
+        measured(tree, set, {}, { x, y, width: 100, height: 100 }).found;
+    expect(
+      at(up, upAxis, 100, 100).subarray(2, 19).every(Number.isFinite),
+    ).toBe(true);
+    expect(
+      at(across, acrossAxis, 100, 100).subarray(2, 19).every(Number.isFinite),
+    ).toBe(true);
+    for (const x of [145, 55])
+      expect(at(up, upAxis, x, 100).every(Number.isNaN)).toBe(true);
+    for (const y of [145, 55])
+      expect(at(across, acrossAxis, 100, y).every(Number.isNaN)).toBe(true);
+  });
+
   it("does not measure a sample at the frame's edge", () => {
     // The same frame cut to its middle: samples near its edge have no
     // whole profile.
@@ -389,8 +588,8 @@ describe("diameters in a frame", () => {
   });
 
   it("reads the profile where the mask's cut is centered, when that is given", () => {
-    // Axis samples 2 mm beside a 5 mm vessel's middle, as from a coarse
-    // grid.
+    // Axis samples 3 mm beside a 5 mm vessel's middle, just outside its
+    // wall, as from a coarse grid; and samples on its middle.
     const tree: Tube[] = [
         {
           path: [
@@ -401,9 +600,10 @@ describe("diameters in a frame", () => {
         },
       ],
       grid = treeMask(0.5, tree),
-      // Two runs drawn along the one vessel, to either side of its middle.
+      // Three runs drawn along the one vessel: to either side of its
+      // middle, and on it.
       beside: VesselSegments = {
-        segments: [0, 1].map((index) => ({
+        segments: [0, 1, 2].map((index) => ({
           index,
           length_mm: 40,
           mean_radius_mm: 2.5,
@@ -411,11 +611,11 @@ describe("diameters in a frame", () => {
           run: index,
         })),
         points: Float32Array.from(
-          [2, -1.5].flatMap((x) =>
+          [3, -3, 0].flatMap((x) =>
             Array.from({ length: 41 }, (_, k) => [x, 0, k - 20]).flat(),
           ),
         ),
-        labels: Int32Array.from({ length: 82 }, (_, k) => (k < 41 ? 0 : 1)),
+        labels: Int32Array.from({ length: 123 }, (_, k) => Math.floor(k / 41)),
         unassigned_fraction: 0,
         pooling: 1,
       },
@@ -434,7 +634,14 @@ describe("diameters in a frame", () => {
       at = placedSamples(VIEW, [0, 0, 0], IDENTITY, beside.points, size),
       centered = seen(cuts, [0, 0, 0], IDENTITY),
       found = frameDiameters(picture, at, beside, centered);
+    // Read beside the middle, the profile is half as deep where its width
+    // is taken, and the vessel reads a quarter of a millimeter wider.
+    const onAxis = middle(found.subarray(87, 118));
     for (const first of [0, 41])
+      expect(
+        Math.abs(middle(found.subarray(first + 5, first + 36)) - onAxis),
+      ).toBeLessThan(0.1);
+    for (const first of [0, 41, 82])
       for (let k = first + 5; k < first + 36; k++) {
         expect(
           Math.hypot(cuts.centers[3 * k], cuts.centers[3 * k + 1]),
@@ -525,14 +732,36 @@ describe("the narrowest place of a run", () => {
       { runs, segments: per } = compareDiameters(set, inMask, few);
     expect(runs[0].frame).toBeNull();
     expect(runs[0].mask).not.toBeNull();
-    // A segment with fewer than three measured samples has no diameter.
-    const none = compareDiameters(
-      set,
-      inMask,
-      inFrame.map((value, k) => (set.labels[k] === 0 && k > 1 ? NaN : value)),
-    ).segments[0];
+    // Nine samples in a row are too few, though each has its neighbors;
+    // ten are enough.
+    const from = Array.from(inFrame).findIndex(
+        (_, k) => k > 4 && inFrame.subarray(k, k + 10).every(Number.isFinite),
+      ),
+      row = (length: number) =>
+        compareDiameters(
+          set,
+          inMask,
+          inFrame.map((value, k) =>
+            k >= from && k < from + length ? value : NaN,
+          ),
+        ).runs[0].frame;
+    expect(from).toBeGreaterThan(4);
+    expect(row(9)).toBeNull();
+    expect(row(10)).not.toBeNull();
+    // A segment with fewer than three measured samples has no diameter,
+    // in the frame or in the mask.
+    const two = (values: Float32Array) => {
+        let kept = 0;
+        return values.map((value, k) =>
+          set.labels[k] !== 0 || (Number.isFinite(value) && kept++ < 2)
+            ? value
+            : NaN,
+        );
+      },
+      none = compareDiameters(set, two(inMask), two(inFrame)).segments[0];
     expect(none.frame_mm).toBeNull();
-    expect(none.frame_samples).toBeLessThan(3);
+    expect(none.frame_samples).toBe(2);
+    expect(none.mask_mm).toBeNull();
     expect(per[0].mask_mm).not.toBeNull();
     expect(() => compareDiameters(set, inMask.subarray(1), inFrame)).toThrow(
       "Diameters do not match the vessel segments",

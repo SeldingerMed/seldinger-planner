@@ -25,7 +25,14 @@ import {
   truth,
   VIEW,
 } from "./__fixtures__/overlayCase";
-import ComparisonPanel, { framePixel, narrowestRows } from "./ComparisonPanel";
+import { axisCuts } from "./axisDiameter";
+import ComparisonPanel, {
+  COMPARISON_REQUEST_TIMEOUT_MS,
+  framePixel,
+  narrowestRows,
+} from "./ComparisonPanel";
+import { compareDiameters } from "./diameterComparison";
+import { frameDiameters } from "./frameDiameter";
 import { placedSamples } from "./framePlacement";
 import { parseSavedRegistration } from "./projectionFrames";
 import type { SegmentationEntry } from "./segmentation";
@@ -42,6 +49,11 @@ const FRAME = { width: SIDE, height: SIDE },
   segments = vesselSegments(phantom.mask, phantom.shape, phantom.affine),
   placed = placedSamples(VIEW, pivot, truth, segments.points, FRAME),
   registration = parseSavedRegistration(currentAnswer(), identity),
+  /** The same proposal saved again: another registration revision. */
+  later = {
+    ...registration,
+    registration_revision: registration.registration_revision + 1,
+  },
   // A run of four frames: no contrast, the trunk alone, then the saved
   // frame with the whole tree, then the whole tree again.
   before = renderFrame(VIEW, pivot, truth, {
@@ -164,6 +176,8 @@ const bytes = (value: Uint8Array, headers: Record<string, string> = {}) =>
   );
 type Routes = {
   frames?: Record<number, Uint8Array>;
+  /** Frames are not answered until their request is given up. */
+  held?: boolean;
   devices?: () => Response;
   mask?: () => Response;
 };
@@ -197,6 +211,12 @@ function server(routes: Routes = {}) {
         /^\/api\/projection-frames\/phantom-run\/planes\/single\/frames\/(\d+)$/.exec(
           url,
         );
+      if (frame && routes.held)
+        return new Promise<Response>((_resolve, reject) =>
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          ),
+        );
       if (frame)
         return bytes(frames[Number(frame[1])], {
           "X-Frame-Manifest-Revision": REVISION,
@@ -222,11 +242,13 @@ function canvases() {
 function Panel({
   mask = maskEntry as unknown as SegmentationEntry | null,
   disabled = false,
+  saved = registration,
   onRequests,
   onComputing,
 }: {
   mask?: SegmentationEntry | null;
   disabled?: boolean;
+  saved?: typeof registration;
   onRequests?: (open: boolean) => void;
   onComputing?: (computing: boolean) => void;
 }) {
@@ -234,7 +256,7 @@ function Panel({
     <ComparisonPanel
       identity={identity}
       binding={binding}
-      registration={registration}
+      registration={saved}
       mask={mask}
       grid={grid}
       disabled={disabled}
@@ -361,6 +383,22 @@ test("compares the saved proposal's frame with the mask: a row per segment with 
     row = table[segments.labels[trunkSample] + 1];
   expect(Math.abs(Number(row[2]) - 5)).toBeLessThan(0.8);
   expect(Math.abs(Number(row[3]) - 5)).toBeLessThan(0.8);
+  // Each row holds the mask's diameter and the saved frame's.
+  const cuts = axisCuts(phantom.mask, phantom.shape, phantom.affine, segments),
+    expected = compareDiameters(
+      segments,
+      cuts.mm,
+      frameDiameters({ ...FRAME, gray, polarity: "dark" }, placed, segments, {
+        ...cuts,
+        pixels: placedSamples(VIEW, pivot, truth, cuts.centers, FRAME).pixels,
+      }),
+    ).segments,
+    said = (value: number | null) => (value === null ? "–" : value.toFixed(1));
+  expected.forEach((one, index) => {
+    expect(table[index + 1][2]).toBe(said(one.mask_mm));
+    expect(table[index + 1][3]).toBe(said(one.frame_mm));
+  });
+  expect(table.some((cells) => cells[2] !== cells[3])).toBe(true);
   // Contrast reaches the trunk between the first two frames, and a branch
   // between the next two.
   expect(Number(row[4])).toBeGreaterThan(4);
@@ -432,6 +470,11 @@ test("carries a clicked place to the 3D model, and measures a planned device aga
   expect(
     screen.getByRole("status", { name: "Carried place" }).textContent,
   ).toBe("No vessel of the 3D model lies under the mark.");
+  // A new comparison starts without the marks of the last.
+  fireEvent.click(button("Compare again"));
+  expect(screen.queryByRole("table")).toBeNull();
+  await compared();
+  expect(screen.queryByRole("status", { name: "Carried place" })).toBeNull();
 }, 60000);
 
 test("compares without a planned device, and with one frame leaves contrast arrival out", async () => {
@@ -474,6 +517,124 @@ test("says when the saved frame cannot be read, and starts nothing while the stu
   expect(button("Compare 2D and 3D").disabled).toBe(true);
   view.rerender(<Panel mask={null} />);
   expect(button("Compare 2D and 3D").disabled).toBe(true);
+  // Another candidate with the same voxels is not the mask of the proposal.
+  view.rerender(
+    <Panel
+      mask={
+        {
+          ...maskEntry,
+          candidate_id: "aR9gj2VyCgkVgAQXETJsmA",
+        } as unknown as SegmentationEntry
+      }
+    />,
+  );
+  expect(button("Compare 2D and 3D").disabled).toBe(true);
+  // Nor is a proposal compared whose frame the server could not check.
+  view.rerender(
+    <Panel
+      saved={
+        {
+          ...registration,
+          current: { ...registration.current, evidence: "unavailable" },
+        } as typeof registration
+      }
+    />,
+  );
+  expect(button("Compare 2D and 3D").disabled).toBe(true);
+  view.rerender(<Panel />);
+  expect(button("Compare 2D and 3D").disabled).toBe(false);
+}, 60000);
+
+test("shows nothing of a comparison once the saved proposal is another", async () => {
+  canvases();
+  server();
+  const view = render(<Panel />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  clickSample(sampleAt([27, 3, 18]));
+  expect(screen.getByRole("status", { name: "Carried place" })).toBeTruthy();
+  view.rerender(<Panel saved={later} />);
+  expect(screen.queryByRole("table")).toBeNull();
+  expect(screen.queryByRole("img")).toBeNull();
+  expect(screen.queryByRole("status", { name: "Carried place" })).toBeNull();
+  expect(button("Compare 2D and 3D").disabled).toBe(false);
+}, 60000);
+
+test("gives up the reading of a saved proposal that is replaced while it is read", async () => {
+  canvases();
+  const calls = server({ held: true }),
+    requests: boolean[] = [],
+    open = (now: boolean) => requests.push(now),
+    view = render(<Panel onRequests={open} />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await waitFor(() =>
+    expect(calls.some((call) => call.includes("/frames/"))).toBe(true),
+  );
+  expect(requests.at(-1)).toBe(true);
+  view.rerender(<Panel saved={later} onRequests={open} />);
+  await waitFor(() => expect(requests.at(-1)).toBe(false));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(button("Compare 2D and 3D").disabled).toBe(false);
+}, 60000);
+
+test("says when the reading took too long", async () => {
+  canvases();
+  server({ held: true });
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    render(<Panel />);
+    fireEvent.click(button("Compare 2D and 3D"));
+    await vi.advanceTimersByTimeAsync(COMPARISON_REQUEST_TIMEOUT_MS - 1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    await vi.advanceTimersByTimeAsync(2);
+  } finally {
+    vi.useRealTimers();
+  }
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Reading the frames and vessel mask of the saved proposal took longer than 30 seconds. Retry.",
+  );
+  expect(button("Compare 2D and 3D").disabled).toBe(false);
+}, 60000);
+
+test("marks a place from the keyboard: the arrow keys move a cursor over the frame and Enter marks", async () => {
+  canvases();
+  server();
+  render(<Panel />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  const k = sampleAt([27, 3, 18]),
+    frame = screen.getByRole("img"),
+    press = (key: string, times: number, shiftKey = false) => {
+      for (let i = 0; i < times; i++)
+        fireEvent.keyDown(frame, { key, shiftKey });
+    },
+    dx = Math.round(placed.pixels[2 * k] - SIDE / 2),
+    dy = Math.round(placed.pixels[2 * k + 1] - SIDE / 2);
+  expect(frame.tabIndex).toBe(0);
+  expect(frame.getAttribute("aria-label")).toMatch(
+    /Arrow keys move a cursor, Enter marks\.$/,
+  );
+  // The cursor starts at the frame's middle; Shift moves it ten pixels.
+  press(
+    dx < 0 ? "ArrowLeft" : "ArrowRight",
+    Math.floor(Math.abs(dx) / 10),
+    true,
+  );
+  press(dx < 0 ? "ArrowLeft" : "ArrowRight", Math.abs(dx) % 10);
+  press(dy < 0 ? "ArrowUp" : "ArrowDown", Math.floor(Math.abs(dy) / 10), true);
+  press(dy < 0 ? "ArrowUp" : "ArrowDown", Math.abs(dy) % 10);
+  expect(screen.queryByRole("status", { name: "Carried place" })).toBeNull();
+  press("Enter", 1);
+  expect(
+    screen.getByRole("status", { name: "Carried place" }).textContent,
+  ).toContain(`Segment ${segments.labels[k] + 1},`);
+  // It stays inside the frame.
+  press("ArrowLeft", 40, true);
+  press("ArrowUp", 40, true);
+  press(" ", 1);
+  expect(
+    screen.getByRole("status", { name: "Carried place" }).textContent,
+  ).toBe("No vessel of the 3D model lies under the mark.");
 }, 60000);
 
 it("uses the saved inputs of the fixture this file assumes", () => {

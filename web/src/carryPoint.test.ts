@@ -229,9 +229,15 @@ describe("a mark in a frame carried to the 3D vessel axis", () => {
     expect(() => carryPoint(one, [{ ...mark, x: NaN }])).toThrow(
       "A mark lies outside its frame",
     );
-    expect(() => carryPoint(one, [{ ...mark, y: SIDE + 1 }])).toThrow(
-      "A mark lies outside its frame",
-    );
+    for (const outside of [
+      { x: SIDE + 1 },
+      { y: SIDE + 1 },
+      { x: -1 },
+      { y: -1 },
+    ])
+      expect(() => carryPoint(one, [{ ...mark, ...outside }])).toThrow(
+        "A mark lies outside its frame",
+      );
     expect(() => carryPoint({ ...one, planes: [] }, [mark])).toThrow(
       "One or two planes are required",
     );

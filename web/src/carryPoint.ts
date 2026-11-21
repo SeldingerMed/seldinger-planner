@@ -38,7 +38,8 @@ export type CarriedPoint = {
   /** Distance of the sample from each mark, in the mark's order. */
   off_mm: number[];
   /** Other vessels under every mark: unbranched runs with a sample in
-   * reach that lies apart from the carried point in the volume. */
+   * reach that lies apart from the carried point in the volume. The
+   * carried point's own run counts where it passes under the mark again. */
   crossings: number;
 };
 
@@ -62,7 +63,6 @@ export function carryPoint(
   if (
     !Array.isArray(marks) ||
     marks.length < 1 ||
-    marks.length > input.planes.length ||
     marks.some(
       (mark, i) =>
         !Number.isInteger(mark.plane) ||

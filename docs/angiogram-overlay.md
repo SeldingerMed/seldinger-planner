@@ -255,10 +255,10 @@ Beside a current saved proposal, under the vessel-presence report, the studio of
 
 ### Diameters
 
-| Side     | How it is measured                                                                                                                                                                                                                                                                                                        |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3D mask  | The mask is cut by a slab 2 mm thick across the axis at each sample, centered where the mask is deepest about the sample. The cut holds the mask of the one vessel there, also where the mask runs two vessels into each other. The diameter is that of the circle with the area of the cut (`mask_vessel_slab_area_v1`). |
-| 2D frame | The brightness profile across the vessel where the mask's cut is centered. Its width at half depth, each side against its own background, divided by 0.866 (a round vessel filled evenly), times the size of a pixel at the sample's depth (`profile_half_depth_v1`).                                                     |
+| Side     | How it is measured                                                                                                                                                                                                                                                                                                                                                       |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 3D mask  | The mask is cut by a slab 2 mm thick across the axis at each sample (two voxels thick on a grid coarser than 1 mm), centered where the mask is deepest about the sample. The cut holds the mask of the one vessel there, also where the mask runs two vessels into each other. The diameter is that of the circle with the area of the cut (`mask_vessel_slab_area_v1`). |
+| 2D frame | The brightness profile across the vessel where the mask's cut is centered. Its width at half depth, each side against its own background, divided by 0.866 (a round vessel filled evenly), times the size of a pixel at the sample's depth (`profile_half_depth_v1`).                                                                                                    |
 
 A sample is measured in a frame when the vessel shows there at least 8 brightness levels deep, runs across the beam, and no other vessel lies over it: none whose axis is nearer in the frame than the two radii and 1 mm. A vessel under a third of the sample's diameter is measured through. The frame is drawn with the axis cyan where it was measured and orange elsewhere.
 
@@ -272,7 +272,7 @@ With three or more admitted frames in a plane, the Segments table also gives the
 
 ### A place carried into 3D
 
-Click a vessel in a frame. The axis sample nearest the click, within 3 mm at the sample's depth, is the carried place: the studio names its segment and its position in the volume, and draws it in every plane. With two planes, a click on the same place in the second plane fixes it in space. With one plane the studio says how many other vessels lie under the click.
+Click a vessel in a frame. The axis sample nearest the click, within 3 mm at the sample's depth, is the carried place: the studio names its segment and its position in the volume, and draws it in every plane. With two planes, a click on the same place in the second plane fixes it in space. With one plane the studio says how many other vessels lie under the click; a vessel that passes under it twice counts as another. From the keyboard, focus a frame: the arrow keys move a cursor from its middle, by a pixel or with Shift by ten, and Enter marks.
 
 ### Planned and deployed device
 

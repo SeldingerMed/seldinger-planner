@@ -136,6 +136,23 @@ describe("contrast arrival per segment", () => {
         peak: 0,
         filling: [0, 0, 0, 0, 0],
       });
+    // A segment is outside the field with under half its samples in it.
+    const trunk = tubeOf.findIndex((tube, index) => tube === 0 && clear[index]),
+      own = Array.from(segments.labels.keys()).filter(
+        (k) => segments.labels[k] === trunk,
+      ),
+      partly = (share: number) =>
+        contrastArrival({
+          ...run(FILLING),
+          pixels: pixels.map((value, i) =>
+            own.indexOf(i >> 1) >= 0 && own.indexOf(i >> 1) < share * own.length
+              ? value + 2 * SIDE
+              : value,
+          ),
+        })[trunk].state;
+    expect(own.length).toBeGreaterThan(4);
+    expect(partly(0.6)).toBe("outside_field");
+    expect(partly(0.4)).toBe("arrives");
   });
 
   it("refuses frames that are not a run", () => {

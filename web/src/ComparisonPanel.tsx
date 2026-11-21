@@ -124,7 +124,8 @@ const mm = (value: number | null | undefined) =>
 
 /** One frame with the vessel axis over it: cyan where the vessel was
  * measured in the frame, orange elsewhere; the marks and the points they were
- * carried to. */
+ * carried to. A click marks; so does Enter at a cursor the arrow keys move
+ * from the frame's middle, by a pixel or with Shift by ten. */
 function ComparisonCanvas({
   frame,
   plane,
@@ -142,7 +143,8 @@ function ComparisonCanvas({
   label: string;
   onMark: (x: number, y: number) => void;
 }) {
-  const canvas = useRef<HTMLCanvasElement | null>(null);
+  const canvas = useRef<HTMLCanvasElement | null>(null),
+    [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     const context = canvas.current?.getContext("2d");
     if (!context) return;
@@ -165,6 +167,15 @@ function ComparisonCanvas({
       context.fillRect(x - size / 2, y - size / 2, size, size);
     }
     context.lineWidth = size;
+    if (cursor) {
+      context.strokeStyle = "rgba(255, 255, 255, 0.95)";
+      context.beginPath();
+      context.moveTo(cursor.x - 8 * size, cursor.y);
+      context.lineTo(cursor.x + 8 * size, cursor.y);
+      context.moveTo(cursor.x, cursor.y - 8 * size);
+      context.lineTo(cursor.x, cursor.y + 8 * size);
+      context.stroke();
+    }
     for (const marking of Object.keys(MARKINGS) as Marking[]) {
       context.strokeStyle = context.fillStyle = MARKINGS[marking].color;
       const mark = marks[marking].find((one) => one.plane === plane);
@@ -190,7 +201,7 @@ function ComparisonCanvas({
           4 * size,
         );
     }
-  }, [frame, plane, computed, marks, carried]);
+  }, [frame, plane, computed, marks, carried, cursor]);
   return (
     <canvas
       ref={canvas}
@@ -198,7 +209,32 @@ function ComparisonCanvas({
       width={frame.width}
       height={frame.height}
       role="img"
-      aria-label={label}
+      aria-label={`${label}. Arrow keys move a cursor, Enter marks.`}
+      tabIndex={0}
+      onBlur={() => setCursor(null)}
+      onKeyDown={(event) => {
+        const step = event.shiftKey ? 10 : 1,
+          at = cursor ?? { x: frame.width / 2, y: frame.height / 2 },
+          move = (
+            {
+              ArrowLeft: [-step, 0],
+              ArrowRight: [step, 0],
+              ArrowUp: [0, -step],
+              ArrowDown: [0, step],
+            } as Record<string, number[]>
+          )[event.key];
+        if (move) {
+          event.preventDefault();
+          setCursor({
+            x: Math.min(frame.width, Math.max(0, at.x + move[0])),
+            y: Math.min(frame.height, Math.max(0, at.y + move[1])),
+          });
+        } else if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setCursor(at);
+          onMark(at.x, at.y);
+        }
+      }}
       onClick={(event) => {
         const at = framePixel(
           event.currentTarget.getBoundingClientRect(),
@@ -247,24 +283,23 @@ export default function ComparisonPanel({
     } | null>(null),
     [outcome, setOutcome] = useState<Outcome | null>(null),
     [marking, setMarking] = useState<Marking>("place"),
-    [marked, setMarked] = useState<{ key: string; marks: Marks }>({
-      key: "",
-      marks: NO_MARKS,
-    }),
+    // Marks are of the result shown: a new comparison starts without any.
+    [marks, setMarks] = useState<Marks>(NO_MARKS),
     [deviceId, setDeviceId] = useState("");
+  // Requests are of one saved proposal: they are given up when it is
+  // replaced, and when the panel goes.
   const controllers = useRef(new Set<AbortController>());
   useEffect(() => {
     const open = controllers.current;
     return () => {
       for (const controller of open) controller.abort();
     };
-  }, []);
+  }, [key]);
 
   const busy = requests > 0,
     active = run?.key === key ? run : null,
     shown = outcome?.key === key ? outcome : null,
     computed = shown && "result" in shown ? shown : null,
-    marks = marked.key === key ? marked.marks : NO_MARKS,
     ready =
       saved.status === "current" &&
       saved.evidence === "verified" &&
@@ -322,15 +357,16 @@ export default function ComparisonPanel({
     const inputs = saved.inputs,
       owned = key,
       controller = new AbortController(),
-      deadline = setTimeout(
-        () => controller.abort(),
-        COMPARISON_REQUEST_TIMEOUT_MS,
-      ),
       { signal } = controller;
+    let late = false;
+    const deadline = setTimeout(() => {
+      late = true;
+      controller.abort();
+    }, COMPARISON_REQUEST_TIMEOUT_MS);
     controllers.current.add(controller);
     setRequests((count) => count + 1);
     setOutcome(null);
-    setMarked({ key: owned, marks: NO_MARKS });
+    setMarks(NO_MARKS);
     try {
       const bundle = await loadFrameBundle(inputs.frame_source_id, signal);
       if (bundle.manifest_revision !== inputs.frame_manifest_revision)
@@ -413,8 +449,9 @@ export default function ComparisonPanel({
       if (live.current === owned)
         setOutcome({
           key: owned,
-          failure:
-            "The frames and vessel mask of the saved proposal could not be read. Check their availability, then retry",
+          failure: late
+            ? `Reading the frames and vessel mask of the saved proposal took longer than ${COMPARISON_REQUEST_TIMEOUT_MS / 1000} seconds. Retry`
+            : "The frames and vessel mask of the saved proposal could not be read. Check their availability, then retry",
         });
     } finally {
       clearTimeout(deadline);
@@ -497,15 +534,12 @@ export default function ComparisonPanel({
                   carried={carried}
                   label={`Admitted frame ${frame.index}, plane ${frame.plane}, with the vessel axis and marks`}
                   onMark={(x, y) =>
-                    setMarked({
-                      key,
-                      marks: {
-                        ...marks,
-                        [marking]: [
-                          ...marks[marking].filter((one) => one.plane !== k),
-                          { plane: k, x, y },
-                        ],
-                      },
+                    setMarks({
+                      ...marks,
+                      [marking]: [
+                        ...marks[marking].filter((one) => one.plane !== k),
+                        { plane: k, x, y },
+                      ],
                     })
                   }
                 />
@@ -535,7 +569,7 @@ export default function ComparisonPanel({
             <button
               type="button"
               disabled={!Object.values(marks).some((list) => list.length)}
-              onClick={() => setMarked({ key, marks: NO_MARKS })}
+              onClick={() => setMarks(NO_MARKS)}
             >
               Clear marks
             </button>
@@ -642,14 +676,14 @@ export default function ComparisonPanel({
                   <th scope="col">Length (mm)</th>
                   <th scope="col">3D diameter (mm)</th>
                   {computed.frames.map((frame) => (
-                    <th scope="col" key={frame.plane}>
+                    <th scope="col" key={`diameter-${frame.plane}`}>
                       Plane {frame.plane} diameter (mm)
                     </th>
                   ))}
                   {computed.frames.map(
                     (frame, k) =>
                       computed.result.planes[k].arrival && (
-                        <th scope="col" key={frame.plane}>
+                        <th scope="col" key={`arrival-${frame.plane}`}>
                           Plane {frame.plane} contrast arrives (frame)
                         </th>
                       ),
@@ -669,7 +703,7 @@ export default function ComparisonPanel({
                       )}
                     </td>
                     {computed.result.planes.map((plane, k) => (
-                      <td key={k}>
+                      <td key={`diameter-${k}`}>
                         {mm(plane.diameters.segments[segment.index].frame_mm)}
                       </td>
                     ))}
@@ -677,7 +711,7 @@ export default function ComparisonPanel({
                       const one = plane.arrival?.[segment.index];
                       return (
                         one && (
-                          <td key={k}>
+                          <td key={`arrival-${k}`}>
                             {one.state === "arrives"
                               ? one.arrival!.toFixed(1)
                               : one.state === "filled_from_first"
