@@ -42,7 +42,9 @@ const at = (m: number[][], x: readonly number[]) =>
 /** Runs the search from `input.start` and then from each of `others`,
  * yielding between slices of work as the single search does. A start from
  * which no pose keeps the points in every frame is passed over; when that
- * is so for every start, the first start's failure is thrown. Any other
+ * is so for every start, the first start's failure is thrown, unless a fit
+ * of the field size is requested: the sizes around the entered one are then
+ * searched from `input.start`, which counts as the kept start. Any other
  * error stops the run.
  *
  * Whichever start is kept, the result is described against `input.start`:
@@ -76,10 +78,19 @@ export function* bestStartSteps(
     if (!best || meanEvidence(found) > meanEvidence(best.proposal))
       best = { proposal: found, k };
   }
-  if (!best) throw failure;
+  const fit = input.planes.some((plane) => plane.fit_detector_scale);
+  if (!best) {
+    if (!fit) throw failure;
+    // An entered size can be wrong enough that no pose keeps the points in
+    // the frame. The sizes around it are still tried, from the own position.
+    best = {
+      k: 0,
+      proposal: yield* sizeSearchSteps(input, clock, { entered: null }),
+    };
+  }
   // A requested fit of the field size is then searched from several
   // entered sizes, from the kept start.
-  if (input.planes.some((plane) => plane.fit_detector_scale))
+  else if (fit)
     best = {
       k: best.k,
       proposal: yield* sizeSearchSteps(

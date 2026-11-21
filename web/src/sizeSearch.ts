@@ -132,8 +132,14 @@ export function* sizeSearchSteps(
     }
     // A stable sort: of two rungs with one cost, the smaller size is first.
     tried.sort((a, b) => a.cost - b.cost);
+    // A plane whose searches alone found no pose stays at its entered size,
+    // so the other plane's sizes are still searched.
     rungs.push(
-      tried.slice(0, SIZE_SEARCH_LIMITS.kept_per_plane).map((rung) => rung.log),
+      tried.length
+        ? tried
+            .slice(0, SIZE_SEARCH_LIMITS.kept_per_plane)
+            .map((rung) => rung.log)
+        : [0],
     );
   }
   let best: { found: EvidenceRegistrationProposal; scales: number[] } | null =

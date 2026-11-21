@@ -235,6 +235,38 @@ describe("best start with a requested fit of the field size", () => {
     expect(found.proposal.rotation_deg).toBeLessThan(50);
   }, 120000);
 
+  it("searches the size from the own position when no start finds a pose", () => {
+    const off = IDENTITY_MATRIX.map((row, i) =>
+        i === 0 ? [1, 0, 0, 5000] : row,
+      ),
+      far = IDENTITY_MATRIX.map((row, i) => (i === 2 ? [0, 0, 1, 5000] : row)),
+      from = { ...fitted(small(VIEW)), start: off },
+      made = {
+        ...proposeEvidenceRegistration(fitted(VIEW)),
+        method: "vessel_evidence_size_search_v1" as const,
+      };
+    vi.mocked(sizeSearchSteps).mockImplementationOnce(function* () {
+      return made;
+    });
+    const found = finish([far], from),
+      asked = vi.mocked(sizeSearchSteps).mock.lastCall!;
+    // No start gave a result to hand over; the sizes are tried from the
+    // own position.
+    expect(asked[0]).toEqual(from);
+    expect(asked[2]).toEqual({ entered: null });
+    expect(found).toEqual({ proposal: made, searched: 2, kept: 0 });
+    // When no size finds a pose either, that is the failure.
+    expect(() => finish([far], from)).toThrow(
+      "No pose in the search range keeps the vessel points inside every frame",
+    );
+    // With no fit requested the size is not searched.
+    const calls = vi.mocked(sizeSearchSteps).mock.calls.length;
+    expect(() => finish([far], { ...input, start: off })).toThrow(
+      "No pose in the search range keeps the vessel points inside every frame",
+    );
+    expect(vi.mocked(sizeSearchSteps).mock.calls.length).toBe(calls);
+  }, 120000);
+
   it("with no fit requested keeps the best-start name and numbers", () => {
     const found = finish([right]);
     expect(found.proposal.method).toBe("vessel_evidence_best_start_v1");

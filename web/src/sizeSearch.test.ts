@@ -255,6 +255,28 @@ describe("search of the field size from several entered sizes", () => {
     expect(found.planes[1].detector_scale).toBeCloseTo(200 / 266, 12);
   });
 
+  it("keeps a plane whose searches alone find no pose at its entered size, and still searches the other's", () => {
+    const log: string[] = [],
+      search = standIn([200, 300], 0.12, log),
+      found = finish(pair(150, 300), (input) => {
+        // The second plane alone finds no pose at any size.
+        if (
+          input.planes.length === 1 &&
+          input.planes[0].view.detector_width_mm > 210
+        )
+          throw new Error(EVIDENCE_NO_POSE);
+        return search(input);
+      });
+    expect(log.filter((line) => line.includes(" "))).toEqual([
+      "150f 300f",
+      "202f 300f",
+      "183f 300f",
+    ]);
+    expect(found.planes[0].detector_scale).toBeCloseTo(200 / 150, 12);
+    expect(found.planes[1].detector_scale).toBe(1);
+    expect(found.detector_fit).toBe("kept");
+  });
+
   it("leaves a plane with no fit requested at its entered size and off the ladder", () => {
     const log: string[] = [],
       found = finish(
