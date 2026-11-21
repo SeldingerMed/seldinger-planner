@@ -312,7 +312,7 @@ function evidenceWords(found: EvidenceRegistrationProposal): string {
   const by =
     found.method === EVIDENCE_BEST_START_METHOD ||
     found.method === EVIDENCE_BEST_START_BIPLANE_METHOD
-      ? "by vessel evidence, the best of the searches from the volume's own position and from each view proposed for the frame"
+      ? `by vessel evidence, the best of the searches from the volume's own position and from each view proposed for ${found.planes.length === 2 ? "either frame" : "the frame"}`
       : "by vessel evidence";
   if (found.planes.length === 2)
     return `Unsaved two-plane proposal ${by}: ${moved}, with central rays ${(found.plane_angle_deg ?? 0).toFixed(0)}° apart. Plane A: ${plane(0)}. Plane B: ${plane(1)}.${fitted} ${caution} Review both overlays before confirming.`;

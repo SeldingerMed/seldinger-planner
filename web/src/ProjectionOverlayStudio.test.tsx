@@ -2694,7 +2694,7 @@ test("with the view network, a two-plane proposal by vessel evidence is saved un
   // Asked once for each plane's frame.
   expect(asked).toHaveBeenCalledTimes(2);
   expect(status("Overlay status").textContent).toMatch(
-    /^Unsaved two-plane proposal by vessel evidence, the best of the searches from the volume's own position and from each view proposed for the frame: /,
+    /^Unsaved two-plane proposal by vessel evidence, the best of the searches from the volume's own position and from each view proposed for either frame: /,
   );
   fireEvent.click(
     screen.getByRole("checkbox", { name: /I reviewed both overlays/ }),
