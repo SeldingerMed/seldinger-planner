@@ -681,11 +681,12 @@ export default function ProjectionOverlayStudio({
     pairDistinct = !!pairSetup && pairSetup[0].sha256 !== pairSetup[1].sha256,
     pairReady =
       pairAngle !== null && planesFarEnough(pairAngle) && pairDistinct;
-  // A picked view belongs to the frame and polarity it was proposed for. For
-  // two planes it may be either plane's, whichever frame is on screen. A
-  // frame is known by its bytes: opened again in this source, in the same
-  // bundle or another, it is the frame the view was picked for, and the
-  // status line shows the pick in force. Another source drops it.
+  // A picked view belongs to the frame, the plane it was admitted under and
+  // the polarity it was proposed for. For two planes it may be either
+  // plane's, whichever frame is on screen. A frame is known by its bytes:
+  // opened again in this source under the same plane, it is the frame the
+  // view was picked for, and the status line shows the pick in force.
+  // Another source drops it.
   const pickedHere =
       startPick &&
       shownFrame &&

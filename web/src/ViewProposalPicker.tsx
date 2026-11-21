@@ -25,11 +25,12 @@ export function viewWords(view: StartView): string {
 }
 
 /** The network's share for a view. A share too small to round to one
- * percent is not shown as none. */
+ * percent is not shown as none, and one that rounds to the whole is not
+ * shown as the whole. */
 export function shareWords(share: number): string {
-  return share > 0 && share < 0.005
-    ? "under 1%"
-    : `${Math.round(share * 100)}%`;
+  if (share > 0 && share < 0.005) return "under 1%";
+  if (share >= 0.995) return "over 99%";
+  return `${Math.round(share * 100)}%`;
 }
 
 /** Proposes views for the frame on screen and lets the operator pick one

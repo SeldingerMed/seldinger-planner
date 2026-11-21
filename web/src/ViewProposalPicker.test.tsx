@@ -36,6 +36,13 @@ it("does not show a small share as none", () => {
   expect(shareWords(0)).toBe("0%");
 });
 
+it("does not show a large share as the whole", () => {
+  expect(shareWords(0.994)).toBe("99%");
+  expect(shareWords(0.995)).toBe("over 99%");
+  expect(shareWords(0.9999)).toBe("over 99%");
+  expect(shareWords(1)).toBe("over 99%");
+});
+
 it("lists each view with its share in those words", async () => {
   vi.spyOn(viewProposals, "proposeFrameViews").mockResolvedValue([
     { ...view, share: 0.27 },

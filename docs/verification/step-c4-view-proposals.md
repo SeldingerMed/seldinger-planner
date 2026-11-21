@@ -192,7 +192,7 @@ The review of the eighth head raised one.
 The review of the ninth head raised two, in the studio. Neither changed the code.
 
 - That the list would, with two planes, name the pick as another plane's while its own plane's frame was being drawn again. It does not: the control draws no list while no frame is on screen. A test now holds that.
-- That a pick stands when a frame with the same bytes is opened again in the same volume, in the same bundle or another. This is intended, since a frame is known by its bytes and the views depend on nothing else, and the status line names the start in force. It is now written in the user documentation and held by a test.
+- That a pick stands when a frame with the same bytes, admitted under the same plane, is opened again in the same volume. This is intended, since a frame is known by its bytes and the views depend on nothing else, and the status line names the start in force. It is now written in the user documentation and held by a test.
 
 The reviews of the tenth and eleventh heads raised one each.
 
@@ -203,11 +203,17 @@ The review of the twelfth head raised one.
 
 - What is reported after the deadline was decided by the wording of the failure. It is now decided by what happened: only an abort, once the deadline has passed, is lateness, and anything else is reported as what it is. Six single-site changes of that rule were each caught.
 
+The review of the thirteenth head raised three.
+
+- The documentation said a pick stands for the same frame and left out that it must be admitted under the same plane, which the code requires. The user documentation and this record now say so.
+- A share of 99.5% or more was written as 100%. It is now written as over 99%.
+- The browser's loader takes the expected size and hash as an argument, which only the tests give. Its comment now says so.
+
 The mutation counts above are of the first head. The new guards were checked the same way: twenty-two single-site changes (the list's choice in force in the control and in the studio, the share's wording, the deadline's abort, message and timer, the fetch's own signal, a caller's abort, a failed fetch not being kept, the stop on another frame or polarity, the wording of a small negative angle, the drop on another source, three of the server's decision between absent and faulty, the answer to a read error, the training commit, two of the answer to a path that cannot be looked at, the failure going with its frame, and two of what is reported after the deadline), all twenty-two caught.
 
 ## Final local checks
 
-On the head of this pull request: backend 1473 passed and 133 skipped, Python lint and format checks clean, TypeScript typecheck clean. The full frontend suite on the head is the frontend job in CI, which has to pass before the merge. The local frontend runs were made on a workstation shared with other research jobs, whose job governor pauses test workers when more than three heavy jobs are running. Full local runs on earlier heads: 1325 of 1325 on the first; later 1329 of 1331 and 1332 of 1333, the three failures being timeouts or a single failure in files this pull request does not touch, each of which passed when its file was run again. On the last heads the governor held the full run behind three other jobs, so the test files of the studio, the control, the proposals and the weights file were run on their own on the final head: 84 of 84 in the four files. The production build and the dependency audit (zero vulnerabilities) were clean on the earlier heads, and no dependency is changed by this pull request. Every file this pull request changes passes Prettier. The native ingestion and physics suites were not run again here; nothing they cover is changed.
+On the head of this pull request: backend 1473 passed and 133 skipped, Python lint and format checks clean, TypeScript typecheck clean. The full frontend suite on the head is the frontend job in CI, which has to pass before the merge. The local frontend runs were made on a workstation shared with other research jobs, whose job governor pauses test workers when more than three heavy jobs are running. Full local runs on earlier heads: 1325 of 1325 on the first; later 1329 of 1331 and 1332 of 1333, the three failures being timeouts or a single failure in files this pull request does not touch, each of which passed when its file was run again. On the last heads the governor held the full run behind three other jobs, so the test files of the studio, the control, the proposals and the weights file were run on their own on the final head: 85 of 85 in the four files. The production build and the dependency audit (zero vulnerabilities) were clean on the earlier heads, and no dependency is changed by this pull request. Every file this pull request changes passes Prettier. The native ingestion and physics suites were not run again here; nothing they cover is changed.
 
 ## Limits
 

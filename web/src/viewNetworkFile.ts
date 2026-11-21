@@ -18,7 +18,8 @@ export const VIEW_NETWORK_UNREADABLE =
   "The view network could not be read unchanged and is not used";
 
 /** Fetches, checks and parses the network. Rejects with one of the two
- * messages above, or with an abort. */
+ * messages above, or with an abort. `expected` is there for the tests: the
+ * application passes nothing and gets the one identity fixed above. */
 export async function loadViewNetwork(
   signal?: AbortSignal,
   expected: { size_bytes: number; sha256: string } = VIEW_NETWORK_FILE,
