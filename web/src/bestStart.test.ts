@@ -147,11 +147,24 @@ describe("search from the best of several starts", () => {
     );
     const found = finish([off, right]);
     expect(found.kept).toBe(2);
+    const far = IDENTITY_MATRIX.map((row, i) =>
+      i === 2 ? [0, 0, 1, 5000] : row,
+    );
+    expect(() => finish([far], { ...input, start: off })).toThrow(
+      "No pose in the search range keeps the vessel points inside every frame",
+    );
+  }, 120000);
+
+  it("stops on a start that is not a rigid pose, wherever it is in the list", () => {
     const skewed = IDENTITY_MATRIX.map((row, i) =>
       i === 0 ? [2, 0, 0, 0] : row,
     );
-    expect(() => finish([skewed], { ...input, start: off })).toThrow(
-      "No pose in the search range keeps the vessel points inside every frame",
+    // Passed over, it would be the reference the result is described from.
+    expect(() => finish([right], { ...input, start: skewed })).toThrow(
+      "Rotation must be orthonormal",
+    );
+    expect(() => finish([right, skewed])).toThrow(
+      "Rotation must be orthonormal",
     );
   }, 120000);
 });

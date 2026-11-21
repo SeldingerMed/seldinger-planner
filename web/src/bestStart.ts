@@ -7,6 +7,7 @@ import {
   createEvidenceRegistrationJob,
   EVIDENCE_BEST_START_BIPLANE_METHOD,
   EVIDENCE_BEST_START_METHOD,
+  EVIDENCE_NO_POSE,
   EVIDENCE_REGISTRATION_LIMITS,
   type EvidenceRegistrationInput,
   type EvidenceRegistrationProposal,
@@ -38,7 +39,8 @@ const at = (m: number[][], x: readonly number[]) =>
 /** Runs the search from `input.start` and then from each of `others`,
  * yielding between slices of work as the single search does. A start from
  * which no pose keeps the points in every frame is passed over; when that
- * is so for every start, the first start's failure is thrown.
+ * is so for every start, the first start's failure is thrown. Any other
+ * error stops the run.
  *
  * Whichever start is kept, the result is described against `input.start`:
  * the start scores are those there, and the distance moved and the angle
@@ -59,6 +61,10 @@ export function* bestStartSteps(
       while (!job.advance(() => clock.expired())) yield;
       found = job.result();
     } catch (error) {
+      // Only the search's own failure is passed over. A fault in the input,
+      // a start that is not a rigid pose among them, stops the run.
+      if (!(error instanceof Error) || error.message !== EVIDENCE_NO_POSE)
+        throw error;
       failure ??= error;
       continue;
     }

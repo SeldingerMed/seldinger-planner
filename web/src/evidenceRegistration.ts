@@ -78,6 +78,10 @@ export const EVIDENCE_REGISTRATION_LIMITS = {
   out_of_plane_prior: 0.01,
 } as const;
 
+/** The search's own failure: from this start, no pose in range could be
+ * scored. Any other error is a fault in the input. */
+export const EVIDENCE_NO_POSE =
+  "No pose in the search range keeps the vessel points inside every frame";
 export type EvidenceScore = {
   /** Mean evidence under the projected 3D points at the narrowest blur,
    * from 0 to 1. Points outside the frame count as zero. */
@@ -610,10 +614,7 @@ function* solve(
       detector_fit = "dropped";
     }
   }
-  if (!best)
-    throw new Error(
-      "No pose in the search range keeps the vessel points inside every frame",
-    );
+  if (!best) throw new Error(EVIDENCE_NO_POSE);
   const p = best.p,
     r = rotation(p[3], p[4], p[5]);
   // World rotation B^T R B and the pivot's shift B^T t, composed onto the start.
