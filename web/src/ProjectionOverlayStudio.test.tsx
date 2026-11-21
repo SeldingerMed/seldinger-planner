@@ -2834,6 +2834,13 @@ test("a picked view is no start for another frame of its plane", async () => {
   }
 }, 60000);
 
+test("the weights are fetched under the deadline of the studio's other requests", () => {
+  expect(viewProposals.VIEW_NETWORK_TIMEOUT_MS).toBe(
+    OVERLAY_REQUEST_TIMEOUT_MS,
+  );
+  expect(OVERLAY_REQUEST_TIMEOUT_MS).toBe(30_000);
+});
+
 test("a picked view is not carried to another source", async () => {
   server(pairRoutes);
   const views = vi

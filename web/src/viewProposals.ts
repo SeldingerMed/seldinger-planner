@@ -12,12 +12,13 @@ import {
   type ViewNetwork,
   type ViewProposal,
 } from "./poseInitializer";
+import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
 import { vesselEvidence } from "./vesselEvidence2d";
 import type { Polarity } from "./vesselness2d";
 import { loadViewNetwork } from "./viewNetworkFile";
 
 /** The deadline of the studio's other requests. */
-export const VIEW_NETWORK_TIMEOUT_MS = 30_000;
+export const VIEW_NETWORK_TIMEOUT_MS = STUDIO_REQUEST_TIMEOUT_MS;
 export const VIEW_NETWORK_LATE = "The view network did not arrive in time";
 
 let installed: Promise<ViewNetwork> | null = null;

@@ -58,6 +58,7 @@ import { loadSegmentationMask, type SegmentationEntry } from "./segmentation";
 import { stable, type Identity } from "./territoryWorkflow";
 import type { Polarity, VesselTarget } from "./vesselness2d";
 import VesselPresencePanel from "./VesselPresencePanel";
+import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
 import ViewProposalPicker, {
   viewWords,
   type StartPick,
@@ -148,7 +149,7 @@ const DEFAULT_EDITOR: Editor = {
 };
 const SLICE_MS = 12,
   HIDDEN_SLICE_MS = 800;
-export const OVERLAY_REQUEST_TIMEOUT_MS = 30_000;
+export const OVERLAY_REQUEST_TIMEOUT_MS = STUDIO_REQUEST_TIMEOUT_MS;
 const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
 /** Plane B starts as a lateral view: two planes at one angle cannot be fitted. */
 const defaults = (label: PlaneLabel): PlaneSettings => ({
