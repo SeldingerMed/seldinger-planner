@@ -352,6 +352,66 @@ describe("overlay jobs by vessel evidence", () => {
   });
 });
 
+describe("overlay jobs by vessel evidence with a requested fit of the field size", () => {
+  const small = (view: typeof VIEW) => ({
+    ...view,
+    detector_width_mm: view.detector_width_mm * 0.8,
+    detector_height_mm: view.detector_height_mm * 0.8,
+  });
+
+  it("searches one plane's size, with or without proposed views", () => {
+    for (const propose_views of [null, () => []]) {
+      const job = createOverlayJob({
+        ...input,
+        view: small(VIEW),
+        search: {
+          ...input.search!,
+          method: "vessel_evidence",
+          fit_detector_scale: true,
+        },
+        propose_views,
+      });
+      let slices = 0;
+      while (!job.advance(() => true)) slices++;
+      expect(slices).toBeGreaterThan(100);
+      const found = job.result().evidence!;
+      expect(found.method).toBe("vessel_evidence_size_search_v1");
+      expect(found.detector_fit).toBe("kept");
+      expect(found.planes[0].detector_scale).toBeGreaterThan(1.2);
+      expect(found.planes[0].detector_scale).toBeLessThan(1.3);
+    }
+  }, 120000);
+
+  it("searches the size of the one plane of two that asks for it", () => {
+    const job = createBiplaneOverlayJob({
+      ...pair,
+      planes: [
+        pair.planes[0],
+        {
+          ...pair.planes[1],
+          view: small(pair.planes[1].view),
+          fit_detector_scale: true,
+        },
+      ],
+      method: "vessel_evidence",
+    });
+    expect(job.advance(() => false)).toBe(true);
+    const found = job.result().evidence!;
+    expect(found.method).toBe("vessel_evidence_size_search_biplane_v1");
+    expect(found.planes[0].detector_scale).toBe(1);
+    expect(found.planes[1].detector_scale).toBeGreaterThan(1.2);
+    expect(found.planes[1].detector_scale).toBeLessThan(1.3);
+  }, 120000);
+
+  it("with no fit requested and no proposed views runs the single search", () => {
+    const job = createBiplaneOverlayJob({ ...pair, method: "vessel_evidence" });
+    expect(job.advance(() => false)).toBe(true);
+    expect(job.result().evidence!.method).toBe(
+      "vessel_evidence_compass_biplane_v1",
+    );
+  }, 120000);
+});
+
 describe("overlay jobs by vessel evidence from the best of several starts", () => {
   const OFF = 40,
     off = (view: typeof VIEW) => ({

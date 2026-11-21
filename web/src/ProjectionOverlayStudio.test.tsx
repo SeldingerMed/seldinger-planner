@@ -2514,9 +2514,20 @@ test("saves a kept fit of the field size as the size the search found", async ()
   // The frame was rendered at 180 mm. The fit stays on.
   type("Source to isocenter (mm)", "800");
   type("Field width at the detector (mm)", "205");
+  // What the fit is said to do follows the method.
+  screen.getByText(/A fitted field size can be wrong by a wide margin/);
   chooseMethod("vessel_evidence");
+  screen.getByText(
+    /With the fit, the search is run from several sizes around the entered one, and the size that matches the frame best is kept\. These values are assumed/,
+  );
+  expect(
+    screen.queryByText(/A fitted field size can be wrong by a wide margin/),
+  ).toBeNull();
   click("Propose overlay");
   await proposed();
+  expect(status("Overlay status").textContent).toMatch(
+    /^Unsaved proposal by vessel evidence, with the field size searched from several sizes around the entered one: moved/,
+  );
   expect(status("Overlay status").textContent).toMatch(
     /0 to 1 \(starting pose 0\.\d\d\), \d+% of points inside the frame, \d+% of the strong line-like structure in the frame with no projected point near it, field size fitted at 0\.(8[5-9]|9[0-3]) times the entered width\. A fit of the field size was kept\. Vessel evidence is high/,
   );
@@ -2529,6 +2540,7 @@ test("saves a kept fit of the field size as the size the search found", async ()
   );
   const { inputs } = saved;
   expect(inputs).toMatchObject({
+    method: "vessel_evidence_size_search_v1",
     fit_detector_scale: true,
     detector_fit: "kept",
     geometry_source: "operator_entered",
@@ -2590,6 +2602,7 @@ test("a two-plane fit is recorded plane by plane", async () => {
     /Saved operator-confirmed two-plane proposal by vessel evidence, revision 1, .* A fit of the field size was kept: plane b's field at 0\.(8[5-9]|9[0-3]) times the entered width\.$/,
   );
   const [a, b] = saved.inputs.planes;
+  expect(saved.inputs.method).toBe("vessel_evidence_size_search_biplane_v1");
   expect(saved.inputs.detector_fit).toBe("kept");
   // Each plane's result and starting scores, in that order.
   for (const plane of [a, b])

@@ -9,10 +9,13 @@ import {
   EVIDENCE_BEST_START_METHOD,
   EVIDENCE_NO_POSE,
   EVIDENCE_REGISTRATION_LIMITS,
+  EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD,
+  EVIDENCE_SIZE_SEARCH_METHOD,
   type EvidenceRegistrationInput,
   type EvidenceRegistrationProposal,
 } from "./evidenceRegistration";
 import { centroid } from "./maskPoints";
+import { sizeSearchSteps } from "./sizeSearch";
 
 export type BestStartResult = {
   proposal: EvidenceRegistrationProposal;
@@ -74,10 +77,24 @@ export function* bestStartSteps(
       best = { proposal: found, k };
   }
   if (!best) throw failure;
+  // A requested fit of the field size is then searched from several
+  // entered sizes, from the kept start.
+  if (input.planes.some((plane) => plane.fit_detector_scale))
+    best = {
+      k: best.k,
+      proposal: yield* sizeSearchSteps(
+        { ...input, start: starts[best.k] },
+        clock,
+        { entered: best.proposal },
+      ),
+    };
   const method =
-      input.planes.length === 2
-        ? EVIDENCE_BEST_START_BIPLANE_METHOD
-        : EVIDENCE_BEST_START_METHOD,
+      best.proposal.method === EVIDENCE_SIZE_SEARCH_METHOD ||
+      best.proposal.method === EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD
+        ? best.proposal.method
+        : input.planes.length === 2
+          ? EVIDENCE_BEST_START_BIPLANE_METHOD
+          : EVIDENCE_BEST_START_METHOD,
     ends = { searched: starts.length, kept: best.k };
   if (best.k === 0) return { proposal: { ...best.proposal, method }, ...ends };
   // The first start's scores are reported when its search found a pose and

@@ -130,11 +130,15 @@ function* run(
         ],
         start: IDENTITY_MATRIX,
       };
-    if (input.propose_views) {
+    // A requested fit of the field size goes the same way, with or without
+    // proposed views: bestStart.ts ends with the search of the size.
+    if (input.propose_views || input.search.fit_detector_scale) {
       const pivot = centroid(medial.points),
         best = yield* bestStartSteps(
           search,
-          yield* proposedStarts(search.planes, input.propose_views, pivot),
+          input.propose_views
+            ? yield* proposedStarts(search.planes, input.propose_views, pivot)
+            : [],
           clock,
         );
       return { ...base, target: null, proposal: null, evidence: best.proposal };
@@ -267,11 +271,16 @@ function* runPair(
         fit_detector_scale: plane.fit_detector_scale,
       });
     const search = { points: medial.points, planes, start: IDENTITY_MATRIX };
-    if (input.propose_views) {
+    if (
+      input.propose_views ||
+      planes.some((plane) => plane.fit_detector_scale)
+    ) {
       const pivot = centroid(medial.points),
         best = yield* bestStartSteps(
           search,
-          yield* proposedStarts(planes, input.propose_views, pivot),
+          input.propose_views
+            ? yield* proposedStarts(planes, input.propose_views, pivot)
+            : [],
           clock,
         );
       return {

@@ -181,13 +181,41 @@ Written on 2026-11-21. It replaces the studio control of the second pull request
 5. **Without the weights** the search runs from the volume's own position under the single-start methods.
 6. **Evidence.** Protocol `ljubljana-best-start-v1`, committed before its one run on subjects 06 to 10.
 
-## Parts 2 to 6
+## Part 2: detector-size fit
+
+### Why
+
+The fit of part 1 starts at the entered size and follows the cost downhill. When the entered size is far off, the scan that opens the search lands at a wrong place and the fit stays near a wrong size. On the held-back Ljubljana subjects it recovered a wrong entered size in two of five.
+
+### Acceptance criteria
+
+- With a wrong entered size, more two-plane runs end under 1 mm than with the fit of part 1, on subjects 01 to 05 and, under a protocol committed first, on the subjects held back.
+- With the size entered right, a requested fit changes no run.
+- The fitted detector stays inside the sizes the view model and the record accept.
+- Older records replay to the same numbers. The new search has its own method names and record versions.
+
+### Design
+
+1. **The search of the size** (`web/src/sizeSearch.ts`). The unchanged search of part 1 is run: (a) as it stands, fit requested, from the entered sizes; (b) on each fitted plane alone with its size held at each of seven sizes, from 0.74 to 1.35 times the entered one in equal steps of log size; (c) with the fit, from each combination of the two best sizes of each fitted plane. The result with the lowest cost is kept. A size other than (a) has to lower the cost by the fit's own margin of 0.02 against the entered sizes. A plane with no fit requested stays at its entered size.
+2. **Limits.** A size outside 0.7 to 1.45 times the entered one, or outside what the view model accepts, is passed over.
+3. **With best start.** Where views are proposed, the best start is chosen first, as before; the size is then searched from the kept start. The result is described from the volume's own position, as before.
+4. **What the result says.** Each plane's detector scale is its size as a multiple of the entered one. The start scores are those at the entered sizes. The gain is the cost at the entered sizes less the cost kept.
+5. **Records.** `vessel_evidence_size_search_v1` under `step-c4-evidence-size-search-registration-v7`, and `vessel_evidence_size_search_biplane_v1` under `step-c4-evidence-size-search-biplane-registration-v8`. Fields as versions 3 and 4. A size-search record always has a requested fit. A vessel evidence proposal with no fit requested keeps its method and version.
+6. **Studio.** No new control. With vessel evidence chosen and the fit on, the size search runs.
+7. **Evidence.** Protocol `ljubljana-detector-size-v1`, committed before its one run on subjects 06 to 10.
+
+### Phases
+
+- [x] 2.1 Development on subjects 01 to 05: the ladder against the fit, five pairs of wrong sizes.
+- [x] 2.2 `sizeSearch.ts` with tests; best start and the overlay jobs; record versions 7 and 8 in the browser and the server.
+- [ ] 2.3 Protocol committed, then one run.
+- [ ] 2.4 Results page, guide, verification record, pull request.
+
+## Parts 3, 5 and 6
 
 Each gets its own acceptance criteria here when it starts. Known inputs:
 
-- Part 2. 16 of 150 uncalibrated Ljubljana runs raised an error when the fitted detector passed the 600 mm the view model accepts. Fitted sizes were no closer than entered sizes.
 - Part 3. Candidate public data: Guide3D and CathAction (guidewires and catheters). Licences are checked before any download. No public labelled set for implanted devices has been identified.
-- Part 4. Started; see its own section above.
 - Part 5. Frame admission is capped at 8 frames per plane, so contrast timing needs a bounded time-series path. TAIR has no calibrated pixels and no trusted frame times.
 - Part 6. Latency is measured and reported.
 

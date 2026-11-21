@@ -16,6 +16,8 @@ import {
   EVIDENCE_BEST_START_METHOD,
   EVIDENCE_BIPLANE_REGISTRATION_METHOD,
   EVIDENCE_REGISTRATION_METHOD,
+  EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD,
+  EVIDENCE_SIZE_SEARCH_METHOD,
   type EvidenceRegistrationProposal,
   type EvidenceScore,
 } from "./evidenceRegistration";
@@ -41,6 +43,10 @@ export const BIPLANE_REGISTRATION_VERSION = "step-c2-biplane-registration-v2";
 export const EVIDENCE_REGISTRATION_VERSION = "step-c4-evidence-registration-v3";
 export const EVIDENCE_BEST_START_VERSION =
   "step-c4-evidence-best-start-registration-v5";
+export const EVIDENCE_SIZE_SEARCH_VERSION =
+  "step-c4-evidence-size-search-registration-v7";
+export const EVIDENCE_SIZE_SEARCH_BIPLANE_VERSION =
+  "step-c4-evidence-size-search-biplane-registration-v8";
 export const EVIDENCE_BEST_START_BIPLANE_VERSION =
   "step-c4-evidence-best-start-biplane-registration-v6";
 export const EVIDENCE_BIPLANE_REGISTRATION_VERSION =
@@ -515,25 +521,29 @@ type EvidencePlaneFields = Omit<
 /** What became of a requested detector-size fit. */
 export type DetectorFit = EvidenceRegistrationProposal["detector_fit"];
 /** Version 3: one pose against one frame, by vessel evidence. Version 5 has
- * the same fields: the search was run from several starts. */
+ * the same fields: the search was run from several starts. So has version
+ * 7: a requested fit of the field size was searched from several sizes. */
 export type EvidenceRegistrationInputs = SharedFields &
   EvidencePlaneFields & {
     plane: PlaneLabel;
     method:
-      typeof EVIDENCE_REGISTRATION_METHOD | typeof EVIDENCE_BEST_START_METHOD;
+      | typeof EVIDENCE_REGISTRATION_METHOD
+      | typeof EVIDENCE_BEST_START_METHOD
+      | typeof EVIDENCE_SIZE_SEARCH_METHOD;
     detector_fit: DetectorFit;
   };
 export type EvidenceBiplanePlaneInputs = EvidencePlaneFields & {
   plane: "a" | "b";
 };
 /** Version 4: one pose against one frame from each plane, by vessel
- * evidence. One fit outcome covers both planes. Version 6 has the same
- * fields: the search was run from several starts. */
+ * evidence. One fit outcome covers both planes. Versions 6 and 8 have the
+ * same fields, as versions 5 and 7 have those of version 3. */
 export type EvidenceBiplaneRegistrationInputs = SharedFields & {
   same_position_attested: true;
   method:
     | typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD
-    | typeof EVIDENCE_BEST_START_BIPLANE_METHOD;
+    | typeof EVIDENCE_BEST_START_BIPLANE_METHOD
+    | typeof EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD;
   detector_fit: DetectorFit;
   planes: [EvidenceBiplanePlaneInputs, EvidenceBiplanePlaneInputs];
 };
@@ -544,10 +554,12 @@ export type SavedInputs =
   | EvidenceBiplaneRegistrationInputs;
 const evidencePairMethod = (method: unknown) =>
   method === EVIDENCE_BIPLANE_REGISTRATION_METHOD ||
-  method === EVIDENCE_BEST_START_BIPLANE_METHOD;
+  method === EVIDENCE_BEST_START_BIPLANE_METHOD ||
+  method === EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD;
 const evidenceMethod = (method: unknown) =>
   method === EVIDENCE_REGISTRATION_METHOD ||
   method === EVIDENCE_BEST_START_METHOD ||
+  method === EVIDENCE_SIZE_SEARCH_METHOD ||
   evidencePairMethod(method);
 export const isBiplane = (
   inputs: SavedInputs,
@@ -565,6 +577,8 @@ const VERSIONS: Record<SavedInputs["method"], string> = {
   [EVIDENCE_BIPLANE_REGISTRATION_METHOD]: EVIDENCE_BIPLANE_REGISTRATION_VERSION,
   [EVIDENCE_BEST_START_METHOD]: EVIDENCE_BEST_START_VERSION,
   [EVIDENCE_BEST_START_BIPLANE_METHOD]: EVIDENCE_BEST_START_BIPLANE_VERSION,
+  [EVIDENCE_SIZE_SEARCH_METHOD]: EVIDENCE_SIZE_SEARCH_VERSION,
+  [EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD]: EVIDENCE_SIZE_SEARCH_BIPLANE_VERSION,
 };
 export type RegistrationResult = {
   status: "operator_confirmed_proposal";
@@ -645,12 +659,20 @@ const PLANE_KEYS = [
 ] as const;
 const EVIDENCE_PLANE_KEYS = PLANE_KEYS.filter((key) => key !== "sensitivity");
 const DETECTOR_FITS = ["not_requested", "kept", "dropped"];
-/** A stored fit outcome agrees with what was requested and what was kept. */
-function checkFit(outcome: unknown, planes: Record<string, unknown>[]) {
+/** A stored fit outcome agrees with what was requested and what was kept.
+ * The size search is run only for a requested fit. */
+function checkFit(
+  outcome: unknown,
+  planes: Record<string, unknown>[],
+  method: unknown,
+) {
   const requested = planes.some((plane) => plane.fit_detector_scale === true);
   if (
     !DETECTOR_FITS.includes(outcome as string) ||
     (outcome === "not_requested") === requested ||
+    ((method === EVIDENCE_SIZE_SEARCH_METHOD ||
+      method === EVIDENCE_SIZE_SEARCH_BIPLANE_METHOD) &&
+      !requested) ||
     // A dropped fit leaves every plane at its entered size.
     (outcome === "dropped" &&
       planes.some((plane) => plane.detector_scale !== 1))
@@ -736,7 +758,7 @@ function parseInputs(value: unknown): SavedInputs {
       planes[0].frame_sha256 === planes[1].frame_sha256
     )
       throw new Error("Invalid registration");
-    if (evidence) checkFit(value.detector_fit, planes);
+    if (evidence) checkFit(value.detector_fit, planes, value.method);
     return value as
       BiplaneRegistrationInputs | EvidenceBiplaneRegistrationInputs;
   }
@@ -747,7 +769,7 @@ function parseInputs(value: unknown): SavedInputs {
     throw new Error("Invalid registration");
   checkShared(value);
   checkPlane(value, ["single", "a", "b"], evidence);
-  if (evidence) checkFit(value.detector_fit, [value]);
+  if (evidence) checkFit(value.detector_fit, [value], value.method);
   return value as RegistrationInputs | EvidenceRegistrationInputs;
 }
 
