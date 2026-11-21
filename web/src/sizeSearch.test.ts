@@ -219,6 +219,35 @@ describe("search of the field size from several entered sizes", () => {
     ]);
   });
 
+  it("does not run the fit from the entered sizes a second time when they are among the best", () => {
+    const log: string[] = [];
+    finish(one(200), standIn([200], 0.12, log));
+    // The entered size and the rung below it are the two best.
+    expect(log.filter((line) => line.endsWith("f"))).toEqual(["200f", "181f"]);
+  });
+
+  it("measures the margin from the cost at the entered sizes when the fit from them was kept", () => {
+    // The fit from the entered size moved partway and gained 0.05. Its
+    // result costs 0.01 more than the best from another size.
+    const search = standIn([200]),
+      plain = search(one(150)),
+      partway = {
+        ...plain,
+        detector_fit: "kept" as const,
+        fit_gain: 0.05,
+        planes: [
+          {
+            ...plain.planes[0],
+            detector_scale: 1.05,
+            score: { ...plain.planes[0].score, mean_evidence: 0.59 },
+          },
+        ],
+      },
+      found = finish(one(150), search, partway);
+    expect(found.planes[0].detector_scale).toBeCloseTo(200 / 150, 12);
+    expect(found.fit_gain).toBeCloseTo(0.06, 12);
+  });
+
   it("fits each plane to its own size when the two are entered wrong in opposite senses", () => {
     const found = finish(pair(150, 266), standIn([200, 200]));
     expect(found.method).toBe("vessel_evidence_size_search_biplane_v1");
@@ -281,6 +310,11 @@ describe("search of the field size from several entered sizes", () => {
     const past = finish(one(125), standIn([200], 0.25));
     expect(past.detector_fit).toBe("kept");
     expect(past.planes[0].detector_scale).toBeCloseTo(Math.exp(0.2), 12);
+    // The same below: the real size is 0.625 times the entered one, under
+    // the 0.7 a record accepts.
+    const under = finish(one(320), standIn([200], 0.25));
+    expect(under.detector_fit).toBe("kept");
+    expect(under.planes[0].detector_scale).toBeCloseTo(Math.exp(-0.2), 12);
   });
 
   it("passes over a search that finds no pose, and stops on any other error", () => {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   gray,
   medial,
@@ -18,6 +18,12 @@ import { IDENTITY_MATRIX } from "./projectionOverlayJob";
 import { projectRegistered } from "./projectionRegistration";
 import { sizeSearchSteps } from "./sizeSearch";
 import { vesselEvidence } from "./vesselEvidence2d";
+
+// The search of the size is the real one, with its calls kept.
+vi.mock("./sizeSearch", async (original) => {
+  const real = await original<typeof import("./sizeSearch")>();
+  return { ...real, sizeSearchSteps: vi.fn(real.sizeSearchSteps) };
+});
 
 const size = { width: SIDE, height: SIDE },
   evidence = vesselEvidence(gray, SIDE, SIDE, "dark"),
@@ -204,10 +210,17 @@ describe("best start with a requested fit of the field size", () => {
   it("searches the size from the kept start and describes the result from the own position", () => {
     const from = fitted(small(entered)),
       found = finish([wrong, right], from),
+      asked = vi.mocked(sizeSearchSteps).mock.lastCall!,
       own = proposeEvidenceRegistration(from),
       there = sized({ ...from, start: right });
     expect(found.searched).toBe(3);
     expect(found.kept).toBe(2);
+    // The size is searched from the kept start, and that start's result is
+    // handed over and not searched for again.
+    expect(asked[0]).toEqual({ ...from, start: right });
+    expect(asked[2]!.entered).toEqual(
+      proposeEvidenceRegistration({ ...from, start: right }),
+    );
     expect(found.proposal.method).toBe("vessel_evidence_size_search_v1");
     expect(found.proposal.matrix).toEqual(there.matrix);
     expect(found.proposal.planes[0].detector_scale).toBe(

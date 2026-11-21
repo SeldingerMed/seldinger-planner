@@ -208,8 +208,8 @@ The fit of part 1 starts at the entered size and follows the cost downhill. When
 
 - [x] 2.1 Development on subjects 01 to 05: the ladder against the fit, five pairs of wrong sizes.
 - [x] 2.2 `sizeSearch.ts` with tests; best start and the overlay jobs; record versions 7 and 8 in the browser and the server.
-- [ ] 2.3 Protocol committed, then one run.
-- [ ] 2.4 Results page, guide, verification record, pull request.
+- [x] 2.3 Protocol committed at `cb8a241`, then one run: held-back two-plane runs under 1 mm with the sizes entered wrong, 37 of 50 against 25 of 50.
+- [x] 2.4 Results page, guide, verification record, pull request.
 
 ## Parts 3, 5 and 6
 
@@ -266,3 +266,4 @@ Each gets its own acceptance criteria here when it starts. Known inputs:
 - 2026-11-21. After the protocol run: a best-start proposal reports the kept start's starting scores whenever fewer than half the vessel points are inside a frame at the volume's own position, also when the search from there still found a pose, and whenever the search from there finds no pose. The protocol's numbers do not depend on it: the harness records target error, the kept start and the number of starts.
 - 2026-11-21. Owed to the next Ljubljana protocol's harness: `ljubljanaBestStart.eval.ts` records any failure of a run as no proposal. It should record only the search's own failure that way and let any other stop the run. Its summary also counts a run with no proposal on one side as ended nearer or farther; such a run should be counted apart. The run of `917e38c` had no run without a proposal.
 - 2026-11-21. After the protocol run: the best-start search passes over only the search's own failure (no pose in range from that start). Any other error, a start that is not a rigid pose among them, stops the run, so a faulty first start cannot become the reference a result is described from.
+- 2026-11-21. Part 2. Protocol `ljubljana-detector-size-v1` run once at `cb8a241`. Held-back subjects 06 to 10, two planes, sizes entered wrong: 37 of 50 runs under 1 mm from the search of the size and 25 of 50 from the fit; 20 runs nearer, none farther. All ten subjects: 87 of 100 against 69 of 100. With the sizes entered right no run changed. The harness records only the search's own failure as no proposal and counts such runs apart. The protocol is spent.
