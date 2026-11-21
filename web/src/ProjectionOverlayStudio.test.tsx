@@ -2285,7 +2285,10 @@ test("a two-plane proposal by vessel evidence needs the same attestation", async
 }, 90000);
 
 test("redraws a saved vessel evidence record without searching, and says what became of a fit", async () => {
-  const run = vi.spyOn(overlayJobs, "createOverlayJob");
+  const run = vi.spyOn(overlayJobs, "createOverlayJob"),
+    fetched = vi
+      .spyOn(viewProposals, "viewNetwork")
+      .mockResolvedValue({} as never);
   const api = server({
     registration: () =>
       json(
@@ -2312,9 +2315,11 @@ test("redraws a saved vessel evidence record without searching, and says what be
       ),
     { timeout: 30000 },
   );
-  // The stored pose is drawn as stored: nothing is searched or rescored.
+  // The stored pose is drawn as stored: nothing is searched or rescored,
+  // and the view network is not fetched for it.
   expect(run).toHaveBeenCalledTimes(1);
   expect(run.mock.calls[0][0].search).toBeNull();
+  expect(fetched).not.toHaveBeenCalled();
   // The controls show the method the record was made with.
   expect(screen.getByRole("combobox", { name: "Method" })).toHaveProperty(
     "value",

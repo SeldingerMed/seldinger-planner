@@ -506,12 +506,6 @@ export default function ProjectionOverlayStudio({
     return { release, signal: controller.signal };
   };
 
-  // The view network is fetched when the vessel evidence method comes into
-  // use, ahead of the first proposal. A failure is met at the proposal.
-  useEffect(() => {
-    if (method === "vessel_evidence") viewNetwork().catch(() => {});
-  }, [method]);
-
   // Geometry, polarity and sensitivity belong to a plane. The controls edit
   // the plane that is open.
   const editing: PlaneLabel = selection?.plane ?? "single",
@@ -1611,7 +1605,15 @@ export default function ProjectionOverlayStudio({
                   Method
                   <select
                     value={method}
-                    onChange={(e) => setMethod(e.target.value as OverlayMethod)}
+                    onChange={(e) => {
+                      const chosen = e.target.value as OverlayMethod;
+                      setMethod(chosen);
+                      // The view network is fetched when the operator
+                      // chooses the method, ahead of the first proposal. A
+                      // failure is met at the proposal.
+                      if (chosen === "vessel_evidence")
+                        viewNetwork().catch(() => {});
+                    }}
                   >
                     <option value="centerline_distance">
                       Centerline distance
