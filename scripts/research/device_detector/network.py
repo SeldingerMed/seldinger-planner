@@ -30,12 +30,16 @@ FORMAT = "seldinger-device-network-v1"
 GRID = 256
 WIDTHS = (8, 16, 32, 64, 96)
 MAX_HEADER_BYTES = 1 << 20
+# A grid cell at or above this likelihood is device; marked cells are grown
+# by this many cells, edge neighbors only.
+THRESHOLD = 0.5
+GROW_CELLS = 1
 
 
-def network_input(gray: np.ndarray, polarity: str) -> np.ndarray:
+def network_input(gray: np.ndarray, polarity: str, side: int = GRID) -> np.ndarray:
     """What the network reads for an 8-bit frame: devices dark, on the square
     grid, less its mean and over its spread. Mirrored by deviceNetwork.ts."""
-    grid = frames.to_grid(gray.astype(np.float32), GRID).astype(np.float64)
+    grid = frames.to_grid(gray.astype(np.float32), side).astype(np.float64)
     if polarity == "bright":
         grid = 255 - grid
     elif polarity != "dark":
@@ -45,6 +49,29 @@ def network_input(gray: np.ndarray, polarity: str) -> np.ndarray:
 
 def normalized(grid: np.ndarray) -> np.ndarray:
     return (grid - grid.mean()) / (grid.std() + 1.0)
+
+
+def frame_mask(likely: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Frame pixels marked as device, uint8 0 or 1, from the likelihood of
+    each grid cell: cells at or above the threshold, grown, laid over the
+    frame as ``frames.to_grid`` lays the frame on the grid. Mirrored by
+    deviceNetwork.ts."""
+    cells = np.asarray(likely) >= THRESHOLD
+    for _ in range(GROW_CELLS):
+        grown = cells.copy()
+        grown[1:] |= cells[:-1]
+        grown[:-1] |= cells[1:]
+        grown[:, 1:] |= cells[:, :-1]
+        grown[:, :-1] |= cells[:, 1:]
+        cells = grown
+    side = cells.shape[0]
+    step = max(width, height) / side
+
+    def cell(length: int) -> np.ndarray:
+        at = np.floor((np.arange(length) + 0.5 - (length - side * step) / 2) / step)
+        return np.clip(at, 0, side - 1).astype(int)
+
+    return cells[np.ix_(cell(height), cell(width))].astype(np.uint8)
 
 
 class Pair(nn.Module):
@@ -104,7 +131,7 @@ def _folded(convolution: nn.Conv2d, norm: nn.BatchNorm2d):
     return convolution.weight * scale[:, None, None, None], norm.bias - norm.running_mean * scale
 
 
-def export_bytes(model: DeviceNetwork, record: dict) -> bytes:
+def export_bytes(model: DeviceNetwork, record: dict, side: int = GRID) -> bytes:
     """The stored file for ``model`` in evaluation mode, with its record."""
     tensors: list[tuple[str, torch.Tensor]] = []
 
@@ -125,7 +152,7 @@ def export_bytes(model: DeviceNetwork, record: dict) -> bytes:
     header = json.dumps(
         {
             "format": FORMAT,
-            "grid": GRID,
+            "grid": side,
             "widths": list(model.widths),
             "floats": offset,
             "tensors": listed,

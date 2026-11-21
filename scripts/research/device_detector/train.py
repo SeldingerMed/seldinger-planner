@@ -7,7 +7,9 @@
 Each training picture is a labelled frame, turned, scaled and re-lit, most of
 them with synthetic contrast-filled vessels laid over; one in five is vessels
 alone on a plain ground. Drawn devices are laid over most pictures of either
-kind and are marked. Phantom and procedure frames are drawn equally often.
+kind and are marked. Drawn vessel trees are added to the vessels of most
+pictures, and nothing of them is marked. Phantom and procedure frames are
+drawn equally often.
 
 The network kept is the one after the last epoch. Each epoch is measured on
 the validation procedure, on drawn devices over validation vessels and on
@@ -42,6 +44,11 @@ SUBTRACTED = 0.3
 BANK = {"training": 3000, "validation": 200}
 # The chance of a first and of a second drawn device in a picture.
 DEVICES = (0.6, 0.25)
+# The chance that a drawn vessel tree is added to a picture's vessels, and
+# that it then stands in place of the model's vessels.
+TREES = (0.6, 0.3)
+# A drawn tree counts as vessel where it is at least this deep.
+TREE_FILLED_MM = 0.2
 HALF_WIDTH_PX = (0.4, 1.8)
 LIGHT_TAKEN = (0.15, 0.6)
 
@@ -173,14 +180,18 @@ def likelihoods(model, gray: np.ndarray, device, batch: int = 64) -> np.ndarray:
     return np.concatenate(parts)
 
 
-def bank_of(root: Path, prepared: Path | None, split: str, seed: int) -> np.ndarray:
-    """The vessel bank of a split, or with no models its bank of drawn devices."""
-    kind = "device" if prepared is None else "vessel"
+def bank_of(root: Path, source: Path | str, split: str, seed: int) -> np.ndarray:
+    """The bank of a split: vessel pictures from the models in a directory,
+    or drawn ``"device"`` or ``"tree"`` pictures."""
+    kind = source if isinstance(source, str) else "vessel"
     path = root / f"{kind}-bank-{split}-seed{seed}.npy"
     if not path.exists():
-        if prepared is None:
+        if kind == "device":
             made = data.device_bank(BANK[split], seed + (split == "validation"))
+        elif kind == "tree":
+            made = data.tree_bank(BANK[split], seed + 2 + (split == "validation"))
         else:
+            prepared = source
             made = data.vessel_bank(data.load_models(prepared, split), BANK[split], seed)
         partial = path.with_name(path.name + ".partial")
         with partial.open("wb") as handle:
@@ -198,10 +209,13 @@ def train(weiss: Path, prepared: Path, out: Path, options: dict) -> dict:
     bank = bank_of(root, prepared, "training", options["seed"])
     validation_bank = bank_of(root, prepared, "validation", options["seed"])
     validation_vessels = vessel_pictures(validation_bank, options["seed"])
-    drawn = torch.from_numpy(bank_of(root, None, "training", options["seed"]))
+    drawn = torch.from_numpy(bank_of(root, "device", "training", options["seed"]))
     validation_devices = device_pictures(
-        validation_bank, bank_of(root, None, "validation", options["seed"]), options["seed"]
+        validation_bank, bank_of(root, "device", "validation", options["seed"]), options["seed"]
     )
+    trees = torch.from_numpy(bank_of(root, "tree", "training", options["seed"]).astype(np.float32))
+    validation_tree_bank = bank_of(root, "tree", "validation", options["seed"])
+    validation_trees = vessel_pictures(validation_tree_bank, options["seed"] + 2)
     frames_, masks = (torch.from_numpy(part) for part in sets["training"])
     lengths = torch.from_numpy(bank.astype(np.float32))
     model = network.DeviceNetwork().to(device)
@@ -228,10 +242,14 @@ def train(weiss: Path, prepared: Path, out: Path, options: dict) -> dict:
             chosen = shuffled[step * options["batch"] : (step + 1) * options["batch"]]
             vessels = torch.randint(len(lengths), (len(chosen),), generator=rng)
             devices = torch.randint(len(drawn), (len(chosen), 2), generator=rng)
+            grown = torch.randint(len(trees), (len(chosen),), generator=rng)
+            chance = torch.rand((2, len(chosen), 1, 1), generator=rng)
+            added = (chance[0] < TREES[0]).float()
+            in_place = added * (chance[1] < TREES[1]).float()
             x, y = compose(
                 frames_[chosen].to(device).float()[:, None],
                 masks[chosen].to(device).float()[:, None],
-                lengths[vessels].to(device)[:, None],
+                (lengths[vessels] * (1 - in_place) + trees[grown] * added).to(device)[:, None],
                 drawn[devices].to(device).float() / 255,
                 rng,
             )
@@ -253,6 +271,11 @@ def train(weiss: Path, prepared: Path, out: Path, options: dict) -> dict:
             "validation_vessels": measure.on_vessels(
                 likelihoods(model, validation_vessels, device), validation_bank.astype(np.float32)
             ),
+            "validation_trees": measure.on_vessels(
+                likelihoods(model, validation_trees, device),
+                validation_tree_bank.astype(np.float32),
+                TREE_FILLED_MM,
+            ),
             "minutes": round((time.time() - started) / 60, 1),
         }
         with log.open("a") as handle:
@@ -271,6 +294,7 @@ def train(weiss: Path, prepared: Path, out: Path, options: dict) -> dict:
         "validation_at_last_epoch": row["validation"],
         "validation_drawn_at_last_epoch": row["validation_drawn"],
         "validation_vessels_at_last_epoch": row["validation_vessels"],
+        "validation_trees_at_last_epoch": row["validation_trees"],
     }
     stored = network.export_bytes(model, record)
     target = root / "device-network.bin"

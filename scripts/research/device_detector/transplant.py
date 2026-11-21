@@ -26,12 +26,11 @@ import numpy as np
 from pose_initializer import storage
 from scipy import ndimage
 
-from . import data, measure, network
+from . import data, network
 
 CLOSE_PX = 9
 MASK_GROW_PX = 3
 MIN_SHARE = 0.3
-MARK_GROW_CELLS = 1
 
 
 def taken(gray: np.ndarray, mask: np.ndarray) -> np.ndarray:
@@ -59,9 +58,7 @@ def spread(grid: np.ndarray, width: int, height: int, order: int) -> np.ndarray:
 def marked(file: bytes, gray: np.ndarray, polarity: str = "dark") -> np.ndarray:
     """Frame pixels the stored network marks as device, uint8 0 or 1."""
     likely = network.run_exported(file, network.network_input(gray, polarity)[None])[0]
-    cells = ndimage.binary_dilation(likely >= measure.THRESHOLD, iterations=MARK_GROW_CELLS)
-    height, width = gray.shape
-    return (spread(cells, width, height, 0) > 0.5).astype(np.uint8)
+    return network.frame_mask(likely, gray.shape[1], gray.shape[0])
 
 
 def main(arguments=None) -> int:

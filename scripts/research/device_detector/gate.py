@@ -61,16 +61,24 @@ def gate(stored: Path, weiss: Path, prepared: Path, out: Path) -> dict:
     bank = data.vessel_bank(data.load_models(prepared, "held_out"), VESSEL_PICTURES, SEED)
     devices = measure.summary(run(frames_), masks)
     vessels = measure.on_vessels(run(train.vessel_pictures(bank, SEED)), bank.astype(np.float32))
+    tree_bank = data.tree_bank(VESSEL_PICTURES, SEED)
+    trees = measure.on_vessels(
+        run(train.vessel_pictures(tree_bank, SEED + 1)),
+        tree_bank.astype(np.float32),
+        train.TREE_FILLED_MM,
+    )
     result = {
         "network_sha256": provenance.file_sha256(stored),
         "code": provenance.code_state(),
         "held_out_frames": devices,
         "held_out_vessel_pictures": vessels,
+        "drawn_tree_pictures": trees,
         "limits": {
             "max_vessel_marked": MAX_VESSEL_MARKED,
             "max_marked": MAX_MARKED,
         },
         "passed": vessels["vessel_marked_share"] <= MAX_VESSEL_MARKED
+        and trees["vessel_marked_share"] <= MAX_VESSEL_MARKED
         and devices["marked_share"] <= MAX_MARKED,
     }
     provenance.write_json(target, result)

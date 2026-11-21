@@ -1,10 +1,11 @@
-"""How well marked pixels match a mask. Numpy only."""
+"""How well marked pixels match a mask."""
 
 from __future__ import annotations
 
 import numpy as np
 
-THRESHOLD = 0.5
+from .network import THRESHOLD
+
 # A marked pixel within this many pixels of the mask counts as on it, and
 # the other way round: the masks are drawn by hand along thin lines.
 NEAR_PX = 2
