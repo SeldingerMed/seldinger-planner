@@ -46,15 +46,19 @@ import { applyRigid } from "./__fixtures__/angioPhantom";
 import type { Vec3 } from "./obliqueSlice";
 import ProjectionOverlayStudio, {
   OVERLAY_REQUEST_TIMEOUT_MS,
+  VIEW_NETWORK_WAIT_MS,
 } from "./ProjectionOverlayStudio";
 import { projectRegistered } from "./projectionRegistration";
 import * as overlayJobs from "./projectionOverlayJob";
 import * as segmentation from "./segmentation";
+import * as files from "./viewNetworkFile";
 import * as viewProposals from "./viewProposals";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  viewProposals.forgetViewNetwork();
 });
 const json = (value: unknown, status = 200) =>
   new Response(JSON.stringify(value), { status });
@@ -2611,10 +2615,13 @@ function networkProposes(
 ) {
   const network = {} as never,
     fetched = vi.spyOn(viewProposals, "viewNetwork").mockResolvedValue(network),
+    waited = vi
+      .spyOn(viewProposals, "viewNetworkWithin")
+      .mockResolvedValue(network),
     asked = vi
       .spyOn(viewProposals, "evidenceViews")
       .mockReturnValue(views as never);
-  return { fetched, asked, network };
+  return { fetched, waited, asked, network };
 }
 const SEEN = { primary_deg: VIEW.primary_deg, secondary_deg: 0, turn_deg: 0 };
 
@@ -2626,7 +2633,7 @@ test("with the view network, a vessel evidence proposal is the best of several s
       return json(currentAnswer(body.inputs));
     },
   });
-  const { fetched, asked, network } = networkProposes([SEEN]);
+  const { fetched, waited, asked, network } = networkProposes([SEEN]);
   render(<Harness />);
   await openFrames();
   enterGeometry();
@@ -2634,11 +2641,15 @@ test("with the view network, a vessel evidence proposal is the best of several s
   expect(screen.getByText(/with no threshold/).textContent).toMatch(
     /With the view network installed, the search is also run from each view the network proposes for the frame, and the result with the most vessel evidence is kept\./,
   );
-  // Nothing is fetched or asked until a proposal is.
-  expect(fetched).not.toHaveBeenCalled();
+  // The fetch starts when the method is chosen, ahead of any proposal.
+  expect(fetched).toHaveBeenCalledTimes(1);
+  expect(waited).not.toHaveBeenCalled();
   click("Propose overlay");
   await proposed();
-  expect(fetched).toHaveBeenCalledTimes(1);
+  // The proposal waits for it a third of its own deadline at most.
+  expect(waited.mock.calls).toEqual([[VIEW_NETWORK_WAIT_MS]]);
+  expect(VIEW_NETWORK_WAIT_MS).toBe(10_000);
+  expect(OVERLAY_REQUEST_TIMEOUT_MS).toBe(30_000);
   expect(asked).toHaveBeenCalledTimes(1);
   expect(asked.mock.calls[0][0]).toBe(network);
   expect(asked.mock.calls[0][1]).toMatchObject({ width: SIDE, height: SIDE });
@@ -2671,7 +2682,7 @@ test("with the view network, a two-plane proposal by vessel evidence is saved un
       return json(currentPairAnswer(body.inputs));
     },
   });
-  const { fetched, asked } = networkProposes([SEEN]);
+  const { waited, asked } = networkProposes([SEEN]);
   render(<Harness />);
   await openPair();
   chooseMethod("vessel_evidence");
@@ -2679,7 +2690,7 @@ test("with the view network, a two-plane proposal by vessel evidence is saved un
     /proposes for either frame, and the result with the most vessel evidence is kept\./,
   );
   await proposePair();
-  expect(fetched).toHaveBeenCalledTimes(1);
+  expect(waited.mock.calls).toEqual([[VIEW_NETWORK_WAIT_MS]]);
   // Asked once for each plane's frame.
   expect(asked).toHaveBeenCalledTimes(2);
   expect(status("Overlay status").textContent).toMatch(
@@ -2705,32 +2716,73 @@ test("with the view network, a two-plane proposal by vessel evidence is saved un
 
 test("the view network is not fetched for a centerline distance proposal", async () => {
   server({});
-  const { fetched, asked } = networkProposes([SEEN]);
+  const { fetched, waited, asked } = networkProposes([SEEN]);
   render(<Harness />);
   await openFrames();
   enterGeometry();
   click("Propose overlay");
   await proposed();
   expect(fetched).not.toHaveBeenCalled();
+  expect(waited).not.toHaveBeenCalled();
   expect(asked).not.toHaveBeenCalled();
   expect(status("Overlay status").textContent).not.toMatch(/vessel evidence/);
 }, 90000);
 
-test("without the view network the vessel evidence search starts at the volume's own position, whatever the reason", async () => {
+test("without the view network the vessel evidence search starts at the volume's own position", async () => {
   server({});
-  const fetched = vi
-      .spyOn(viewProposals, "viewNetwork")
-      .mockRejectedValue(new Error("The view network failed its check")),
-    asked = vi.spyOn(viewProposals, "evidenceViews");
+  // The fetch fails; the wait for it gives nothing.
+  vi.spyOn(files, "loadViewNetwork").mockRejectedValue(
+    new Error(files.VIEW_NETWORK_ABSENT),
+  );
+  const asked = vi.spyOn(viewProposals, "evidenceViews");
   render(<Harness />);
   await openFrames();
   enterGeometry();
   chooseMethod("vessel_evidence");
   click("Propose overlay");
   await proposed();
-  expect(fetched).toHaveBeenCalledTimes(1);
   expect(asked).not.toHaveBeenCalled();
   expect(status("Overlay status").textContent).toMatch(
     /^Unsaved proposal by vessel evidence: /,
   );
+  expect(screen.queryByText(/timed out/)).toBeNull();
 }, 90000);
+
+test.each(["one plane", "two planes"])(
+  "the wait for the view network runs beside the mask read, not ahead of it: %s",
+  async (planes) => {
+    const two = planes === "two planes",
+      api = server(two ? pairRoutes : {});
+    vi.spyOn(viewProposals, "viewNetwork").mockResolvedValue({} as never);
+    let arrive: (value: null) => void = () => {};
+    const waited = vi
+      .spyOn(viewProposals, "viewNetworkWithin")
+      .mockReturnValue(new Promise((resolve) => (arrive = resolve)));
+    render(<Harness />);
+    if (two) await openPair();
+    else {
+      await openFrames();
+      enterGeometry();
+    }
+    chooseMethod("vessel_evidence");
+    if (two) await acceptsInput();
+    const before = api.keys().length;
+    click(two ? "Propose two-plane overlay" : "Propose overlay");
+    // The mask is asked for while the network is still awaited.
+    await waitFor(() =>
+      expect(api.keys().slice(before)).toContain(`GET ${maskEntry.mask_url}`),
+    );
+    expect(waited).toHaveBeenCalledTimes(1);
+    await act(async () => arrive(null));
+    await waitFor(
+      () =>
+        expect(status("Overlay status").textContent).toMatch(
+          two
+            ? /^Unsaved two-plane proposal by vessel evidence: /
+            : /^Unsaved proposal by vessel evidence: /,
+        ),
+      { timeout: 30000 },
+    );
+  },
+  90000,
+);

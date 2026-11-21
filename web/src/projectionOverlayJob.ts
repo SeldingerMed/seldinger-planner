@@ -84,6 +84,22 @@ export type OverlayJob = {
   result(): OverlayJobResult;
 };
 
+/** A start for each view proposed for each plane's frame. The network's pass
+ * over a frame is not sliced, so each one begins at a slice boundary. */
+function* proposedStarts(
+  planes: { view: ViewNumbers; evidence: VesselEvidence }[],
+  propose: ProposeViews,
+  pivot: Vec3,
+): Generator<void, number[][][]> {
+  const starts: number[][][] = [];
+  for (const plane of planes) {
+    yield;
+    for (const seen of propose(plane.evidence))
+      starts.push(startFromProposedView(plane.view, seen, pivot));
+  }
+  return starts;
+}
+
 function* run(
   input: OverlayJobInput,
   clock: { expired: () => boolean },
@@ -118,9 +134,7 @@ function* run(
       const pivot = centroid(medial.points),
         best = yield* bestStartSteps(
           search,
-          input
-            .propose_views(evidence)
-            .map((seen) => startFromProposedView(input.view, seen, pivot)),
+          yield* proposedStarts(search.planes, input.propose_views, pivot),
           clock,
         );
       return { ...base, target: null, proposal: null, evidence: best.proposal };
@@ -255,14 +269,9 @@ function* runPair(
     const search = { points: medial.points, planes, start: IDENTITY_MATRIX };
     if (input.propose_views) {
       const pivot = centroid(medial.points),
-        propose = input.propose_views,
         best = yield* bestStartSteps(
           search,
-          planes.flatMap((plane) =>
-            propose(plane.evidence).map((seen) =>
-              startFromProposedView(plane.view, seen, pivot),
-            ),
-          ),
+          yield* proposedStarts(planes, input.propose_views, pivot),
           clock,
         );
       return {

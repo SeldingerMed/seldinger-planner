@@ -48,6 +48,21 @@ export function viewNetwork(): Promise<ViewNetwork> {
   return installed;
 }
 
+/** The network if it is there within `wait_ms`, or null: it failed, or the
+ * wait is over. A proposal waits this long and no longer, and goes on from
+ * the volume's own position without it. The fetch is left running for the
+ * next proposal. */
+export function viewNetworkWithin(
+  wait_ms: number,
+): Promise<ViewNetwork | null> {
+  return new Promise((resolve) => {
+    const wait = setTimeout(() => resolve(null), wait_ms);
+    viewNetwork()
+      .then(resolve, () => resolve(null))
+      .finally(() => clearTimeout(wait));
+  });
+}
+
 /** Forgets the fetched network. For tests. */
 export function forgetViewNetwork() {
   installed = null;

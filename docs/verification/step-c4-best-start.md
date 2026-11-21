@@ -33,14 +33,14 @@ Held-back subjects 06 to 10, one protocol run: [results](../research/ljubljana-b
 
 - `web/src/bestStart.test.ts`: with no other start the numbers are the single search's; the start that finds the frame is kept wherever it stands in the list; the own position is kept when no other start is better; a start that fails is passed over and the first failure is reported when all fail; the result is described against the first start.
 - `web/src/projectionOverlayJob.test.ts`: one plane's pose is found where the entered angles are 40 degrees off; one pose for two planes is found from a view proposed for either frame; no views are asked for another method or a redraw.
-- `web/src/ProjectionOverlayStudio.test.tsx`: with the network a one-plane and a two-plane proposal are made and saved under the best-start methods; the network is not fetched for the centerline distance method; without the network the search runs from the volume's own position.
+- `web/src/ProjectionOverlayStudio.test.tsx`: with the network a one-plane and a two-plane proposal are made and saved under the best-start methods; the network is fetched when the vessel evidence method is chosen and not for the centerline distance method; the wait for it runs beside the mask read; without the network the search runs from the volume's own position.
 - `web/src/evidenceRecords.test.ts`, `tests/test_projection_registration_server.py`: records of versions 5 and 6 round-trip under their own names, and a record under another kind's version or with another kind's fields is refused.
 
-Twenty-one single-site changes of the new code were made by hand (the comparison, the kept start, the failure handling, the method names, the description against the first start, the wiring of the proposer in the jobs and the studio, the version table). Each was caught by a test.
+Thirty-five single-site changes of the new code were made by hand (the comparison, the kept start, the failure handling, the method names, the description against the first start, the wiring of the proposer in the jobs and the studio, the wait for the weights, the slice boundaries, the version table). Each was caught by a test.
 
 ## Checks
 
 On the head of this pull request:
 
 - Backend: 1477 passed and 133 skipped; Python lint and format checks clean.
-- Frontend: TypeScript typecheck clean; the nine test files of the touched code, 394 of 394; production build and dependency audit clean. The full frontend suite is the frontend job in CI.
+- Frontend: TypeScript typecheck clean; the nine test files of the touched code, 400 of 400; production build and dependency audit clean. The full frontend suite is the frontend job in CI.

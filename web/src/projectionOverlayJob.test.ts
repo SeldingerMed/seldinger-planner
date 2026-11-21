@@ -452,6 +452,36 @@ describe("overlay jobs by vessel evidence from the best of several starts", () =
     }
   }, 120000);
 
+  it("asks for each frame's views in a slice of its own", () => {
+    // The network's pass over a frame is not sliced, so the tab gets a
+    // boundary before each one.
+    let slices = 0;
+    const at: number[] = [],
+      job = createBiplaneOverlayJob({
+        ...pair,
+        method: "vessel_evidence",
+        propose_views: () => {
+          at.push(slices);
+          return [];
+        },
+      });
+    while (!job.advance(() => true)) slices++;
+    expect(at).toHaveLength(2);
+    expect(at[1]).toBeGreaterThan(at[0]);
+    const count = (propose_views?: () => never[]) => {
+      let n = 0;
+      const one = createOverlayJob({
+        ...input,
+        search: { ...input.search!, method: "vessel_evidence" },
+        propose_views,
+      });
+      while (!one.advance(() => true)) n++;
+      return n;
+    };
+    // For one plane: one boundary before the pass.
+    expect(count(() => [])).toBe(count() + 1);
+  }, 120000);
+
   it("does not ask for views for another method or a redraw", () => {
     const propose_views = () => {
       throw new Error("asked");

@@ -60,7 +60,7 @@ import { stable, type Identity } from "./territoryWorkflow";
 import type { Polarity, VesselTarget } from "./vesselness2d";
 import VesselPresencePanel from "./VesselPresencePanel";
 import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
-import { evidenceViews, viewNetwork } from "./viewProposals";
+import { evidenceViews, viewNetwork, viewNetworkWithin } from "./viewProposals";
 import "./reformats.css";
 
 type Props = {
@@ -145,19 +145,18 @@ const DEFAULT_EDITOR: Editor = {
 const SLICE_MS = 12,
   HIDDEN_SLICE_MS = 800;
 export const OVERLAY_REQUEST_TIMEOUT_MS = STUDIO_REQUEST_TIMEOUT_MS;
+/** How long a proposal waits for the view network. The fetch starts when the
+ * vessel evidence method is chosen, so it is usually there already. */
+export const VIEW_NETWORK_WAIT_MS = 10_000;
 /** The view network's proposals for a frame's vessel evidence. Null when the
- * network is not to be had: the search then starts at the volume's own
+ * network is not there in time: the search then starts at the volume's own
  * position only, under the single-start method. */
 async function viewProposer(
   method: OverlayMethod,
 ): Promise<ProposeViews | null> {
   if (method !== "vessel_evidence") return null;
-  try {
-    const network = await viewNetwork();
-    return (evidence) => evidenceViews(network, evidence);
-  } catch {
-    return null;
-  }
+  const network = await viewNetworkWithin(VIEW_NETWORK_WAIT_MS);
+  return network && ((evidence) => evidenceViews(network, evidence));
 }
 const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
 /** Plane B starts as a lateral view: two planes at one angle cannot be fitted. */
@@ -506,6 +505,12 @@ export default function ProjectionOverlayStudio({
     owner?.(true);
     return { release, signal: controller.signal };
   };
+
+  // The view network is fetched when the vessel evidence method comes into
+  // use, ahead of the first proposal. A failure is met at the proposal.
+  useEffect(() => {
+    if (method === "vessel_evidence") viewNetwork().catch(() => {});
+  }, [method]);
 
   // Geometry, polarity and sensitivity belong to a plane. The controls edit
   // the plane that is open.
@@ -902,7 +907,8 @@ export default function ProjectionOverlayStudio({
       failure = "",
       canceled = false;
     try {
-      propose_views = await viewProposer(method);
+      // The wait for the network runs beside the frame and mask reads.
+      const views = viewProposer(method);
       for (const item of pairSetup)
         loadedFrames.push(
           shownFrame?.plane === item.plane && shownFrame.index === item.index
@@ -910,6 +916,7 @@ export default function ProjectionOverlayStudio({
             : await loadVerifiedFrame(frames, item.plane, item.index, signal),
         );
       voxels = await maskVoxels(mask, signal);
+      propose_views = await views;
     } catch (error) {
       // With both frames in hand, the failure is the mask's.
       failure =
@@ -982,8 +989,10 @@ export default function ProjectionOverlayStudio({
       failure = "",
       canceled = false;
     try {
-      propose_views = await viewProposer(method);
+      // The wait for the network runs beside the mask read.
+      const views = viewProposer(method);
       voxels = await maskVoxels(mask, signal);
+      propose_views = await views;
     } catch (error) {
       failure =
         error instanceof Error

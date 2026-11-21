@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { describe, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { gray, SIDE } from "./__fixtures__/overlayCase";
 import fixture from "./__fixtures__/view-network-forward.json";
 import {
@@ -15,6 +15,7 @@ import {
   VIEW_NETWORK_LATE,
   VIEW_NETWORK_TIMEOUT_MS,
   viewNetwork,
+  viewNetworkWithin,
 } from "./viewProposals";
 
 const network = parseViewNetwork(
@@ -152,4 +153,45 @@ it("does not call an abort it did not make lateness", async () => {
   const foreign = new DOMException("The operation was aborted", "AbortError");
   vi.spyOn(files, "loadViewNetwork").mockRejectedValue(foreign);
   await expect(viewNetwork()).rejects.toBe(foreign);
+});
+
+describe("waiting for the network no longer than a proposal can spare", () => {
+  const stuck = (signal?: AbortSignal) =>
+    new Promise<typeof network>((_, reject) =>
+      signal!.addEventListener("abort", () =>
+        reject(new DOMException("The operation was aborted", "AbortError")),
+      ),
+    );
+
+  it("gives the network when it is there in time, and leaves no wait running", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(files, "loadViewNetwork").mockResolvedValue(network);
+    await expect(viewNetworkWithin(10_000)).resolves.toBe(network);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("gives nothing once the wait is over, and leaves the fetch running for the next", async () => {
+    vi.useFakeTimers();
+    const load = vi.spyOn(files, "loadViewNetwork").mockImplementation(stuck);
+    let got: unknown = "waiting";
+    void viewNetworkWithin(10_000).then((value) => (got = value));
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(got).toBe("waiting");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(got).toBeNull();
+    // The fetch is the page's: it runs on under its own deadline.
+    expect(load.mock.calls[0][0]!.aborted).toBe(false);
+    void viewNetworkWithin(10_000);
+    expect(load).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(VIEW_NETWORK_TIMEOUT_MS);
+  });
+
+  it("gives nothing when the fetch fails", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(files, "loadViewNetwork").mockRejectedValue(
+      new Error(files.VIEW_NETWORK_ABSENT),
+    );
+    await expect(viewNetworkWithin(10_000)).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
