@@ -75,6 +75,9 @@ export default function ViewProposalPicker({
     [key],
   );
 
+  const views = found && found.key === key ? found.views : null,
+    busy = !!working && working === key;
+
   async function propose() {
     if (!frame || disabled) return;
     const owned = key,
@@ -100,14 +103,14 @@ export default function ViewProposalPicker({
     }
   }
 
-  const views = found && found.key === key ? found.views : null,
-    busy = !!working && working === key;
   return (
     <div className="view-proposals">
       <div className="native-actions">
         <button
           type="button"
-          disabled={disabled || !frame || busy}
+          // Views that are listed are not asked for again: they would be
+          // the same, and a failure would stand beside the list.
+          disabled={disabled || !frame || busy || !!views}
           onClick={() => void propose()}
         >
           {busy ? "Proposing views…" : "Propose views for this frame"}

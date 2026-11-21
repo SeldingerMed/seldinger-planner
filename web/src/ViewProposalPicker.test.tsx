@@ -219,3 +219,39 @@ it("draws no list while no frame is on screen, whatever the start in force", asy
     screen.getByRole("button", { name: "Propose views for this frame" }),
   ).toHaveProperty("disabled", true);
 });
+
+it("does not ask again for views that are listed", async () => {
+  // The views of a frame at a polarity are always the same, so a second
+  // request could only fail, and would then stand beside the list.
+  const propose = vi
+    .spyOn(viewProposals, "proposeFrameViews")
+    .mockResolvedValueOnce([{ ...view, share: 0.27 }])
+    .mockRejectedValue(new Error("The view network is not installed"));
+  const picker = (polarity: "dark" | "bright") => (
+    <ViewProposalPicker
+      frame={frame}
+      polarity={polarity}
+      disabled={false}
+      picked={null}
+      elsewhere={null}
+      onPick={() => {}}
+    />
+  );
+  const { rerender } = render(picker("dark"));
+  const button = () =>
+    screen.getByRole("button", { name: "Propose views for this frame" });
+  fireEvent.click(button());
+  await screen.findByRole("radio", { name: /^Proposed view 1: / });
+  expect(button()).toHaveProperty("disabled", true);
+  fireEvent.click(button());
+  expect(propose).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole("alert")).toBeNull();
+  // Read at the other polarity it is another question, and can be asked.
+  rerender(picker("bright"));
+  expect(button()).toHaveProperty("disabled", false);
+  fireEvent.click(button());
+  await screen.findByRole("alert");
+  expect(screen.queryByRole("radio")).toBeNull();
+  // A request that failed can be made again.
+  expect(button()).toHaveProperty("disabled", false);
+});
