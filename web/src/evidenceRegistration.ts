@@ -38,6 +38,11 @@ import {
 export const EVIDENCE_REGISTRATION_METHOD = "vessel_evidence_compass_v1";
 export const EVIDENCE_BIPLANE_REGISTRATION_METHOD =
   "vessel_evidence_compass_biplane_v1";
+/** The same search run from several starts, the result with the most vessel
+ * evidence kept (bestStart.ts). */
+export const EVIDENCE_BEST_START_METHOD = "vessel_evidence_best_start_v1";
+export const EVIDENCE_BEST_START_BIPLANE_METHOD =
+  "vessel_evidence_best_start_biplane_v1";
 export const EVIDENCE_REGISTRATION_LIMITS = {
   min_points: 30,
   /** Points scored in the refinement. */
@@ -73,6 +78,10 @@ export const EVIDENCE_REGISTRATION_LIMITS = {
   out_of_plane_prior: 0.01,
 } as const;
 
+/** The search's own failure: from this start, no pose in range could be
+ * scored. Any other error is a fault in the input. */
+export const EVIDENCE_NO_POSE =
+  "No pose in the search range keeps the vessel points inside every frame";
 export type EvidenceScore = {
   /** Mean evidence under the projected 3D points at the narrowest blur,
    * from 0 to 1. Points outside the frame count as zero. */
@@ -112,7 +121,9 @@ export type EvidencePlaneProposal = {
 export type EvidenceRegistrationProposal = {
   method:
     | typeof EVIDENCE_REGISTRATION_METHOD
-    | typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD;
+    | typeof EVIDENCE_BIPLANE_REGISTRATION_METHOD
+    | typeof EVIDENCE_BEST_START_METHOD
+    | typeof EVIDENCE_BEST_START_BIPLANE_METHOD;
   /** Rigid volume-RAS to C-arm-RAS matrix, one for every plane. */
   matrix: number[][];
   planes: EvidencePlaneProposal[];
@@ -603,10 +614,7 @@ function* solve(
       detector_fit = "dropped";
     }
   }
-  if (!best)
-    throw new Error(
-      "No pose in the search range keeps the vessel points inside every frame",
-    );
+  if (!best) throw new Error(EVIDENCE_NO_POSE);
   const p = best.p,
     r = rotation(p[3], p[4], p[5]);
   // World rotation B^T R B and the pivot's shift B^T t, composed onto the start.

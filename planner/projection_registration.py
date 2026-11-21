@@ -50,11 +50,19 @@ EVIDENCE_VERSION = "step-c4-evidence-registration-v3"
 EVIDENCE_METHOD = "vessel_evidence_compass_v1"
 EVIDENCE_BIPLANE_VERSION = "step-c4-evidence-biplane-registration-v4"
 EVIDENCE_BIPLANE_METHOD = "vessel_evidence_compass_biplane_v1"
+# The vessel evidence search run from several starts, the result with the most
+# evidence kept. The record fields are those of versions 3 and 4.
+BEST_START_VERSION = "step-c4-evidence-best-start-registration-v5"
+BEST_START_METHOD = "vessel_evidence_best_start_v1"
+BEST_START_BIPLANE_VERSION = "step-c4-evidence-best-start-biplane-registration-v6"
+BEST_START_BIPLANE_METHOD = "vessel_evidence_best_start_biplane_v1"
 VERSIONS = {
     METHOD: VERSION,
     BIPLANE_METHOD: BIPLANE_VERSION,
     EVIDENCE_METHOD: EVIDENCE_VERSION,
     EVIDENCE_BIPLANE_METHOD: EVIDENCE_BIPLANE_VERSION,
+    BEST_START_METHOD: BEST_START_VERSION,
+    BEST_START_BIPLANE_METHOD: BEST_START_BIPLANE_VERSION,
 }
 # Mirrors the browser engine: closer planes add too little to determine depth.
 MIN_PLANE_ANGLE_DEG = 30.0
@@ -241,11 +249,25 @@ class EvidenceBiplaneRegistrationInputs(StrictModel):
     planes: list[EvidenceBiplanePlane] = Field(min_length=2, max_length=2)
 
 
+class BestStartRegistrationInputs(EvidenceRegistrationInputs):
+    """Version 5. The fields of version 3."""
+
+    method: Literal["vessel_evidence_best_start_v1"]
+
+
+class BestStartBiplaneRegistrationInputs(EvidenceBiplaneRegistrationInputs):
+    """Version 6. The fields of version 4."""
+
+    method: Literal["vessel_evidence_best_start_biplane_v1"]
+
+
 _MODELS = {
     METHOD: RegistrationInputs,
     BIPLANE_METHOD: BiplaneRegistrationInputs,
     EVIDENCE_METHOD: EvidenceRegistrationInputs,
     EVIDENCE_BIPLANE_METHOD: EvidenceBiplaneRegistrationInputs,
+    BEST_START_METHOD: BestStartRegistrationInputs,
+    BEST_START_BIPLANE_METHOD: BestStartBiplaneRegistrationInputs,
 }
 
 
@@ -257,7 +279,9 @@ class RegistrationRequest(StrictModel):
         RegistrationInputs
         | BiplaneRegistrationInputs
         | EvidenceRegistrationInputs
-        | EvidenceBiplaneRegistrationInputs,
+        | EvidenceBiplaneRegistrationInputs
+        | BestStartRegistrationInputs
+        | BestStartBiplaneRegistrationInputs,
         Field(discriminator="method"),
     ]
 
@@ -269,11 +293,16 @@ def _method(inputs):
 
 
 def is_evidence(inputs):
-    return _method(inputs) in (EVIDENCE_METHOD, EVIDENCE_BIPLANE_METHOD)
+    return _method(inputs) in (
+        EVIDENCE_METHOD,
+        EVIDENCE_BIPLANE_METHOD,
+        BEST_START_METHOD,
+        BEST_START_BIPLANE_METHOD,
+    )
 
 
 def is_biplane(inputs):
-    return _method(inputs) in (BIPLANE_METHOD, EVIDENCE_BIPLANE_METHOD)
+    return _method(inputs) in (BIPLANE_METHOD, EVIDENCE_BIPLANE_METHOD, BEST_START_BIPLANE_METHOD)
 
 
 def bound_planes(inputs):

@@ -1,9 +1,8 @@
 /**
- * View proposals for one frame, for the overlay studio.
- *
- * The network is a research artifact (docs/research/view-network-v1.md).
- * It reads the frame's vessel evidence and nothing else, and it never sees
- * the 3D model. Its views are for an operator to pick from, or to ignore.
+ * The view network for the overlay studio: fetched once per page, and asked
+ * for views of the volume from a frame's vessel evidence. It never sees the
+ * 3D model. The vessel evidence search is run from each view it proposes
+ * and from the volume's own position (bestStart.ts).
  */
 import {
   networkInput,
@@ -13,8 +12,7 @@ import {
   type ViewProposal,
 } from "./poseInitializer";
 import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
-import { vesselEvidence } from "./vesselEvidence2d";
-import type { Polarity } from "./vesselness2d";
+import type { VesselEvidence } from "./vesselEvidence2d";
 import { loadViewNetwork } from "./viewNetworkFile";
 
 /** The deadline of the studio's other requests. */
@@ -50,55 +48,30 @@ export function viewNetwork(): Promise<ViewNetwork> {
   return installed;
 }
 
+/** The network if it is there within `wait_ms`, or null: it failed, or the
+ * wait is over. A proposal waits this long and no longer, and goes on from
+ * the volume's own position without it. The fetch is left running for the
+ * next proposal. */
+export function viewNetworkWithin(
+  wait_ms: number,
+): Promise<ViewNetwork | null> {
+  return new Promise((resolve) => {
+    const wait = setTimeout(() => resolve(null), wait_ms);
+    viewNetwork()
+      .then(resolve, () => resolve(null))
+      .finally(() => clearTimeout(wait));
+  });
+}
+
 /** Forgets the fetched network. For tests. */
 export function forgetViewNetwork() {
   installed = null;
 }
 
-/** Up to five ranked views for one frame, as the evaluation computed them:
- * the frame's vessel evidence at the stated polarity, through the network. */
-export function frameViews(
+/** Up to five ranked views for one frame's vessel evidence. */
+export function evidenceViews(
   network: ViewNetwork,
-  frame: { gray: Uint8Array; width: number; height: number },
-  polarity: Polarity,
+  evidence: VesselEvidence,
 ): ViewProposal[] {
-  return proposeViews(
-    runViewNetwork(
-      network,
-      networkInput(
-        network,
-        vesselEvidence(frame.gray, frame.width, frame.height, polarity),
-      ),
-    ),
-  );
-}
-
-const breathe = () => new Promise<void>((done) => setTimeout(done, 0));
-
-/** The promise, or the caller's own abort if that comes first. The promise
- * itself is left to run. */
-function unlessAbandoned<T>(promise: Promise<T>, signal?: AbortSignal) {
-  if (!signal) return promise;
-  return new Promise<T>((resolve, reject) => {
-    const stop = () => reject(signal.reason);
-    if (signal.aborted) return stop();
-    signal.addEventListener("abort", stop, { once: true });
-    promise
-      .then(resolve, reject)
-      .finally(() => signal.removeEventListener("abort", stop));
-  });
-}
-
-/** Fetches the network if need be and proposes views for the frame. The
- * computation takes about a second and is not sliced; it yields once
- * before it starts so that a status can be shown. */
-export async function proposeFrameViews(
-  frame: { gray: Uint8Array; width: number; height: number },
-  polarity: Polarity,
-  signal?: AbortSignal,
-): Promise<ViewProposal[]> {
-  const network = await unlessAbandoned(viewNetwork(), signal);
-  await breathe();
-  signal?.throwIfAborted();
-  return frameViews(network, frame, polarity);
+  return proposeViews(runViewNetwork(network, networkInput(network, evidence)));
 }

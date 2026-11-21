@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { describe, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { gray, SIDE } from "./__fixtures__/overlayCase";
 import fixture from "./__fixtures__/view-network-forward.json";
 import {
@@ -10,12 +10,12 @@ import {
 import { vesselEvidence } from "./vesselEvidence2d";
 import * as files from "./viewNetworkFile";
 import {
+  evidenceViews,
   forgetViewNetwork,
-  frameViews,
-  proposeFrameViews,
   VIEW_NETWORK_LATE,
   VIEW_NETWORK_TIMEOUT_MS,
   viewNetwork,
+  viewNetworkWithin,
 } from "./viewProposals";
 
 const network = parseViewNetwork(
@@ -30,34 +30,29 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("proposes what the network says of the frame's vessel evidence", () => {
-  const found = frameViews(network, frame, "dark");
+it("proposes what the network says of a frame's vessel evidence", () => {
+  const map = (polarity: "dark" | "bright") =>
+      vesselEvidence(frame.gray, SIDE, SIDE, polarity),
+    found = evidenceViews(network, map("dark"));
   expect(found).toEqual(
-    proposeViews(
-      runViewNetwork(
-        network,
-        networkInput(network, vesselEvidence(frame.gray, SIDE, SIDE, "dark")),
-      ),
-    ),
+    proposeViews(runViewNetwork(network, networkInput(network, map("dark")))),
   );
   expect(found.length).toBeGreaterThan(0);
   expect(found.length).toBeLessThanOrEqual(5);
-  // The polarity is read: as bright vessels the frame is another input.
-  const input = (polarity: "dark" | "bright") =>
-    networkInput(network, vesselEvidence(frame.gray, SIDE, SIDE, polarity));
-  expect(input("bright")).not.toEqual(input("dark"));
-  expect(frameViews(network, frame, "bright")).toEqual(
-    proposeViews(runViewNetwork(network, input("bright"))),
+  // Another evidence map is another input.
+  expect(networkInput(network, map("bright"))).not.toEqual(
+    networkInput(network, map("dark")),
   );
 });
 
-it("fetches the network once and uses it for every frame", async () => {
+it("fetches the network once for the page", async () => {
   const load = vi.spyOn(files, "loadViewNetwork").mockResolvedValue(network);
-  const first = await proposeFrameViews(frame, "dark"),
-    second = await proposeFrameViews(frame, "dark");
+  await expect(viewNetwork()).resolves.toBe(network);
+  await expect(viewNetwork()).resolves.toBe(network);
   expect(load).toHaveBeenCalledTimes(1);
-  expect(first).toEqual(frameViews(network, frame, "dark"));
-  expect(second).toEqual(first);
+  // The fetch is under the page's own signal.
+  expect(load.mock.calls[0][0]).toBeInstanceOf(AbortSignal);
+  expect(load.mock.calls[0][0]!.aborted).toBe(false);
 });
 
 it("does not keep a fetch that failed", async () => {
@@ -68,40 +63,6 @@ it("does not keep a fetch that failed", async () => {
   await expect(viewNetwork()).rejects.toThrow(files.VIEW_NETWORK_ABSENT);
   await expect(viewNetwork()).resolves.toBe(network);
   expect(load).toHaveBeenCalledTimes(2);
-});
-
-it("stops before computing when it was abandoned", async () => {
-  vi.spyOn(files, "loadViewNetwork").mockResolvedValue(network);
-  const control = new AbortController(),
-    pending = proposeFrameViews(frame, "dark", control.signal);
-  control.abort();
-  await expect(pending).rejects.toThrow();
-});
-
-it("a caller that gives up does not take the fetch from the next one", async () => {
-  let arrive!: (value: typeof network) => void;
-  const load = vi.spyOn(files, "loadViewNetwork").mockReturnValue(
-    new Promise((resolve) => {
-      arrive = resolve;
-    }),
-  );
-  const first = new AbortController(),
-    second = new AbortController(),
-    gaveUp = proposeFrameViews(frame, "dark", first.signal),
-    refused = expect(gaveUp).rejects.toThrow();
-  first.abort();
-  const waiting = proposeFrameViews(frame, "dark", second.signal);
-  await refused;
-  arrive(network);
-  await expect(waiting).resolves.toEqual(frameViews(network, frame, "dark"));
-  // One fetch served both, and it was neither caller's to stop.
-  expect(load).toHaveBeenCalledTimes(1);
-  const held = load.mock.calls[0][0];
-  expect(held).toBeInstanceOf(AbortSignal);
-  expect(held).not.toBe(first.signal);
-  expect(held!.aborted).toBe(false);
-  await expect(viewNetwork()).resolves.toBe(network);
-  expect(load).toHaveBeenCalledTimes(1);
 });
 
 it("gives up on a fetch that does not arrive in time, says so, and tries again when asked", async () => {
@@ -192,4 +153,45 @@ it("does not call an abort it did not make lateness", async () => {
   const foreign = new DOMException("The operation was aborted", "AbortError");
   vi.spyOn(files, "loadViewNetwork").mockRejectedValue(foreign);
   await expect(viewNetwork()).rejects.toBe(foreign);
+});
+
+describe("waiting for the network no longer than a proposal can spare", () => {
+  const stuck = (signal?: AbortSignal) =>
+    new Promise<typeof network>((_, reject) =>
+      signal!.addEventListener("abort", () =>
+        reject(new DOMException("The operation was aborted", "AbortError")),
+      ),
+    );
+
+  it("gives the network when it is there in time, and leaves no wait running", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(files, "loadViewNetwork").mockResolvedValue(network);
+    await expect(viewNetworkWithin(10_000)).resolves.toBe(network);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("gives nothing once the wait is over, and leaves the fetch running for the next", async () => {
+    vi.useFakeTimers();
+    const load = vi.spyOn(files, "loadViewNetwork").mockImplementation(stuck);
+    let got: unknown = "waiting";
+    void viewNetworkWithin(10_000).then((value) => (got = value));
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(got).toBe("waiting");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(got).toBeNull();
+    // The fetch is the page's: it runs on under its own deadline.
+    expect(load.mock.calls[0][0]!.aborted).toBe(false);
+    void viewNetworkWithin(10_000);
+    expect(load).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(VIEW_NETWORK_TIMEOUT_MS);
+  });
+
+  it("gives nothing when the fetch fails", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(files, "loadViewNetwork").mockRejectedValue(
+      new Error(files.VIEW_NETWORK_ABSENT),
+    );
+    await expect(viewNetworkWithin(10_000)).resolves.toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
