@@ -64,8 +64,15 @@ export default function ViewProposalPicker({
     ),
     open = useRef<AbortController | null>(null);
   // A request is for one frame at one polarity. When another is shown, or
-  // the control goes, it is stopped: its views could not be listed.
-  useEffect(() => () => open.current?.abort(), [key]);
+  // the control goes, it is stopped: its views could not be listed. A
+  // failure goes with it, and is not shown again when the frame comes back.
+  useEffect(
+    () => () => {
+      open.current?.abort();
+      setFailure(null);
+    },
+    [key],
+  );
 
   async function propose() {
     if (!frame || disabled) return;

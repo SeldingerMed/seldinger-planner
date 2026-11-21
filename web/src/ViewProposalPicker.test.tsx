@@ -154,3 +154,33 @@ it("stops a running request when its frame or polarity is no longer the one show
   rerender(picker("dark"));
   expect(screen.queryByRole("radio")).toBeNull();
 });
+
+it("does not bring back an old failure when its frame is shown again", async () => {
+  vi.spyOn(viewProposals, "proposeFrameViews").mockRejectedValue(
+    new Error("The view network did not arrive in time"),
+  );
+  const picker = (shown: VerifiedFrame) => (
+    <ViewProposalPicker
+      frame={shown}
+      polarity="dark"
+      disabled={false}
+      picked={null}
+      elsewhere={null}
+      onPick={() => {}}
+    />
+  );
+  const { rerender } = render(picker(frame));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Propose views for this frame" }),
+  );
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "No views were proposed: The view network did not arrive in time.",
+  );
+  // Drawn again for the same frame, the failure of its request stands.
+  rerender(picker(frame));
+  screen.getByRole("alert");
+  rerender(picker({ sha256: "c".repeat(64), plane: "a" } as VerifiedFrame));
+  expect(screen.queryByRole("alert")).toBeNull();
+  rerender(picker(frame));
+  expect(screen.queryByRole("alert")).toBeNull();
+});

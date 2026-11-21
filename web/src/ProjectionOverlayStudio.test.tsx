@@ -1112,6 +1112,14 @@ const pairRoutes = {
   bundle: () => json(pairBundleAnswer()),
   frame: pairFrame,
 };
+/** Asks for views once the studio takes input: a frame that has just been
+ * drawn may still be loading, and a click then would do nothing. */
+const proposeViews = async () => {
+  const button = () =>
+    screen.getByRole("button", { name: "Propose views for this frame" });
+  await waitFor(() => expect(button()).toBeEnabled());
+  fireEvent.click(button());
+};
 const choosePlane = (label: string) =>
   fireEvent.change(screen.getByRole("combobox", { name: "Plane" }), {
     target: { value: label },
@@ -2639,7 +2647,7 @@ test("proposes views only when asked, starts the search from a picked one and do
     ).toMatch(
       /not for clinical use.*its first view is often not the nearest.*can be reviewed but not saved/,
     );
-    click("Propose views for this frame");
+    await proposeViews();
     await screen.findByRole("radio", { name: /Proposed view 1/ });
     expect(views).toHaveBeenCalledTimes(1);
     expect(views.mock.calls[0][0]).toMatchObject({
@@ -2710,7 +2718,7 @@ test("a picked view is for the frame and polarity it was proposed for", async ()
     render(<Harness />);
     await openFrames();
     enterGeometry();
-    click("Propose views for this frame");
+    await proposeViews();
     fireEvent.click(
       await screen.findByRole("radio", { name: /Proposed view 1/ }),
     );
@@ -2725,7 +2733,7 @@ test("a picked view is for the frame and polarity it was proposed for", async ()
     expect(screen.queryByRole("status", { name: "Search start" })).toBeNull();
     // Views proposed at that polarity can be picked in their turn, and that
     // pick is no start for the frame read as dark vessels.
-    click("Propose views for this frame");
+    await proposeViews();
     fireEvent.click(
       await screen.findByRole("radio", { name: /Proposed view 2/ }),
     );
@@ -2755,7 +2763,7 @@ test("says so when no views can be proposed, and the search is as it was", async
     render(<Harness />);
     await openFrames();
     enterGeometry();
-    click("Propose views for this frame");
+    await proposeViews();
     expect((await screen.findByRole("alert")).textContent).toBe(
       "No views were proposed: The view network is not installed.",
     );
@@ -2811,7 +2819,7 @@ test("a picked view is no start for another frame of its plane", async () => {
     await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
     choosePlane("b");
     await screen.findByRole("img", { name: "Admitted frame 12, plane b" });
-    click("Propose views for this frame");
+    await proposeViews();
     fireEvent.click(
       await screen.findByRole("radio", { name: /Proposed view 1/ }),
     );
@@ -2857,7 +2865,7 @@ test("a picked view is not carried to another source", async () => {
     await openPair();
     choosePlane("a");
     await screen.findByRole("img", { name: "Admitted frame 12, plane a" });
-    click("Propose views for this frame");
+    await proposeViews();
     fireEvent.click(
       await screen.findByRole("radio", { name: /^Proposed view 1: / }),
     );
@@ -2897,8 +2905,7 @@ test("for two planes a picked view is for its frame and polarity, and a proposal
     render(<Harness />);
     await openPair();
     chooseMethod("vessel_evidence");
-    await acceptsInput();
-    click("Propose views for this frame");
+    await proposeViews();
     fireEvent.click(
       await screen.findByRole("radio", { name: /Proposed view 1/ }),
     );
@@ -2946,7 +2953,7 @@ test("for two planes one picked view turns the model for both, and the proposal 
     chooseMethod("vessel_evidence");
     await acceptsInput();
     // Plane B's frame is on screen: the views are proposed for it.
-    click("Propose views for this frame");
+    await proposeViews();
     fireEvent.click(
       await screen.findByRole("radio", { name: /Proposed view 1/ }),
     );
@@ -2961,7 +2968,8 @@ test("for two planes one picked view turns the model for both, and the proposal 
     expect(screen.queryByRole("radio")).toBeNull();
     // With views proposed for plane A's frame too, the list shows the start
     // in force, which is still plane B's, and not the volume's own position.
-    click("Propose views for this frame");
+    await acceptsInput();
+    await proposeViews();
     await screen.findByRole("radio", { name: /^Proposed view 1: / });
     expect(
       screen

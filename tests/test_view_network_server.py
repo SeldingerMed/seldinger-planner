@@ -131,6 +131,26 @@ def test_bytes_that_cannot_be_read_are_a_fault_and_none_are_served(tmp_path, mon
     assert answer.json() == {"detail": "View network failed integrity checks"}
 
 
+def test_a_path_that_cannot_be_looked_at_is_a_fault(tmp_path, monkeypatch):
+    """Deciding absence looks at the same volume the read failed on."""
+    path = tmp_path / "view-network.bin"
+    path.write_bytes(BYTES)
+
+    def refused(file, *, expected):
+        raise view_network_server.ModelArtifactError("Cannot open registered checkpoint")
+
+    def unreadable(self, *args, **kwargs):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(view_network_server, "verified_checkpoint", refused)
+    app = client(path, spec())
+    monkeypatch.setattr(type(path), "is_symlink", unreadable)
+    monkeypatch.setattr(type(path), "exists", unreadable)
+    answer = app.get("/api/view-network")
+    assert answer.status_code == 503
+    assert answer.json() == {"detail": "View network failed integrity checks"}
+
+
 def test_the_record_of_the_weights_names_the_same_file_and_training_commit():
     record = (REPO / "docs" / "research" / "view-network-v1.md").read_text()
     assert f"{VIEW_NETWORK.size_bytes:,} bytes" in record

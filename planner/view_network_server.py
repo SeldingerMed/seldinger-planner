@@ -34,7 +34,12 @@ def register_view_network_routes(app, *, path=None, expected=VIEW_NETWORK):
             # Absence is decided here, where the read failed, so a file that
             # went in the meantime is still an absence. A link in place of
             # the file is a fault, not an absence, even a link to nothing.
-            if not file.is_symlink() and not file.exists():
+            # A path that cannot be looked at is a fault too.
+            try:
+                absent = not file.is_symlink() and not file.exists()
+            except OSError:
+                absent = False
+            if absent:
                 raise HTTPException(404, "View network is not installed") from None
             raise HTTPException(503, "View network failed integrity checks") from None
         except OSError:
