@@ -34,7 +34,7 @@ Protocol `ljubljana-detector-size-v1`, run once at `cb8a241` ([results](../resea
 | Lateral frame, under 1 mm                                   | 10 of 25                  | 16 of 25           |
 | Frontal frame, under 1 mm                                   | 14 of 25                  | 17 of 25           |
 
-With the sizes entered right and the fit requested, all 150 runs ended where the fit ended. Of the 13 held-back two-plane runs over 1 mm, 10 are subject 06, which fails in every arm of every protocol. One-plane runs: 60 of 300 ended nearer and 9 farther over all ten subjects. A two-plane proposal took a median of 7.7 to 8.1 seconds, against 1.2 to 1.3.
+With the sizes entered right and the fit requested, 149 of 150 runs ended exactly where the fit ended and the other 0.04 mm from it. Of the 13 held-back two-plane runs over 1 mm, 10 are subject 06, which fails in every arm of every protocol. One-plane runs with the size entered wrong: 36 of 200 ended more than 0.5 mm nearer and 8 farther over all ten subjects (frontal 10 and 1, lateral 26 and 7). With the sizes entered wrong, a two-plane proposal took a median of 7.6 to 8.1 seconds, against 1.1 to 1.3.
 
 ## Tests
 
