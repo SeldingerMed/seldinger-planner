@@ -508,3 +508,43 @@ export function viewOfAxes(
     turn_deg: Math.atan2(-dot(up, u), dot(up, v)) * deg,
   };
 }
+
+/** A proposed view with its in-plane turn. */
+export type StartView = {
+  primary_deg: number;
+  secondary_deg: number;
+  turn_deg: number;
+};
+
+/** The rigid volume to C-arm-RAS start that makes a plane at the `entered`
+ * angles see the volume as `proposed` says, for a volume in patient axes.
+ * It is a rotation about `pivot`, which stays where it is. The entered
+ * angles are not changed: the model is turned under them, so a second plane
+ * keeps its entered angle to this one. */
+export function startFromProposedView(
+  entered: { primary_deg: number; secondary_deg: number },
+  proposed: StartView,
+  pivot: Vec3,
+): number[][] {
+  if (
+    !Array.isArray(pivot) ||
+    pivot.length !== 3 ||
+    !pivot.every(Number.isFinite)
+  )
+    throw new Error("Invalid pivot");
+  const here = viewFrame(entered.primary_deg, entered.secondary_deg),
+    seen = turnedFrame(proposed),
+    turn = [0, 1, 2].map((i) =>
+      [0, 1, 2].map(
+        (j) =>
+          here.u[i] * seen.u[j] + here.v[i] * seen.v[j] + here.d[i] * seen.d[j],
+      ),
+    );
+  return [
+    ...turn.map((row, i) => [
+      ...row,
+      pivot[i] - (row[0] * pivot[0] + row[1] * pivot[1] + row[2] * pivot[2]),
+    ]),
+    [0, 0, 0, 1],
+  ];
+}

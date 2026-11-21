@@ -9,6 +9,7 @@ import {
   parseViewNetwork,
   proposeViews,
   runViewNetwork,
+  startFromProposedView,
   toGrid,
   turnedFrame,
   VIEW_BINS,
@@ -16,6 +17,9 @@ import {
   viewSeparationDeg,
   type ViewAnswer,
 } from "./poseInitializer";
+import { viewFrame } from "./carmGeometry";
+import type { ReferencePlane } from "./research/ljubljanaGeometry";
+import { startFromView } from "./research/ljubljanaViewInitializer";
 import type { VesselEvidence } from "./vesselEvidence2d";
 
 const bytes = (text: string) => new Uint8Array(Buffer.from(text, "base64"));
@@ -403,5 +407,84 @@ describe("views with an in-plane turn", () => {
     expect(viewSeparationDeg(at(0, 0), at(90, 0))).toBeCloseTo(90, 9);
     expect(viewSeparationDeg(at(10, 0), at(10, 35))).toBeCloseTo(35, 9);
     expect(viewSeparationDeg(at(0, 50), at(10, 50))).toBeLessThan(6.5);
+  });
+});
+
+describe("a proposed view as the start of a search", () => {
+  const entered = { primary_deg: 20, secondary_deg: -10 },
+    proposed = { primary_deg: -65, secondary_deg: 30, turn_deg: 12 },
+    pivot: [number, number, number] = [14, -22, 31];
+  const apply = (m: number[][], x: number[]) =>
+    [0, 1, 2].map(
+      (i) => m[i][0] * x[0] + m[i][1] * x[1] + m[i][2] * x[2] + m[i][3],
+    );
+  const turn = (m: number[][], x: number[]) =>
+    [0, 1, 2].map((i) => m[i][0] * x[0] + m[i][1] * x[1] + m[i][2] * x[2]);
+
+  it("is the volume's own position when the proposal is the entered view", () => {
+    const start = startFromProposedView(
+      entered,
+      { ...entered, turn_deg: 0 },
+      pivot,
+    );
+    expect(
+      worst(start.flat(), [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]),
+    ).toBeLessThan(1e-12);
+  });
+
+  it("turns the model so the entered plane sees it as the proposal says", () => {
+    const start = startFromProposedView(entered, proposed, pivot),
+      here = viewFrame(entered.primary_deg, entered.secondary_deg),
+      seen = turnedFrame(proposed);
+    // What the proposal calls image right, up and the viewing direction
+    // become the entered plane's own.
+    expect(worst(turn(start, seen.u), here.u)).toBeLessThan(1e-12);
+    expect(worst(turn(start, seen.v), here.v)).toBeLessThan(1e-12);
+    expect(worst(turn(start, seen.d), here.d)).toBeLessThan(1e-12);
+    // A rotation about the pivot: it stays where it is, and lengths hold.
+    expect(worst(apply(start, pivot), pivot)).toBeLessThan(1e-9);
+    const far = [pivot[0] + 30, pivot[1] - 40, pivot[2] + 5],
+      moved = apply(start, far);
+    expect(Math.hypot(...moved.map((x, i) => x - pivot[i]))).toBeCloseTo(
+      Math.hypot(30, 40, 5),
+      9,
+    );
+    expect(start[3]).toEqual([0, 0, 0, 1]);
+    // The in-plane turn is part of it.
+    const flat = startFromProposedView(
+      entered,
+      { ...proposed, turn_deg: 0 },
+      pivot,
+    );
+    expect(worst(turn(flat, seen.u), here.u)).toBeGreaterThan(0.1);
+  });
+
+  it("is the start the Ljubljana evaluation used, for a pivot at the isocenter", () => {
+    const plane = {
+      view: entered,
+      isocenter: pivot,
+    } as unknown as ReferencePlane;
+    expect(
+      worst(
+        startFromProposedView(entered, proposed, pivot).flat(),
+        startFromView(plane, proposed, pivot, "patient").flat(),
+      ),
+    ).toBeLessThan(1e-9);
+  });
+
+  it("refuses a pivot or a view that is not usable", () => {
+    expect(() => startFromProposedView(entered, proposed, [0, NaN, 0])).toThrow(
+      "Invalid pivot",
+    );
+    expect(() =>
+      startFromProposedView(entered, proposed, [0, 0] as unknown as [
+        number,
+        number,
+        number,
+      ]),
+    ).toThrow("Invalid pivot");
+    expect(() =>
+      startFromProposedView(entered, { ...proposed, turn_deg: 200 }, pivot),
+    ).toThrow("Invalid in-plane turn");
   });
 });

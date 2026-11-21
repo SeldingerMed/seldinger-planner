@@ -17,15 +17,15 @@ Step A's projection manifest keeps acquisition geometry and no pixels. That is u
 
 Bounds:
 
-| Quantity | Bound |
-|---|---|
-| Planes per bundle | 1 or 2 (`single`, or `a` and `b`) |
-| Frames per plane | 1 to 8 |
-| Stored frame side | 64 to 1024 pixels |
-| Source frame side | at most 4096 pixels |
-| Redaction rectangles per plane | at most 16 |
-| Frame index | 0 to 1,000,000 |
-| Manifest | at most 64 KiB |
+| Quantity                       | Bound                             |
+| ------------------------------ | --------------------------------- |
+| Planes per bundle              | 1 or 2 (`single`, or `a` and `b`) |
+| Frames per plane               | 1 to 8                            |
+| Stored frame side              | 64 to 1024 pixels                 |
+| Source frame side              | at most 4096 pixels               |
+| Redaction rectangles per plane | at most 16                        |
+| Frame index                    | 0 to 1,000,000                    |
+| Manifest                       | at most 64 KiB                    |
 
 A stored frame is raw row-major 8-bit grayscale, where a larger byte is a brighter display pixel. The manifest (`frames.json`) records, per frame, its index in the source, the SHA-256 of the stored bytes and the SHA-256 of the file it came from. No name, date, device or other source metadata is retained. The manifest revision is the SHA-256 of its exact bytes.
 
@@ -88,14 +88,15 @@ The command writes to a private staging directory, claims the destination by cre
 
 ## Server interface
 
-| Route | Purpose |
-|---|---|
-| `GET /api/projection-frames/{source_id}` | The validated manifest and its revision |
-| `GET /api/projection-frames/{source_id}/planes/{plane}/frames/{index}` | One frame's bytes, with `X-Frame-Manifest-Revision` |
-| `GET /api/cases/{case_id}/projection-registration` | The saved proposal for the case, if any |
-| `PUT /api/cases/{case_id}/projection-registration` | Save an operator-confirmed proposal |
-| `GET /api/cases/{case_id}/vessel-presence` | The saved vessel-presence report for the current proposal, if any |
-| `PUT /api/cases/{case_id}/vessel-presence` | Save an operator-confirmed vessel-presence report |
+| Route                                                                  | Purpose                                                           |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `GET /api/projection-frames/{source_id}`                               | The validated manifest and its revision                           |
+| `GET /api/projection-frames/{source_id}/planes/{plane}/frames/{index}` | One frame's bytes, with `X-Frame-Manifest-Revision`               |
+| `GET /api/cases/{case_id}/projection-registration`                     | The saved proposal for the case, if any                           |
+| `PUT /api/cases/{case_id}/projection-registration`                     | Save an operator-confirmed proposal                               |
+| `GET /api/cases/{case_id}/vessel-presence`                             | The saved vessel-presence report for the current proposal, if any |
+| `PUT /api/cases/{case_id}/vessel-presence`                             | Save an operator-confirmed vessel-presence report                 |
+| `GET /api/view-network`                                                | The view network's weights, verified on every read; no parameters |
 
 The frame routes are read-only and re-verify every frame against its manifest digest before serving it. Nothing accepts pixels: the `PUT` body holds identifiers, hashes, six view numbers, a 4 by 4 matrix and scalar scores. The vessel-presence `PUT` body holds identifiers, hashes, and counts and lengths per segment, with no pixels and no coordinates.
 
@@ -162,7 +163,17 @@ For a bundle with two planes:
 3. Select **Propose two-plane overlay**. Both frames are drawn side by side with the one pose projected over each.
 4. Tick the review box and the box stating that both frames show the patient in the same position, then save. Both ticks belong to the proposal on screen and do not carry over to another.
 
-A proposal belongs to the exact frame or pair of frames, mask, geometry, isocenter, method and filter settings it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A bundle's manifest request is released before the first-frame fetch starts, giving the frame its own full deadline. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
+### Proposed views
+
+**Propose views for this frame** asks a research network which way the frame on screen looks at the head. It lists up to five views, each with a primary angle, a secondary angle, an in-plane turn and the network's own share. The network reads the frame's vessel evidence at the plane's polarity and nothing else, and it never sees the 3D model. The weights are fetched once per page from `GET /api/view-network`, under the studio's 30-second deadline, and checked against a size and SHA-256 fixed in the code before they are used; [their record](research/view-network-v1.md) says how they were made. A server without the file says the network is not installed, and the rest of the studio works as before.
+
+Nothing is picked for the operator. **The volume's own position** stays selected until a view is picked, and the search then starts as it always has. A picked view turns the 3D model, about the centre of its vessel points, until the plane at its entered geometry sees the model as the view says. The entered geometry is not changed. With two planes one turn serves both, from the view picked for either plane's frame, so the entered angle between the planes is kept. While the other plane's frame is on screen, its list shows that pick as the choice in force. Views that are listed are not proposed again: for one frame at one polarity they are always the same. The search that follows is the same search with the same limits, by either method.
+
+A proposal that started from a picked view can be reviewed and discarded. It cannot be saved: no saved record states that start, and the records are unchanged. A pick belongs to the frame, the plane it was admitted under and the polarity it was proposed for. It is no start for another frame, for the same frame read at the other polarity, or for the same picture admitted under another plane. A frame is known by its bytes, so the pick stands when the same frame of the same plane is opened again for the same volume. The status line under the list always says which start is in force, and when there is none the search starts from the volume's own position. A change of volume drops the pick.
+
+The network was trained on synthetic frames. On real frames its first view is often not the nearest of the five, and none of them need be right. On five public clinical cases, read once by eye, a search started from the first proposed view gave no gain over one started from the volume's own position, and for three of the five lateral frames the first view looked from the other side of the head ([record](verification/step-c4-view-proposals.md)). The views are not for clinical use.
+
+A proposal belongs to the exact frame or pair of frames, mask, geometry, isocenter, method, filter settings and picked start view it was computed from. Changing any of them drops it, and restoring them does not bring it back. An unsaved proposal or running computation locks the other studios the same way their own unsaved edits do. During computation its input controls are locked; Cancel remains available. Network operations have a 30-second deadline and are aborted when their source scope is discarded. A bundle's manifest request is released before the first-frame fetch starts, giving the frame its own full deadline. A timeout releases the request lock and exposes Reload saved proposal. A timed-out save may already have been stored, so overlay actions remain locked until that explicit read reconciles the saved revision.
 
 ## The saved record
 
@@ -194,13 +205,13 @@ Samples every 1 mm along each segment are projected into each plane with the sav
 - **clear** when no sample of another run, and no sample of its own run 6 mm or more away in the volume, projects within 2 mm of it;
 - **supported** when it is clear and an extracted 2D centerline lies within 2 mm of it, measured at the isocenter plane.
 
-| Class | Rule, applied in this order |
-|---|---|
-| Outside the field | Fewer than half of the segment's samples are in the field |
-| Indeterminate | Fewer than three samples are clear, or fewer than 3 in 10 of those in the field |
-| 2D support | At least 7 in 10 of the clear samples are supported |
-| No 2D support | At most 3 in 10 of the clear samples are supported |
-| Indeterminate | Anything between |
+| Class             | Rule, applied in this order                                                     |
+| ----------------- | ------------------------------------------------------------------------------- |
+| Outside the field | Fewer than half of the segment's samples are in the field                       |
+| Indeterminate     | Fewer than three samples are clear, or fewer than 3 in 10 of those in the field |
+| 2D support        | At least 7 in 10 of the clear samples are supported                             |
+| No 2D support     | At most 3 in 10 of the clear samples are supported                              |
+| Indeterminate     | Anything between                                                                |
 
 Pieces of 2D centerline at least 5 mm long with no projected sample within 2 mm are listed separately, longest first. They can be vessels the mask does not hold, and they can equally be catheters, wires or bone edges.
 
@@ -240,4 +251,5 @@ The local brief gains the section **Angiogram registration and vessel presence**
 - The vessel evidence methods score line-like structure, not vessels. On five public clinical cases with selective injections their proposals did not visibly lie on the filled arteries. Their scores there, 0.11 to 0.25, lie on both sides of the median score of the two-plane runs on the held-back public subjects with a reference pose, 0.19, most of which ended within 1 mm. The score does not tell a right pose from a wrong one.
 - The fit of the field size is not solved by either pair of methods. With vessel evidence it was dropped in all five clinical cases reviewed, and on the held-back public subjects with a reference pose 10 of 25 two-plane runs ended under 1 mm when the entered size was wrong.
 - A proposal by vessel evidence carries no vessel-presence report.
+- The proposed views are a research aid. No accuracy is claimed for them on patient frames, and a proposal started from one cannot be saved.
 - Not for live guidance, diagnosis or treatment decisions.

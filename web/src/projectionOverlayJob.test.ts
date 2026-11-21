@@ -18,6 +18,8 @@ import {
   type BiplaneOverlayJobInput,
   type OverlayJobInput,
 } from "./projectionOverlayJob";
+import { centroid } from "./maskPoints";
+import { startFromProposedView } from "./poseInitializer";
 import { projectRegistered } from "./projectionRegistration";
 
 const input: OverlayJobInput = {
@@ -348,5 +350,152 @@ describe("overlay jobs by vessel evidence", () => {
     });
     expect(() => blank.advance(() => false)).toThrow();
     expect(() => blank.result()).toThrow("not complete");
+  });
+});
+
+describe("overlay jobs started from a proposed view", () => {
+  const OFF = 40,
+    identity = [
+      [1, 0, 0, 0],
+      [0, 1, 0, 0],
+      [0, 0, 1, 0],
+      [0, 0, 0, 1],
+    ],
+    // The operator's angles are 40 degrees off. The frame was taken at VIEW.
+    entered = { ...VIEW, primary_deg: VIEW.primary_deg + OFF },
+    seen = {
+      primary_deg: VIEW.primary_deg,
+      secondary_deg: VIEW.secondary_deg,
+      turn_deg: 0,
+    },
+    evidence = {
+      ...input,
+      view: entered,
+      search: { ...input.search!, method: "vessel_evidence" as const },
+    };
+  /** Mean distance, in pixels, between where a result puts the vessel
+   * points and where the frame's true pose puts them. */
+  const pixelsOff = (
+    view: typeof VIEW,
+    result: { isocenter: [number, number, number]; points: Float32Array },
+    matrix: number[][],
+    trueView = VIEW,
+    truePose = truth,
+  ) => {
+    const got = projectRegistered(
+        view,
+        result.isocenter,
+        matrix,
+        result.points,
+        size,
+      ),
+      want = projectRegistered(trueView, pivot, truePose, medial.points, size);
+    let sum = 0;
+    for (let k = 0; k < got.length; k += 2)
+      sum += Math.hypot(got[k] - want[k], got[k + 1] - want[k + 1]);
+    return sum / (got.length / 2);
+  };
+
+  it("starts at the volume's own position when no view is given", () => {
+    const job = createOverlayJob({ ...input, search: null });
+    expect(job.advance(() => false)).toBe(true);
+    expect(job.result().start).toEqual(identity);
+    const pairJob = createBiplaneOverlayJob({ ...pair, search: false });
+    expect(pairJob.advance(() => false)).toBe(true);
+    expect(pairJob.result().start).toEqual(identity);
+  });
+
+  it("finds the pose from a proposed view that the entered angles miss", () => {
+    const from = createOverlayJob({ ...evidence, start_view: seen });
+    expect(from.advance(() => false)).toBe(true);
+    const result = from.result(),
+      found = result.evidence!;
+    expect(result.start).toEqual(
+      startFromProposedView(entered, seen, centroid(medial.points)),
+    );
+    // The entered angles are kept: the model was turned under them.
+    expect(found.planes[0].view).toEqual(entered);
+    expect(pixelsOff(entered, result, found.matrix)).toBeLessThan(1.5);
+    // The same search from the volume's own position ends further off.
+    const without = createOverlayJob(evidence);
+    expect(without.advance(() => false)).toBe(true);
+    const missed = without.result();
+    expect(missed.start).toEqual(identity);
+    expect(pixelsOff(entered, missed, missed.evidence!.matrix)).toBeGreaterThan(
+      3,
+    );
+  }, 120000);
+
+  it("starts the centerline distance search the same way", () => {
+    const job = createOverlayJob({
+      ...input,
+      view: entered,
+      start_view: seen,
+    });
+    expect(job.advance(() => false)).toBe(true);
+    const result = job.result();
+    expect(result.start).toEqual(
+      startFromProposedView(entered, seen, centroid(medial.points)),
+    );
+    expect(pixelsOff(entered, result, result.proposal!.matrix)).toBeLessThan(
+      1.5,
+    );
+  }, 120000);
+
+  it("turns the model once for two planes, from either plane's view", () => {
+    const planes = pair.planes.map((plane) => ({
+        ...plane,
+        view: { ...plane.view, primary_deg: plane.view.primary_deg + OFF },
+      })) as BiplaneOverlayJobInput["planes"],
+      off = { ...pair, planes, method: "vessel_evidence" as const };
+    for (const k of [0, 1] as const) {
+      const truly = [VIEW, VIEW_B][k],
+        job = createBiplaneOverlayJob({
+          ...off,
+          start_view: {
+            plane: k,
+            view: {
+              primary_deg: truly.primary_deg,
+              secondary_deg: truly.secondary_deg,
+              turn_deg: 0,
+            },
+          },
+        });
+      expect(job.advance(() => false)).toBe(true);
+      const result = job.result(),
+        found = result.evidence!;
+      expect(result.start).toEqual(
+        startFromProposedView(
+          planes[k].view,
+          { ...truly, turn_deg: 0 },
+          centroid(medial.points),
+        ),
+      );
+      expect(found.planes.map((one) => one.view)).toEqual([
+        planes[0].view,
+        planes[1].view,
+      ]);
+      // Right in both frames at once.
+      expect(
+        pixelsOff(planes[0].view, result, found.matrix, VIEW, pairTruth),
+      ).toBeLessThan(1.5);
+      expect(
+        pixelsOff(planes[1].view, result, found.matrix, VIEW_B, pairTruth),
+      ).toBeLessThan(1.5);
+    }
+  }, 240000);
+
+  it("carries the start through a redraw", () => {
+    const job = createOverlayJob({
+      ...input,
+      view: entered,
+      search: null,
+      start_view: seen,
+    });
+    expect(job.advance(() => false)).toBe(true);
+    expect(job.result().start).toEqual(
+      startFromProposedView(entered, seen, centroid(medial.points)),
+    );
+    expect(job.result().evidence).toBeNull();
   });
 });

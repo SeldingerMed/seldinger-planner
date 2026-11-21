@@ -58,6 +58,11 @@ import { loadSegmentationMask, type SegmentationEntry } from "./segmentation";
 import { stable, type Identity } from "./territoryWorkflow";
 import type { Polarity, VesselTarget } from "./vesselness2d";
 import VesselPresencePanel from "./VesselPresencePanel";
+import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
+import ViewProposalPicker, {
+  viewWords,
+  type StartPick,
+} from "./ViewProposalPicker";
 import "./reformats.css";
 
 type Props = {
@@ -112,6 +117,9 @@ type Outcome = {
   scope: string;
   /** "saved" redraws a confirmed record; "proposal" is unsaved. */
   kind: "proposal" | "saved";
+  /** The proposed view the search started from, if it did. Such a proposal
+   * cannot be saved: no record version states that start. */
+  started?: StartPick | null;
   result?: OverlayJobResult;
   matrix?: number[][];
   view?: ViewNumbers;
@@ -141,7 +149,7 @@ const DEFAULT_EDITOR: Editor = {
 };
 const SLICE_MS = 12,
   HIDDEN_SLICE_MS = 800;
-export const OVERLAY_REQUEST_TIMEOUT_MS = 30_000;
+export const OVERLAY_REQUEST_TIMEOUT_MS = STUDIO_REQUEST_TIMEOUT_MS;
 const percent = (fraction: number) => `${Math.round(fraction * 100)}%`;
 /** Plane B starts as a lateral view: two planes at one angle cannot be fitted. */
 const defaults = (label: PlaneLabel): PlaneSettings => ({
@@ -427,8 +435,13 @@ export default function ProjectionOverlayStudio({
       kind: Outcome["kind"];
       job: { advance(expired: () => boolean): boolean };
       /** What the completed job found, as the rest of an outcome. */
-      finish: () => Pick<Outcome, "result" | "matrix" | "view" | "pair">;
+      finish: () => Pick<
+        Outcome,
+        "result" | "matrix" | "view" | "pair" | "started"
+      >;
     } | null>(null),
+    // A proposed view the operator picked to start the search from.
+    [startPick, setStartPick] = useState<StartPick | null>(null),
     [outcome, setOutcome] = useState<Outcome | null>(null),
     [reviewedOutcome, setReviewedOutcome] = useState<Outcome | null>(null),
     [attestedOutcome, setAttestedOutcome] = useState<Outcome | null>(null),
@@ -516,6 +529,7 @@ export default function ProjectionOverlayStudio({
     setSettings({});
     setPicks({});
     setPaired(false);
+    setStartPick(null);
   }, [source]);
 
   const load = useCallback(async () => {
@@ -667,6 +681,33 @@ export default function ProjectionOverlayStudio({
     pairDistinct = !!pairSetup && pairSetup[0].sha256 !== pairSetup[1].sha256,
     pairReady =
       pairAngle !== null && planesFarEnough(pairAngle) && pairDistinct;
+  // A picked view belongs to the frame, the plane it was admitted under and
+  // the polarity it was proposed for. For two planes it may be either
+  // plane's, whichever frame is on screen. A frame is known by its bytes:
+  // opened again in this source under the same plane, it is the frame the
+  // view was picked for, and the status line shows the pick in force.
+  // Another source drops it.
+  const pickedHere =
+      startPick &&
+      shownFrame &&
+      startPick.frame_sha256 === shownFrame.sha256 &&
+      startPick.plane === shownFrame.plane &&
+      startPick.polarity === polarity
+        ? startPick
+        : null,
+    pairStartPlane =
+      startPick && pairSetup
+        ? pairSetup.findIndex(
+            (item) =>
+              item.plane === startPick.plane &&
+              item.sha256 === startPick.frame_sha256 &&
+              item.polarity === startPick.polarity,
+          )
+        : -1,
+    startFrom = pairOn ? (pairStartPlane >= 0 ? startPick : null) : pickedHere,
+    startScope = startFrom
+      ? { frame: startFrom.frame_sha256, view: startFrom.view }
+      : null;
   const singleScope =
     shownFrame && mask && view
       ? stable({
@@ -682,6 +723,7 @@ export default function ProjectionOverlayStudio({
           // Vessel evidence does not read the sensitivity.
           sensitivity: method === "vessel_evidence" ? null : sensitivity,
           method,
+          start: startScope,
         })
       : "";
   const pairScope =
@@ -697,6 +739,7 @@ export default function ProjectionOverlayStudio({
               : pairSetup,
           isocenter,
           method,
+          start: startScope,
         })
       : "";
   const scope = pairOn ? pairScope : singleScope;
@@ -870,6 +913,8 @@ export default function ProjectionOverlayStudio({
     if (!a.view || !b.view) return;
     const views: [ViewNumbers, ViewNumbers] = [a.view, b.view],
       owned = key,
+      from = startFrom,
+      startPlane = pairStartPlane,
       started = pairScope,
       { release, signal } = begin();
     setOutcome(null);
@@ -918,6 +963,10 @@ export default function ProjectionOverlayStudio({
         isocenter,
         search: true,
         method,
+        start_view:
+          from && startPlane >= 0
+            ? { plane: startPlane as 0 | 1, view: from.view }
+            : null,
       });
     setRun({
       scope: started,
@@ -928,6 +977,7 @@ export default function ProjectionOverlayStudio({
           found = result.proposal ?? result.evidence;
         if (!found) throw new Error("No proposal was computed");
         return {
+          started: from,
           pair: {
             frames: pairFrames,
             views: [found.planes[0].view, found.planes[1].view],
@@ -948,6 +998,7 @@ export default function ProjectionOverlayStudio({
     if (pairOn) return proposePair();
     if (!editable || !shownFrame || !mask || !view || !grid || !scope) return;
     const owned = key,
+      from = startFrom,
       started = scope,
       { release, signal } = begin();
     setOutcome(null);
@@ -981,6 +1032,7 @@ export default function ProjectionOverlayStudio({
       view,
       isocenter,
       search: { method, polarity, sensitivity, fit_detector_scale: fit },
+      start_view: from?.view ?? null,
     });
     setRun({
       scope: started,
@@ -989,6 +1041,7 @@ export default function ProjectionOverlayStudio({
       finish: () => {
         const result = job.result();
         return {
+          started: from,
           result,
           matrix: (result.proposal ?? result.evidence)?.matrix,
           view:
@@ -1118,6 +1171,8 @@ export default function ProjectionOverlayStudio({
   }
   async function save() {
     if (!editable || !current || !mask || !reviewed || !shown) return;
+    // No record version states a start from a proposed view.
+    if (shown.started) return;
     const result = shown.result,
       pair = shown.pair;
     let inputs: SavedInputs,
@@ -1621,6 +1676,23 @@ export default function ProjectionOverlayStudio({
                   </>
                 )}
               </div>
+              <ViewProposalPicker
+                frame={shownFrame}
+                polarity={polarity}
+                disabled={!!active}
+                picked={startFrom === pickedHere ? pickedHere : null}
+                elsewhere={startFrom !== pickedHere ? startFrom : null}
+                onPick={setStartPick}
+              />
+              {startFrom && (
+                <p role="status" aria-label="Search start">
+                  The search will start from proposed view {startFrom.rank + 1}
+                  {pairOn
+                    ? ` for plane ${startFrom.plane.toUpperCase()}'s frame`
+                    : ""}
+                  : {viewWords(startFrom.view)}.
+                </p>
+              )}
               {!active && (
                 <div className="native-actions">
                   <button
@@ -1794,7 +1866,28 @@ export default function ProjectionOverlayStudio({
               </figure>
             )
           )}
-          {unsaved && (
+          {unsaved && shown?.started && (
+            <fieldset disabled={!editable}>
+              <legend>Review only</legend>
+              <p role="status" aria-label="Start of this proposal">
+                This proposal started from proposed view{" "}
+                {shown.started.rank + 1}
+                {pairPending
+                  ? ` for plane ${shown.started.plane.toUpperCase()}'s frame`
+                  : ""}
+                : {viewWords(shown.started.view)}. The 3D model was turned under
+                the entered geometry before the search. A proposal started this
+                way cannot be saved: no saved record states that start. To save,
+                start the search from the volume&apos;s own position.
+              </p>
+              <div className="native-actions">
+                <button type="button" onClick={() => setOutcome(null)}>
+                  Discard proposal
+                </button>
+              </div>
+            </fieldset>
+          )}
+          {unsaved && !shown?.started && (
             <fieldset disabled={!editable}>
               <legend>Confirm</legend>
               <label>

@@ -38,6 +38,17 @@ RSNA_ANEURYSM_CHECKPOINT = CheckpointSpec(
 RSNA_ANEURYSM_REVISION = "pengchengshi/dataset660_26classes_resize224_4661/pytorch/default/2"
 RSNA_ANEURYSM_SOURCE_REVISION = "1ead0ba4dc00bcd84591269995dde6a8446ca3ad"
 
+# The view network of Step C4 part 4, as exported by the one training run of
+# 2026-11-18. A research artifact: see docs/research/view-network-v1.md.
+VIEW_NETWORK = CheckpointSpec(
+    7097120,
+    "1c76811cc68707e9a55c8ad99b75e13eeaf9b292c1fb10db75c0e7872a2b8b56",
+)
+# The commit of the training code. Provenance only: no record is stamped with
+# it, because a proposal started from a proposed view is not saved. A test
+# holds it, the size and the hash equal to the record of the weights.
+VIEW_NETWORK_REVISION = "c9e01d286c63f7121c2a2994b027dfab37a0be62"
+
 
 @contextmanager
 def verified_checkpoint(path: Path, *, expected: CheckpointSpec = OWNED_VESSEL_CHECKPOINT):
