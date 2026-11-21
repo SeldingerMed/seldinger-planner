@@ -211,13 +211,49 @@ The fit of part 1 starts at the entered size and follows the cost downhill. When
 - [x] 2.3 Protocol committed at `cb8a241`, then one run: held-back two-plane runs under 1 mm with the sizes entered wrong, 37 of 50 against 25 of 50.
 - [x] 2.4 Results page, guide, verification record, pull request.
 
-## Parts 3, 5 and 6
+## Part 3: devices in the frame
 
-Each gets its own acceptance criteria here when it starts. Known inputs:
+A small network that marks catheter and guidewire pixels in one frame, so that vessel evidence is not read from them. Built and measured on the branch `research/device-network-v1`; nothing of it is in the planner.
 
-- Part 3. Candidate public data: Guide3D and CathAction (guidewires and catheters). Licences are checked before any download. No public labelled set for implanted devices has been identified.
-- Part 5. Frame admission is capped at 8 frames per plane, so contrast timing needs a bounded time-series path. TAIR has no calibrated pixels and no trusted frame times.
-- Part 6. Latency is measured and reported.
+- Training: the WEISS fluoroscopy set (CC BY 4.0; a phantom and six aortic procedures, split by procedure), with synthetic vessels, drawn devices and drawn vessel trees laid over.
+- Gate, fixed before the second network was gated: on held-out procedures and vessel pictures the network marks under 2% of vessel pixels and under 5% of the frame.
+- Use: devices of the validation procedure laid over the Ljubljana frames of subjects 01 to 05, registered with the marked pixels left in and taken out.
+
+Outcome, 2026-11-21. The fifth network marks 0.03% of the vessel pixels of held-out vessel pictures and 7.6% of drawn thin vessel trees, and finds 35% of the labelled device pixels of the two held-out procedures. On the Ljubljana frames it finds a mean of 6% of the laid-over devices. Runs under 1 mm: 144 of 150 with the marked pixels left in and 144 of 150 with them taken out; no run moved by more than 0.5 mm either way. The search already ends in the same place with a catheter in the frame, so the step has nothing to gain there and is not built into the planner. Protocol `ljubljana-device-removal-v1` was not committed or run; subjects 06 to 10 were not read.
+
+## Part 5: comparison layer
+
+Read from a confirmed registration, its frames and the accepted vessel mask, under the vessel presence report. The 3D side is the unnamed segments of `vesselSegments.ts` and their axis samples, one per millimeter.
+
+### Design
+
+1. **A sample in a frame** (`framePlacement.ts`). The frame pixel of every axis sample under the registration, and the size of one frame pixel in millimeters at that sample's depth.
+2. **A mark carried into 3D** (`carryPoint.ts`). The operator clicks a place in a frame. The axis sample nearest the mark in the frame, within 3 mm at the sample's depth, is the carried point. With a mark in each of two planes it is the sample nearest both. One plane cannot tell two vessels that cross under the mark apart, so the number of other vessels under it is given with the point.
+3. **Diameter, 3D against 2D** (`axisRadius.ts`, `frameDiameter.ts`, `diameterComparison.ts`). 3D: the distance from each axis sample to the edge of the mask. 2D: the brightness profile across the vessel at the sample; its width at half depth, divided by 0.866 (a round vessel filled evenly), times the pixel size at the sample's depth. A sample another vessel lies over in the frame is not measured. Per segment the median of each, and per unbranched run the narrowest place of each against the run's own median.
+4. **Contrast arrival** (`contrastArrival.ts`). From the frames of a plane's run in the bundle, in acquisition order: the filling of a segment in a frame is the mean darkening under its axis samples against the brightest that place gets in the run. A segment's arrival is the frame position at which its filling first reaches half its peak. The answer is in source frame numbers; the bundle carries no frame times.
+5. **Planned against deployed device** (`deviceComparison.ts`). The operator marks the two ends of the deployed device; each is carried to the vessel axis. They are compared with the ends of a saved planned device that lies along a vessel: the distance of each marked end to the planned end, and the two lengths.
+6. **Studio.** One section under the presence report. Nothing is saved; every number is recomputed from the confirmed record.
+
+### Acceptance criteria
+
+- On the synthetic phantom, whose tube radii are known: a mark carried from two planes returns the sample it was made on; segment diameters from the frame and from the mask are each within 0.6 mm of the tube's; a narrowed stretch is found as the narrowest place of its run in both; segments fill in the order contrast was drawn to reach them.
+- Records of versions 1 to 8 and the presence report are unchanged.
+
+## Part 6: overlay on a replayed recording
+
+The studio plays a recording file the operator opens from disk and draws the registered vessel axis over every frame. The file is decoded by the browser and is not sent anywhere.
+
+### Design
+
+1. **Sidecar** (`recordingSidecar.ts`). The public TAIR recordings come with one row per frame read off the screen text: the kind of frame, the C-arm angles and the field size. The reader takes what parses, and carries the last good angles over frames whose text does not parse.
+2. **Overlay per frame** (`replayOverlay.ts`). The confirmed pose is kept. For a frame at other C-arm angles than the confirmed frame the axis is projected at that frame's angles, so the overlay turns with the C-arm.
+3. **Latency** (`replayLatency.ts`). For every frame the browser presents: the time from its presentation to the overlay drawn, and the frames the browser presented and the page did not draw. Shown as median, 95th percentile and worst, and written to a small JSON the operator can save.
+4. **Measured run.** Three TAIR recordings replayed in the studio on this workstation; the numbers go into `docs/verification/step-c4-replay.md`.
+
+### Acceptance criteria
+
+- A replayed recording shows the overlay on every drawn frame, and the latency figures are from the run shown.
+- With angles in the sidecar the overlay at the confirmed frame's angles equals the confirmed overlay.
 
 ## Decisions log
 
@@ -269,3 +305,6 @@ Each gets its own acceptance criteria here when it starts. Known inputs:
 - 2026-11-21. Part 2. Protocol `ljubljana-detector-size-v1` run once at `cb8a241`. Held-back subjects 06 to 10, two planes, sizes entered wrong: 37 of 50 runs under 1 mm from the search of the size and 25 of 50 from the fit; 20 runs nearer, none farther. All ten subjects: 87 of 100 against 69 of 100. With the sizes entered right 149 of 150 runs ended exactly where the fit ended and one 0.04 mm from it. The harness records only the search's own failure as no proposal and counts such runs apart. The protocol is spent.
 - 2026-11-21. Part 2, for the next version of the size search. The margin for keeping another size compares two costs measured differently: the cost at the entered sizes is rebuilt from the fitted search's own `fit_gain`, which the search may have taken at a wider blur, and the other side is the cost of the reported scores at the narrowest blur. `vessel_evidence_size_search_v1` stays as it was run under `ljubljana-detector-size-v1`. A next version measures both sides on the reported scores.
 - 2026-11-21. Part 2, after the protocol run, from review. (a) When no start finds a pose at the entered sizes, the studio's path now searches the sizes from the volume's own position, as the size search called alone does. (b) A fitted plane whose searches alone find no pose at any size stays at its entered size, and the other plane's sizes are still searched with it. Both act only where a search finds no pose. The protocol harness rerun on subjects 01 to 05 with both changes gives the run's 225 rows again, every distance and fit outcome equal (`fusion-c4/detector-size/dev-3-after-review`). Subjects 06 to 10 were not run again.
+- 2026-11-21. Part 3 measured and not built in. Networks 4 and 5 failed the gate on drawn thin vessel trees (73% and 7.6% of their pixels marked, against a limit of 2%) and found a mean of 9% and 6% of devices laid over the Ljubljana frames of subjects 01 to 05. With the marked pixels taken out no gain held (network 5: 144 of 150 runs under 1 mm both ways, no run moved more than 0.5 mm; network 4: 147 against 144, with one run 5.5 mm farther). With devices left in, 144 of 150 runs already end under 1 mm. The code stays on `research/device-network-v1`. A network that finds neurovascular devices needs labelled neurovascular frames; the two public sets that have them are licensed for non-commercial use.
+- 2026-11-21. Part 5, planned against deployed device: the deployed device's ends are marked by the operator and carried to the vessel axis. Detection of the device in the frame waits for part 3's network.
+- 2026-11-21. Parts 5 and 6 designed as above.

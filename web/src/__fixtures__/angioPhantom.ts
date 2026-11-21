@@ -58,6 +58,21 @@ function segmentDistance(p: Vec3, a: Vec3, b: Vec3): number {
     );
   return Math.hypot(ap[0] - t * ab[0], ap[1] - t * ab[1], ap[2] - t * ab[2]);
 }
+/** The index of the tube whose axis a point lies nearest. */
+export function nearestTube(p: Vec3, tree: Tube[] = TREE): number {
+  let best = 0,
+    least = Infinity;
+  tree.forEach(({ path }, index) =>
+    path.slice(1).forEach((b, i) => {
+      const off = segmentDistance(p, path[i], b);
+      if (off < least) {
+        least = off;
+        best = index;
+      }
+    }),
+  );
+  return best;
+}
 export function insideTree(p: Vec3, tree: Tube[] = TREE): boolean {
   return tree.some(({ path, radius }) =>
     path.slice(1).some((b, i) => segmentDistance(p, path[i], b) < radius),
@@ -146,6 +161,10 @@ export type FrameOptions = {
   noise: number;
   seed: number;
   tree?: Tube[];
+  /** The tree whose deepest place is drawn at full contrast; the drawn
+   * tree when absent. Frames of one run share it, so that a vessel is as
+   * dark in each frame it is filled in. */
+  contrast_of?: Tube[];
 };
 
 /** 8-bit frame of the tree placed by `pose` (volume RAS to C-arm RAS). */
@@ -156,10 +175,39 @@ export function renderFrame(
   options: FrameOptions,
 ): Uint8Array {
   const { width, height } = options,
-    cam = camera(view, isocenter),
+    sums = pathLengths(view, isocenter, pose, options, options.tree ?? TREE);
+  let peak = 0;
+  for (const value of options.contrast_of
+    ? pathLengths(view, isocenter, pose, options, options.contrast_of)
+    : sums)
+    if (value > peak) peak = value;
+  const random = lcg(options.seed),
+    out = new Uint8Array(width * height);
+  for (let row = 0, at = 0; row < height; row++)
+    for (let col = 0; col < width; col++, at++) {
+      // Smooth background ramp, contrast proportional to path length.
+      const background = 150 + 30 * (col / width) + 20 * (row / height),
+        contrast = (110 * sums[at]) / (peak || 1),
+        noise = options.noise * (random() - 0.5),
+        dark = background - contrast + noise,
+        value = options.polarity === "dark" ? dark : 255 - dark;
+      out[at] = Math.max(0, Math.min(255, Math.round(value)));
+    }
+  return out;
+}
+
+/** Per pixel, how much of the tree a ray to it passes through. */
+function pathLengths(
+  view: ViewNumbers,
+  isocenter: Vec3,
+  pose: number[][],
+  { width, height }: { width: number; height: number },
+  tree: Tube[],
+): Float32Array {
+  const cam = camera(view, isocenter),
     sums = new Float32Array(width * height);
   const step = 0.3;
-  for (const { path, radius } of options.tree ?? TREE)
+  for (const { path, radius } of tree)
     for (let s = 1; s < path.length; s++) {
       const a = path[s - 1],
         b = path[s],
@@ -197,19 +245,5 @@ export function renderFrame(
               sums[row * width + col] += 1;
           }
     }
-  const random = lcg(options.seed),
-    out = new Uint8Array(width * height);
-  let peak = 0;
-  for (const value of sums) if (value > peak) peak = value;
-  for (let row = 0, at = 0; row < height; row++)
-    for (let col = 0; col < width; col++, at++) {
-      // Smooth background ramp, contrast proportional to path length.
-      const background = 150 + 30 * (col / width) + 20 * (row / height),
-        contrast = (110 * sums[at]) / (peak || 1),
-        noise = options.noise * (random() - 0.5),
-        dark = background - contrast + noise,
-        value = options.polarity === "dark" ? dark : 255 - dark;
-      out[at] = Math.max(0, Math.min(255, Math.round(value)));
-    }
-  return out;
+  return sums;
 }

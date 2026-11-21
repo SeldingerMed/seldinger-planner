@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  nearestTube,
   renderFrame,
   TREE,
   treeMask,
@@ -37,30 +38,12 @@ const size = { width: SIDE, height: SIDE },
     segments,
   );
 
-function toTube(p: number[], a: Vec3, b: Vec3): number {
-  const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]],
-    ap = [p[0] - a[0], p[1] - a[1], p[2] - a[2]],
-    t = Math.max(
-      0,
-      Math.min(
-        1,
-        (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) /
-          (ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2),
-      ),
-    );
-  return Math.hypot(ap[0] - t * ab[0], ap[1] - t * ab[1], ap[2] - t * ab[2]);
-}
 /** The diameter of the phantom's tube a sample lies in. */
-function drawn(tree: Tube[], set: VesselSegments, k: number): number {
-  const p = Array.from(set.points.subarray(3 * k, 3 * k + 3));
-  let best = { off: Infinity, radius: NaN };
-  for (const { path, radius } of tree)
-    for (let i = 1; i < path.length; i++) {
-      const off = toTube(p, path[i - 1], path[i]);
-      if (off < best.off) best = { off, radius };
-    }
-  return 2 * best.radius;
-}
+const drawn = (tree: Tube[], set: VesselSegments, k: number) =>
+  2 *
+  tree[
+    nearestTube(Array.from(set.points.subarray(3 * k, 3 * k + 3)) as Vec3, tree)
+  ].radius;
 
 /** One straight vessel of 4 mm with 12 mm of it drawn at 2 mm. */
 const along = (s: number): Vec3 => {
