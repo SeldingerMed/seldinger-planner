@@ -42,7 +42,9 @@ import { stable, type Identity } from "./territoryWorkflow";
 
 export const COMPARISON_REQUEST_TIMEOUT_MS = 30_000;
 const SLICE_MS = 12,
-  HIDDEN_SLICE_MS = 800;
+  HIDDEN_SLICE_MS = 800,
+  /** Times the saved device plans are asked for before a 409 stands. */
+  DEVICE_PLAN_READS = 2;
 
 type Props = {
   identity: Identity;
@@ -403,32 +405,40 @@ export default function ComparisonPanel({
         runs.push(series.map(({ index, gray }) => ({ index, gray })));
       }
       const stored = await loadSegmentationMask(mask, binding, signal);
-      // Saved planned devices are optional: a case may have none, and one
-      // without current measurements (409) has none to read.
+      // Saved planned devices are optional: a case may have none. The server
+      // answers 409 both for a case without current measurements, which has
+      // no plans, and for plans that changed while it read them. The second
+      // clears when they are asked for again; a 409 that stands is the first.
       let devices: DeviceScenarioEntry[] = [],
         unread = false;
-      try {
-        const raw = await api<Record<string, unknown>>(
-            `/cases/${encodeURIComponent(identity.case_id)}/device-scenarios`,
-            undefined,
-            "GET",
-            signal,
-          ),
-          envelope = parseDeviceScenarios(raw, {
-            ...identity,
-            geometry_result_id: String(raw?.geometry_result_id),
-            catalog_version: String(raw?.catalog_version),
-          });
-        if (envelope.current.status === "current")
-          devices = envelope.current.scenarios.filter(
-            (scenario) =>
-              DEVICE_CATALOG.devices.find(
-                (device) => device.id === scenario.placement.deviceId,
-              )?.category === "flow-diverter" && liesOnPath(scenario.placement),
-          );
-      } catch (error) {
-        if (signal.aborted) throw new Error("aborted");
-        unread = !(error instanceof RevisionConflictError);
+      for (let read = 0; read < DEVICE_PLAN_READS; read++) {
+        try {
+          const raw = await api<Record<string, unknown>>(
+              `/cases/${encodeURIComponent(identity.case_id)}/device-scenarios`,
+              undefined,
+              "GET",
+              signal,
+            ),
+            envelope = parseDeviceScenarios(raw, {
+              ...identity,
+              geometry_result_id: String(raw?.geometry_result_id),
+              catalog_version: String(raw?.catalog_version),
+            });
+          if (envelope.current.status === "current")
+            devices = envelope.current.scenarios.filter(
+              (scenario) =>
+                DEVICE_CATALOG.devices.find(
+                  (device) => device.id === scenario.placement.deviceId,
+                )?.category === "flow-diverter" &&
+                liesOnPath(scenario.placement),
+            );
+          break;
+        } catch (error) {
+          if (signal.aborted) throw new Error("aborted");
+          if (error instanceof RevisionConflictError) continue;
+          unread = true;
+          break;
+        }
       }
       // Everything is fetched; decoding a large mask is local work.
       clearTimeout(deadline);

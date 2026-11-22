@@ -499,12 +499,20 @@ test("compares without a planned device, and with one frame leaves contrast arri
 
 test("tells a case without measurements from device plans that could not be read", async () => {
   canvases();
-  // No current measurements: the case has no device plans to compare.
-  server({ frames: { 12: gray }, devices: () => json({}, 409) });
+  // No current measurements: the case has no device plans to compare. The
+  // server gives the same answer where the plans changed while it read them,
+  // so they are asked for once more, and no more than that.
+  const calls = server({
+    frames: { 12: gray },
+    devices: () => json({}, 409),
+  });
   render(<Panel />);
   fireEvent.click(button("Compare 2D and 3D"));
   await compared();
   expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
+  expect(
+    calls.filter((call) => call.endsWith("/device-scenarios")),
+  ).toHaveLength(2);
   for (const unread of [
     () => json({}, 503),
     () => json({ case_id: "another" }),
@@ -521,6 +529,18 @@ test("tells a case without measurements from device plans that could not be read
     expect(rows("Segment comparison").length).toBeGreaterThan(1);
     expect(screen.queryByRole("combobox")).toBeNull();
   }
+}, 60000);
+
+test("reads the device plans again where they changed while they were read", async () => {
+  canvases();
+  let asked = 0;
+  server({ devices: () => (asked++ ? json(planned) : json({}, 409)) });
+  render(<Panel />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  expect(asked).toBe(2);
+  expect(screen.getByRole("combobox", { name: /Planned device/ })).toBeTruthy();
+  expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
 }, 60000);
 
 test("says why the saved proposal's frames or mask were not used: not the confirmed ones, spoiled, or not to be had", async () => {
