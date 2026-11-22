@@ -90,12 +90,12 @@ def block_affine(affine, block: int):
     return out
 
 
-def _i16(volume) -> bytes:
+def _i16(volume, order: str = "F") -> bytes:
     import numpy
 
     if not numpy.isfinite(volume).all():
         raise PrepareError("Unexpected volume")
-    return numpy.clip(numpy.rint(volume), -32768, 32767).astype("<i2").tobytes(order="F")
+    return numpy.clip(numpy.rint(volume), -32768, 32767).astype("<i2").tobytes(order=order)
 
 
 def _u16(frame) -> bytes:
@@ -209,6 +209,7 @@ def prepare_deepfluoro(source: Path, destination: Path) -> list[dict]:
     return [
         prepare_deepfluoro_subject(s, root / s.name, listed, f"deepfluoro/{s.name}")
         for s in subjects
+        if not (root / s.name / "subject.json").is_file()
     ]
 
 
@@ -229,40 +230,51 @@ def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, dest
     import numpy
     import pydicom
 
-    slices = []
+    # The scan is read one slice at a time, so a case never holds more than
+    # one block of slices in memory.
+    heads = []
     for name in members["CBCT"]:
-        ds = pydicom.dcmread(io.BytesIO(archive.read(name)))
-        slope, inter = float(ds.get("RescaleSlope", 1)), float(ds.get("RescaleIntercept", 0))
-        slices.append(
+        ds = pydicom.dcmread(io.BytesIO(archive.read(name)), stop_before_pixels=True)
+        heads.append(
             (
                 [float(v) for v in ds.ImagePositionPatient],
                 [float(v) for v in ds.ImageOrientationPatient],
                 [float(v) for v in ds.PixelSpacing],
-                ds.pixel_array.astype(numpy.float64) * slope + inter,
+                (int(ds.Rows), int(ds.Columns)),
+                name,
             )
         )
-    slices.sort(key=lambda s: s[0][2])
-    first = slices[0]
-    steps = {round(b[0][2] - a[0][2], 4) for a, b in itertools.pairwise(slices)}
+    heads.sort(key=lambda s: s[0][2])
+    first = heads[0]
+    steps = {round(b[0][2] - a[0][2], 4) for a, b in itertools.pairwise(heads)}
     if (
-        len(slices) < 8
+        len(heads) < 8
         or len(steps) != 1
         or min(steps) <= 0
         or first[1] != [1, 0, 0, 0, 1, 0]
-        or any(s[1] != first[1] or s[2] != first[2] or s[0][:2] != first[0][:2] for s in slices)
-        or any(s[3].shape != first[3].shape for s in slices)
+        or any(s[1:4] != first[1:4] or s[0][:2] != first[0][:2] for s in heads)
     ):
         raise PrepareError(f"Unexpected scan geometry: {case}")
-    # Array axes become x, y, z: a slice is rows (y) by columns (x).
-    volume = numpy.stack([s[3] for s in slices], axis=-1).transpose(1, 0, 2)
+    rows, columns = first[3]
+    stored_shape = [columns, rows, len(heads)]
+    slabs = []
+    for at in range(0, len(heads) - len(heads) % SCAN_BLOCK, SCAN_BLOCK):
+        block = []
+        for head in heads[at : at + SCAN_BLOCK]:
+            ds = pydicom.dcmread(io.BytesIO(archive.read(head[4])))
+            slope, inter = float(ds.get("RescaleSlope", 1)), float(ds.get("RescaleIntercept", 0))
+            block.append(ds.pixel_array.astype(numpy.float64) * slope + inter)
+        # A slice is rows (y) by columns (x); written row after row, slab after
+        # slab, the bytes run x fastest, then y, then z.
+        slabs.append(_i16(block_mean(numpy.stack(block), SCAN_BLOCK)[0], order="C"))
+    reduced_shape = [columns // SCAN_BLOCK, rows // SCAN_BLOCK, len(slabs)]
     row_mm, column_mm = first[2]
     # DICOM patient axes are left and posterior positive; the record's affine
     # is in RAS, as a NIfTI affine is.
     lps = numpy.diag([column_mm, row_mm, steps.pop(), 1.0])
     lps[:3, 3] = first[0]
     affine = numpy.diag([-1.0, -1.0, 1.0, 1.0]) @ lps
-    reduced = block_mean(volume, SCAN_BLOCK)
-    files = {"volume.i16": _i16(reduced)}
+    files = {"volume.i16": b"".join(slabs)}
 
     frames = {}
     for name in sorted(members["C-arm"]):
@@ -295,10 +307,10 @@ def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, dest
     record = {
         "set": "lspine",
         "subject": case,
-        "stored_volume_shape": list(volume.shape),
+        "stored_volume_shape": stored_shape,
         "stored_volume_affine": affine.tolist(),
         "scan_block": SCAN_BLOCK,
-        "volume_shape": list(reduced.shape),
+        "volume_shape": reduced_shape,
         "volume_affine": block_affine(affine, SCAN_BLOCK).tolist(),
         "frame_block": FRAME_BLOCK,
         "frames": frames,
