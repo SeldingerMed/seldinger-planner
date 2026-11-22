@@ -58,4 +58,7 @@ Every result is a proposal the operator confirms. Nothing is accepted automatica
 
 - 2026-11-22: Step D started. All 17 open datasets for Steps D and E are on the research drive, each checked against its checksum.
 - 2026-11-22: C-ArmLSpine has no fiducial reference. Its reference is the C-arm's own geometry, since the scan and the frames come from the same machine in one session. DeepFluoro supplies the fiducial-based reference.
+- 2026-11-22: the format step (`scripts/research/prepare_bone_sets.py`) wrote DeepFluoro subjects 1 to 3 and C-ArmLSpine cases 1 to 49, the design sets, to the research drive. Frames are averaged over 4 by 4 pixels and the lumbar scans over 2 by 2 by 2 voxels, to 1 mm. The lumbar scan is reduced slice block by slice block so the step stays small in memory on a machine that is also training.
+- 2026-11-22: all 49 design cases hold two frames, at 0 and 90 degrees to within a degree. A few cases also keep the sweep's own projections beside the scan (case 39: 301 frames of 1024 pixels a side). They are listed in the record and not read; they are a later source of frames at many known angles.
+- 2026-11-22: a DeepFluoro frame is stored at 1536 pixels a side while its stored intrinsics describe a 1436-pixel frame cut from it. The format step keeps the whole frame and records both; the cut is read in the evaluation's geometry code.
 - 2026-11-22: the bone line-up is built in the browser engine, in the pattern of the vessel engines, and measured by an offline harness that runs the same engine code.
