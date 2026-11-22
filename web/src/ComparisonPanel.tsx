@@ -6,7 +6,7 @@
  * computed here from the frames, the mask and the saved pose; nothing is
  * saved. Pixels are read, verified and drawn; they are never sent. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api } from "./api";
+import { api, RevisionConflictError } from "./api";
 import { carryPoint, type CarriedPoint, type FrameMark } from "./carryPoint";
 import type { ViewNumbers } from "./carmGeometry";
 import {
@@ -42,9 +42,7 @@ import { stable, type Identity } from "./territoryWorkflow";
 
 export const COMPARISON_REQUEST_TIMEOUT_MS = 30_000;
 const SLICE_MS = 12,
-  HIDDEN_SLICE_MS = 800,
-  /** Narrowest places listed, widest difference first. */
-  LISTED_RUNS = 8;
+  HIDDEN_SLICE_MS = 800;
 
 type Props = {
   identity: Identity;
@@ -70,6 +68,8 @@ type Computed = {
   result: ComparisonResult;
   /** Saved planned devices that lie along a vessel. */
   devices: DeviceScenarioEntry[];
+  /** The saved device plans could not be read. */
+  devices_unread: boolean;
 };
 type Outcome = Computed | { key: string; failure: string };
 /** What a click in a frame marks. */
@@ -103,7 +103,6 @@ export function framePixel(
  * narrowing first. */
 export function narrowestRows(
   planes: Pick<PlaneComparison, "diameters">[],
-  listed = LISTED_RUNS,
 ): { run: number; mask: Narrowest | null; frames: (Narrowest | null)[] }[] {
   const most = (row: {
     mask: Narrowest | null;
@@ -120,8 +119,7 @@ export function narrowestRows(
       frames: planes.map((plane) => plane.diameters.runs[r].frame),
     }))
     .filter((row) => row.mask || row.frames.some(Boolean))
-    .sort((a, b) => most(b) - most(a))
-    .slice(0, listed);
+    .sort((a, b) => most(b) - most(a));
 }
 
 const mm = (value: number | null | undefined) =>
@@ -405,8 +403,10 @@ export default function ComparisonPanel({
         runs.push(series.map(({ index, gray }) => ({ index, gray })));
       }
       const stored = await loadSegmentationMask(mask, binding, signal);
-      // Saved planned devices are optional: a case may have none.
-      let devices: DeviceScenarioEntry[] = [];
+      // Saved planned devices are optional: a case may have none, and one
+      // without current measurements (409) has none to read.
+      let devices: DeviceScenarioEntry[] = [],
+        unread = false;
       try {
         const raw = await api<Record<string, unknown>>(
             `/cases/${encodeURIComponent(identity.case_id)}/device-scenarios`,
@@ -426,8 +426,9 @@ export default function ComparisonPanel({
                 (device) => device.id === scenario.placement.deviceId,
               )?.category === "flow-diverter" && liesOnPath(scenario.placement),
           );
-      } catch {
+      } catch (error) {
         if (signal.aborted) throw new Error("aborted");
+        unread = !(error instanceof RevisionConflictError);
       }
       // Everything is fetched; decoding a large mask is local work.
       clearTimeout(deadline);
@@ -457,6 +458,7 @@ export default function ComparisonPanel({
           matrix: inputs.volume_to_carm_ras,
           result,
           devices,
+          devices_unread: unread,
         }),
       });
     } catch (error) {
@@ -605,6 +607,12 @@ export default function ComparisonPanel({
                       : ""
                   }`
                 : "No vessel of the 3D model lies under the mark."}
+            </p>
+          )}
+          {computed.devices_unread && (
+            <p className="carm-note" role="status" aria-label="Planned devices">
+              The saved device plans could not be read, so no planned device is
+              compared.
             </p>
           )}
           {computed.devices.length > 0 && (

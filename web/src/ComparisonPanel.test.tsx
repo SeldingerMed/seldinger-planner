@@ -339,11 +339,11 @@ describe("the narrowest places listed", () => {
       null,
       60,
     ]);
-    expect(
-      narrowestRows([plane([20, null, null, 30], mask)], 1).map(
-        (row) => row.run,
-      ),
-    ).toEqual([3]);
+    // Every run with a narrowest place is listed.
+    const many = Array.from({ length: 12 }, (_, run) => 5 + run);
+    expect(narrowestRows([plane(many, many)]).map((row) => row.run)).toEqual(
+      many.map((_, run) => 11 - run),
+    );
   });
 });
 
@@ -494,6 +494,33 @@ test("compares without a planned device, and with one frame leaves contrast arri
   await compared();
   expect(rows("Segment comparison")[0]).toHaveLength(4);
   expect(screen.queryByRole("combobox")).toBeNull();
+  expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
+}, 60000);
+
+test("tells a case without measurements from device plans that could not be read", async () => {
+  canvases();
+  // No current measurements: the case has no device plans to compare.
+  server({ frames: { 12: gray }, devices: () => json({}, 409) });
+  render(<Panel />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
+  for (const unread of [
+    () => json({}, 503),
+    () => json({ case_id: "another" }),
+  ]) {
+    server({ frames: { 12: gray }, devices: unread });
+    fireEvent.click(button("Compare again"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("status", { name: "Planned devices" }).textContent,
+      ).toBe(
+        "The saved device plans could not be read, so no planned device is compared.",
+      ),
+    );
+    expect(rows("Segment comparison").length).toBeGreaterThan(1);
+    expect(screen.queryByRole("combobox")).toBeNull();
+  }
 }, 60000);
 
 test("says why the saved proposal's frames or mask were not used: not the confirmed ones, spoiled, or not to be had", async () => {
