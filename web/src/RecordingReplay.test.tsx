@@ -84,6 +84,8 @@ let video: {
     presented: number;
     width: number;
     seeking: boolean;
+    /** The media element's ready state: 2 and over has a picture. */
+    state: number;
   },
   /** What reading the canvas back gives: the picture last drawn. */
   shown: Uint8Array,
@@ -100,6 +102,7 @@ beforeEach(() => {
     presented: 0,
     width: 720,
     seeking: false,
+    state: 4,
   };
   shown = gray;
   drawn = { image: [], marks: [], black: [] };
@@ -115,7 +118,7 @@ beforeEach(() => {
     ["videoHeight", () => 480],
     ["paused", () => video.paused],
     ["seeking", () => video.seeking],
-    ["readyState", () => 4],
+    ["readyState", () => video.state],
     [
       "currentTime",
       () => video.time,
@@ -512,6 +515,85 @@ test("checks a recording that already stands at the saved frame, and passes over
   fireEvent(element(), new Event("seeked"));
   expect(button("Play").disabled).toBe(true);
   video.seeking = false;
+  fireEvent(element(), new Event("seeked"));
+  await waitFor(() => expect(button("Play").disabled).toBe(false));
+});
+
+test("checks the recording when its picture at the saved frame comes after the seek has ended", async () => {
+  const other: ReplaySource = { ...source, frame: { ...saved, plane: "b" } };
+  video.state = 1;
+  await open(TABLE, [{ ...source, frame: { ...saved, plane: "a" } }, other]);
+  await waitFor(() => expect(video.time).toBeCloseTo(12.5 / 30, 6));
+  // The seek has ended and the picture there is not decoded yet.
+  fireEvent(element(), new Event("seeked"));
+  expect(button("Play").disabled).toBe(true);
+  expect(drawn.image).toEqual([]);
+  video.state = 2;
+  fireEvent(element(), new Event("loadeddata"));
+  await waitFor(() => expect(button("Play").disabled).toBe(false));
+  // The same where the recording already stands at the saved frame.
+  video.state = 1;
+  fireEvent.click(screen.getByRole("radio", { name: "Plane B" }));
+  expect(button("Play").disabled).toBe(true);
+  video.state = 3;
+  fireEvent(element(), new Event("canplay"));
+  await waitFor(() => expect(button("Play").disabled).toBe(false));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("says so when the recording cannot be taken to the saved frame", async () => {
+  const other: ReplaySource = {
+    ...source,
+    frame: { ...saved, plane: "b", index: 30 },
+  };
+  await open(TABLE, [{ ...source, frame: { ...saved, plane: "a" } }, other]);
+  await waitFor(() => expect(video.time).toBeCloseTo(12.5 / 30, 6));
+  // The end of another seek, while one is under way, is waited out.
+  video.seeking = true;
+  video.time = 3;
+  fireEvent(element(), new Event("seeked"));
+  expect(video.time).toBe(3);
+  video.seeking = false;
+  // Each seek ends at another frame. The recording is taken to the saved
+  // frame three times in all, and no more.
+  for (const tried of [1, 2]) {
+    video.time = 3;
+    fireEvent(element(), new Event("seeked"));
+    expect(video.time, String(tried)).toBeCloseTo(12.5 / 30, 6);
+    expect(screen.queryByRole("alert")).toBeNull();
+  }
+  video.time = 3;
+  fireEvent(element(), new Event("seeked"));
+  expect(video.time).toBe(3);
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "The recording could not be taken to the saved frame.",
+  );
+  expect(button("Play").disabled).toBe(true);
+  expect(screen.queryByText("Checking the recording…")).toBeNull();
+  expect(drawn.image).toEqual([]);
+  // Another plane is tried afresh, and is taken to its own saved frame even
+  // while a seek is under way.
+  video.seeking = true;
+  fireEvent.click(screen.getByRole("radio", { name: "Plane B" }));
+  await waitFor(() => expect(video.time).toBeCloseTo(30.5 / 30, 6));
+  expect(screen.queryByRole("alert")).toBeNull();
+  video.seeking = false;
+  fireEvent(element(), new Event("seeked"));
+  await waitFor(() => expect(button("Play").disabled).toBe(false));
+  // So is the first plane with the recording opened again.
+  fireEvent.click(screen.getByRole("radio", { name: "Plane A" }));
+  await waitFor(() => expect(video.time).toBeCloseTo(12.5 / 30, 6));
+  for (let tried = 0; tried < 3; tried++) {
+    video.time = 3;
+    fireEvent(element(), new Event("seeked"));
+  }
+  await screen.findByRole("alert");
+  fireEvent.change(screen.getByLabelText("Recording"), {
+    target: { files: [RECORDING] },
+  });
+  fireEvent(element(), new Event("loadedmetadata"));
+  await waitFor(() => expect(video.time).toBeCloseTo(12.5 / 30, 6));
+  expect(screen.queryByRole("alert")).toBeNull();
   fireEvent(element(), new Event("seeked"));
   await waitFor(() => expect(button("Play").disabled).toBe(false));
 });

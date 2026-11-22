@@ -45,7 +45,9 @@ type Figures = {
 const REFRESH_FRAMES = 30,
   AXIS_COLOR = "rgba(0, 229, 255, 0.9)",
   /** The media element's ready state from which it has a picture to show. */
-  HAVE_CURRENT_DATA = 2;
+  HAVE_CURRENT_DATA = 2,
+  /** Times the recording is taken to the saved frame before that is given up. */
+  SAVED_FRAME_SEEKS = 3;
 
 const readText = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -88,6 +90,8 @@ export default function RecordingReplay({
       target: ReplayOverlay;
       like: number;
     } | null>(null),
+    /** The proposal whose saved frame the recording could not be taken to. */
+    [missed, setMissed] = useState<ReplayOverlay | null>(null),
     [playing, setPlaying] = useState(false),
     [axis, setAxis] = useState(true),
     [figures, setFigures] = useState<Figures | null>(null);
@@ -234,7 +238,9 @@ export default function RecordingReplay({
 
   // The recording is checked against the saved frame first: it is taken to
   // that frame, and the picture there is compared with the admitted one.
-  const checking = open && !result;
+  const lost = open && missed === overlay,
+    checking = open && !result && !lost,
+    seeks = useRef(0);
   /** Whether the recording is at the saved frame, or on its way to it. */
   const atSaved = useCallback(
     (from: HTMLVideoElement) =>
@@ -258,23 +264,37 @@ export default function RecordingReplay({
       );
     setChecked({ target: overlay, like: likeness(plane.frame.gray, seen) });
   }, [overlay, picture, plane, width, height]);
-  useEffect(() => {
-    const from = video.current;
-    if (!checking || !from || !sidecar) return;
-    from.pause();
-    if (!atSaved(from))
-      from.currentTime = timeOf(plane.frame.index, seconds, sidecar.frames);
-    // A recording that already shows the saved frame has no seek to wait
-    // for; one on its way there is checked when it arrives.
-    else if (!from.seeking && from.readyState >= HAVE_CURRENT_DATA) check();
-  }, [checking, plane, seconds, sidecar, atSaved, check]);
+  /** One step of the check, taken when it starts and at every event of the
+   * recording that can move it on. It ends in the picture checked or in the
+   * recording said not to reach the saved frame; until then it waits for a
+   * seek to end (`seeked`) or for the picture to come (`loadeddata`,
+   * `canplay`). */
+  const settle = useCallback(
+    (started = false) => {
+      const from = video.current;
+      if (!checking || !from || !sidecar) return;
+      if (started) {
+        from.pause();
+        seeks.current = 0;
+      }
+      if (atSaved(from)) {
+        if (!from.seeking && from.readyState >= HAVE_CURRENT_DATA) check();
+      } else if (started || !from.seeking) {
+        // The end of a seek to another frame is not the saved frame's
+        // picture: the recording is taken there again, a few times.
+        if (seeks.current++ < SAVED_FRAME_SEEKS)
+          from.currentTime = timeOf(plane.frame.index, seconds, sidecar.frames);
+        else setMissed(overlay);
+      }
+    },
+    [checking, plane, seconds, sidecar, overlay, atSaved, check],
+  );
+  useEffect(() => settle(true), [settle]);
   const onSeeked = () => {
     const from = video.current;
     if (!from) return;
-    // The end of a seek to another frame is not the saved frame's picture.
-    if (checking) {
-      if (atSaved(from) && !from.seeking) check();
-    } else if (ready) paint(from.currentTime);
+    if (checking) settle();
+    else if (ready) paint(from.currentTime);
   };
 
   // Every frame the browser presents is drawn, and asks for the next.
@@ -357,9 +377,11 @@ export default function RecordingReplay({
           ? placed.failure
           : broken
             ? "The browser cannot play this recording"
-            : !supported && recording
-              ? "This browser does not report the frames it presents"
-              : null,
+            : lost
+              ? "The recording could not be taken to the saved frame"
+              : !supported && recording
+                ? "This browser does not report the frames it presents"
+                : null,
     ms = (value: number) => value.toFixed(1),
     measured = figures?.summary.latency_ms ? figures : null;
 
@@ -403,6 +425,7 @@ export default function RecordingReplay({
               setSeconds(0);
               setBroken(false);
               setChecked(null);
+              setMissed(null);
               setPlaying(false);
               forget();
             }}
@@ -461,6 +484,8 @@ export default function RecordingReplay({
           else setBroken(true);
         }}
         onSeeked={onSeeked}
+        onLoadedData={() => settle()}
+        onCanPlay={() => settle()}
         onError={() => setBroken(true)}
         onPlay={() => setPlaying(true)}
         onPause={stopped}
