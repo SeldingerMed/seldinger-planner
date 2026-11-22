@@ -59,6 +59,9 @@ describe("frame bundle parsing", () => {
           geometry: null,
           basis: "operator_attested_crop_and_redaction",
           cropped: true,
+          source: { rows: 480, columns: 720 },
+          crop: [100, 50, SIDE, SIDE],
+          redactions: [],
           frames: [
             { index: 12, sha256: hex(gray) },
             { index: 30, sha256: "d".repeat(64) },
@@ -142,6 +145,26 @@ describe("frame bundle parsing", () => {
     const kept = parseFrameBundle(dicom(null), "phantom-run").planes[0];
     expect(kept.geometry).toEqual(VIEW);
     expect(kept.cropped).toBe(false);
+    // An uncropped plane is the whole of its source picture.
+    expect(kept.crop).toEqual([0, 0, SIDE, SIDE]);
+    expect(kept.source).toEqual({ rows: SIDE, columns: SIDE });
+    const low = dicomPlane((p) => {
+      p.deidentification.crop = null;
+      p.deidentification.source_columns = SIDE;
+      p.rows = p.deidentification.source_rows = SIDE - 20;
+    });
+    expect(parseFrameBundle(low, "phantom-run").planes[0].crop).toEqual([
+      0,
+      0,
+      SIDE,
+      SIDE - 20,
+    ]);
+    const blacked = plane((p) => {
+      p.deidentification.redactions = [[110, 60, 30, 20]];
+    });
+    expect(
+      parseFrameBundle(blacked, "phantom-run").planes[0].redactions,
+    ).toEqual([[110, 60, 30, 20]]);
     // A crop moves the image center off the central ray.
     expect(() =>
       parseFrameBundle(dicom([100, 50, SIDE, SIDE]), "phantom-run"),

@@ -278,9 +278,24 @@ Click a vessel in a frame. The axis sample nearest the click, within 3 mm at the
 
 When the case has saved device scenarios with a device that lies along a vessel, choose **Device end 1** and **Device end 2** and click the two ends of the deployed device in a frame. Each end is carried to the 3D model and dropped onto the planned device's path. The table gives the planned length, the length along the path between the marked ends, and how far along the vessel each end lies from where it was planned (positive toward the far end of the path).
 
+## Recording replay
+
+Under a comparison the studio offers **Recording replay**. Open the recording a saved frame was admitted from and its frame table. The browser decodes the recording; neither file is sent anywhere.
+
+The frame table has one row per frame with the kind of frame and the text read off the screen of the angiography system, in the layout of the public TAIR recordings (`screen_text_csv_v1`): the C-arm angles and the field size. A frame whose text does not read as angles or a field size takes the last reading before it, and the frames before the first reading take that one.
+
+Before anything plays, the recording is taken to the saved frame and the picture there is compared with the admitted frame. A recording whose picture there is another one (likeness under 0.90) is refused.
+
+**Play** draws every frame the browser presents with the vessel axis of the saved proposal over it. The saved pose is kept. Where the screen shows other angles or another field size than at the saved frame, the axis is projected at the saved view turned and sized by that change, so it turns with the C-arm (`saved_pose_at_frame_angles_v1`). Under the picture the studio names the frame, its kind, the angles and the field size. **Vessel axis** hides and shows the axis, the slider goes to any frame, and **Go to the saved frame** returns to it. With two planes, choose the plane and open that plane's recording.
+
+After a stretch is played the studio gives the time from the browser presenting each frame to the frame and its axis being drawn, as median, 95th percentile and worst, the part of it spent placing and drawing, and how many of the frames presented from the first drawn to the last were drawn (`presentation_to_overlay_drawn_v1`). **Save latency figures** writes them to a small file.
+
+On three public recordings of 720 by 480 at 30 frames a second, 20 seconds each on a Mac Studio in Chrome, every presented frame was drawn (597 of 597, 604 of 604, 596 of 596); the median time to the axis drawn was 9 ms, the 95th percentile 19 ms and the worst 22 ms, of which placing and drawing took 2 ms.
+
 ## Limits
 
 - Rigid, and one frame per plane. No vessel deformation, cardiac or respiratory motion, or table movement.
+- The replay follows the C-arm angles and the field size on the screen. The table's position is not on the screen: after the table moves, the axis stays where the saved frame placed it.
 - A two-plane proposal assumes both frames show one patient position. That is attested by the operator and not checked.
 - On public clinical frames with a reference pose, most two-plane proposals were more than 1 mm from the reference, some were tens of millimeters away, and the score did not tell them apart.
 - With one plane, depth along the beam is not determined, and a turn about an in-plane axis only weakly. On the synthetic phantoms the total rotation error reached 7.7 degrees while the in-plane error stayed under 1 degree.

@@ -215,3 +215,12 @@
   height: min(78vh, 1024px);
   margin: 0 auto;
 }
+/* The recording's decoder. It stays in the page, out of sight, so the browser
+   goes on presenting its frames. */
+.replay-source {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}

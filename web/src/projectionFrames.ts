@@ -73,6 +73,13 @@ export type FramePlane = {
     | "dicom_declared_no_burned_in_annotation"
     | "operator_attested_crop_and_redaction";
   cropped: boolean;
+  /** The picture the frames were admitted from. */
+  source: { rows: number; columns: number };
+  /** Where the frames lie in it: x, y, width, height. An uncropped plane is
+   * the whole of it. */
+  crop: number[];
+  /** Rectangles of the source picture that were blacked out. */
+  redactions: number[][];
   frames: { index: number; sha256: string }[];
 };
 export type FrameBundle = {
@@ -213,14 +220,15 @@ export function parseFrameBundle(
         fail();
       return [x, y, width, height];
     };
+    let crop = [0, 0, sourceColumns, sourceRows];
     if (deid.crop === null) {
       if (rows !== sourceRows || columns !== sourceColumns) fail();
     } else {
-      const crop = rectangle(deid.crop);
+      crop = rectangle(deid.crop);
       if (rows !== crop[3] || columns !== crop[2]) fail();
     }
     if (!Array.isArray(deid.redactions) || deid.redactions.length > 16) fail();
-    for (const redaction of deid.redactions) rectangle(redaction);
+    const redactions = (deid.redactions as unknown[]).map(rectangle);
     if (manifest.method === "admitted_png_frames") {
       if (
         deid.burned_in_annotation !== "not_declared" ||
@@ -297,6 +305,9 @@ export function parseFrameBundle(
       geometry,
       basis: deid.basis as FramePlane["basis"],
       cropped,
+      source: { rows: sourceRows, columns: sourceColumns },
+      crop,
+      redactions,
       frames,
     };
   });
