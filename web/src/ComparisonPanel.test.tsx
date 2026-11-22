@@ -31,11 +31,13 @@ import ComparisonPanel, {
   COMPARISON_REQUEST_TIMEOUT_MS,
   framePixel,
   narrowestRows,
+  replaySources,
 } from "./ComparisonPanel";
 import { compareDiameters } from "./diameterComparison";
 import { frameDiameters } from "./frameDiameter";
 import { placedSamples } from "./framePlacement";
-import { parseSavedRegistration } from "./projectionFrames";
+import * as replay from "./RecordingReplay";
+import { parseSavedRegistration, type VerifiedFrame } from "./projectionFrames";
 import type { SegmentationEntry } from "./segmentation";
 import { vesselSegments } from "./vesselSegments";
 
@@ -485,6 +487,70 @@ test("carries a clicked place to the 3D model, and measures a planned device aga
   expect(screen.queryByRole("table")).toBeNull();
   await compared();
   expect(screen.queryByRole("status", { name: "Carried place" })).toBeNull();
+}, 60000);
+
+test("gives the replay each plane's own saved frame, view and place in its source picture", () => {
+  const frame = (plane: "a" | "b") =>
+      ({ plane, index: plane === "a" ? 12 : 30 }) as VerifiedFrame,
+    place = (plane: string, x: number) => ({
+      plane,
+      crop: [x, 50, SIDE, SIDE],
+      source: { rows: 480, columns: 720 + x },
+      redactions: [[x, 1, 2, 3]],
+    }),
+    side = { ...VIEW, primary_deg: VIEW.primary_deg - 90 };
+  // The bundle lists its planes in another order than the proposal.
+  expect(
+    replaySources(
+      [
+        { plane: "a", view: VIEW },
+        { plane: "b", view: side },
+      ],
+      [frame("a"), frame("b")],
+      [place("b", 140), place("a", 100)],
+    ),
+  ).toEqual([
+    { frame: frame("a"), view: VIEW, ...place("a", 100), plane: undefined },
+    { frame: frame("b"), view: side, ...place("b", 140), plane: undefined },
+  ]);
+  expect(() =>
+    replaySources([{ plane: "b", view: side }], [frame("b")], [place("a", 0)]),
+  ).toThrow("plane");
+});
+
+test("offers the replay of a recording under a comparison, with the saved frame, its place in the source picture and the vessel axis", async () => {
+  canvases();
+  server({ frames: { 12: gray } });
+  const given: Parameters<typeof replay.default>[0][] = [];
+  vi.spyOn(replay, "default").mockImplementation((props) => {
+    given.push(props);
+    return <p>replay</p>;
+  });
+  const view = render(<Panel />);
+  // Nothing to replay before the saved frame and the mask are read.
+  expect(given).toEqual([]);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  const last = given[given.length - 1];
+  expect(last.planes).toHaveLength(1);
+  expect(last.planes[0].frame).toMatchObject({
+    plane: "single",
+    index: 12,
+    width: SIDE,
+    height: SIDE,
+  });
+  expect(Array.from(last.planes[0].frame.gray)).toEqual(Array.from(gray));
+  expect(last.planes[0].view).toEqual(VIEW);
+  expect(last.planes[0].crop).toEqual([100, 50, SIDE, SIDE]);
+  expect(last.planes[0].source).toEqual({ rows: 480, columns: 720 });
+  expect(last.planes[0].redactions).toEqual([]);
+  expect(last.isocenter).toEqual(pivot);
+  expect(last.matrix).toEqual(truth);
+  expect(Array.from(last.points)).toEqual(Array.from(segments.points));
+  expect(last.disabled).toBe(false);
+  // Held with the panel while the studio is busy.
+  view.rerender(<Panel disabled />);
+  expect(given[given.length - 1].disabled).toBe(true);
 }, 60000);
 
 test("compares without a planned device, and with one frame leaves contrast arrival out", async () => {

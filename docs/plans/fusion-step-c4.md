@@ -245,10 +245,11 @@ The studio plays a recording file the operator opens from disk and draws the reg
 
 ### Design
 
-1. **Sidecar** (`recordingSidecar.ts`). The public TAIR recordings come with one row per frame read off the screen text: the kind of frame, the C-arm angles and the field size. The reader takes what parses, and carries the last good angles over frames whose text does not parse.
-2. **Overlay per frame** (`replayOverlay.ts`). The confirmed pose is kept. For a frame at other C-arm angles than the confirmed frame the axis is projected at that frame's angles, so the overlay turns with the C-arm.
+1. **Sidecar** (`recordingSidecar.ts`). The public TAIR recordings come with one row per frame read off the screen text: the kind of frame, the C-arm angles and the field size. The reader takes what parses, carries the last reading over frames whose text does not parse, and gives the frames before the first reading that one.
+2. **Overlay per frame** (`replayOverlay.ts`). The confirmed pose is kept. For a frame at other C-arm angles or another field size than the confirmed frame the axis is projected at the confirmed view turned and sized by that change, so the overlay turns with the C-arm. The recording is first taken to the confirmed frame and its picture there compared with the admitted frame; a recording that shows another picture there is refused.
 3. **Latency** (`replayLatency.ts`). For every frame the browser presents: the time from its presentation to the overlay drawn, and the frames the browser presented and the page did not draw. Shown as median, 95th percentile and worst, and written to a small JSON the operator can save.
-4. **Measured run.** Three TAIR recordings replayed in the studio on this workstation; the numbers go into `docs/verification/step-c4-replay.md`.
+4. **Studio** (`RecordingReplay.tsx`). A section under the comparison, which has read the confirmed frames and the vessel axis. The parsed frame bundle keeps each plane's place in its source picture (crop, source size, redactions), so the recording is cropped and blacked out as the admitted frame was.
+5. **Measured run.** Three TAIR recordings replayed in the studio on this workstation; the numbers go into `docs/verification/step-c4-replay.md`.
 
 ### Acceptance criteria
 
@@ -309,3 +310,4 @@ The studio plays a recording file the operator opens from disk and draws the reg
 - 2026-11-21. Part 5, planned against deployed device: the deployed device's ends are marked by the operator and carried to the vessel axis. Detection of the device in the frame waits for part 3's network.
 - 2026-11-21. Parts 5 and 6 designed as above.
 - 2026-11-21. Part 5 built. On development subjects 01 to 05 at their reference pose the diameter from the frame and from the mask agree within 0.5 mm on 785 of 1,136 measured segments and within 1 mm on 1,009; median difference 0.22 mm (`fusion-c4/comparison/dev-9`). The comparison ran on the public case TAIR 00132 in a browser in 0.6 s. Record: [step-c4-comparison](../verification/step-c4-comparison.md).
+- 2026-11-21. Part 6 built. Three public TAIR recordings (00132, 00146, 00151) replayed under their saved proposals in Chrome on the Mac Studio, 20 seconds each: every presented frame drawn (600 of 600 in each); frame presented to axis drawn, median 8.9, 8.7 and 8.6 ms, 95th percentile 19 ms, worst 25 ms; placing and drawing 2 ms. In each case the other plane's recording was refused at the confirmed frame (likeness -0.32, 0.09 and 0.02). The screen angles at the confirmed frames read as the saved views (0, RAO 8 and RAO 7 degrees). The recordings are several runs one after another; the table's position is not on the screen, so the axis does not follow the table from one run to the next. Record: [step-c4-replay](../verification/step-c4-replay.md).
