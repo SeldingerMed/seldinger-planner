@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, test, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -567,6 +568,33 @@ test("reads the device plans again where they changed while they were read", asy
   expect(asked).toBe(2);
   expect(screen.getByRole("combobox", { name: /Planned device/ })).toBeTruthy();
   expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
+}, 60000);
+
+test("does not ask for the device plans again for a saved proposal replaced during the wait", async () => {
+  canvases();
+  let asked = 0;
+  server({ devices: () => (asked++, json({}, 409)) });
+  const requests: boolean[] = [],
+    open = (now: boolean) => requests.push(now),
+    view = render(<Panel onRequests={open} />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await waitFor(() => expect(asked).toBe(1));
+  // The wait has begun: the request is still open.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(requests.at(-1)).toBe(true);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    // The request ends with the proposal, not with the wait.
+    view.rerender(<Panel saved={later} onRequests={open} />);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(requests.at(-1)).toBe(false);
+    await act(() => vi.advanceTimersByTimeAsync(400));
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(asked).toBe(1);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(button("Compare 2D and 3D").disabled).toBe(false);
 }, 60000);
 
 test("says why the saved proposal's frames or mask were not used: not the confirmed ones, spoiled, or not to be had", async () => {

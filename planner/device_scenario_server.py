@@ -66,7 +66,11 @@ def register_device_scenario_routes(
                 "Confirm and compute current measurements first",
                 headers={
                     **_NO_STORE,
-                    **({} if since else {CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT}),
+                    **(
+                        {}
+                        if since is not None
+                        else {CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT}
+                    ),
                 },
             )
         if current["status"] != "current":

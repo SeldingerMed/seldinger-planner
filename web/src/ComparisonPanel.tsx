@@ -443,11 +443,20 @@ export default function ComparisonPanel({
           // Each read stands for itself: the last one decides.
           unread = !(conflict && error.reason === MEASUREMENTS_NOT_CURRENT);
           if (!conflict || !unread) break;
-          // A request given up during the wait ends at the next read.
-          if (read + 1 < DEVICE_PLAN_READS)
-            await new Promise((resolve) =>
-              setTimeout(resolve, DEVICE_PLAN_WAIT_MS),
-            );
+          if (read + 1 < DEVICE_PLAN_READS) {
+            // The wait ends at once for a request that is given up, and no
+            // second read is made for it.
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(done, DEVICE_PLAN_WAIT_MS);
+              function done() {
+                clearTimeout(timer);
+                signal.removeEventListener("abort", done);
+                resolve();
+              }
+              signal.addEventListener("abort", done);
+            });
+            if (signal.aborted) throw new Error("aborted");
+          }
         }
       }
       // Everything is fetched; decoding a large mask is local work.
