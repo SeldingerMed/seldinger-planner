@@ -180,6 +180,8 @@ type Routes = {
   held?: boolean;
   devices?: () => Response;
   mask?: () => Response;
+  /** A frame whose stored bytes are not the ones its manifest names. */
+  spoiled?: number;
 };
 function server(routes: Routes = {}) {
   const frames = routes.frames ?? RUN,
@@ -217,6 +219,10 @@ function server(routes: Routes = {}) {
             reject(new DOMException("Aborted", "AbortError")),
           ),
         );
+      if (frame && Number(frame[1]) === routes.spoiled)
+        return bytes(Uint8Array.from(frames[routes.spoiled]).reverse(), {
+          "X-Frame-Manifest-Revision": REVISION,
+        });
       if (frame)
         return bytes(frames[Number(frame[1])], {
           "X-Frame-Manifest-Revision": REVISION,
@@ -490,18 +496,41 @@ test("compares without a planned device, and with one frame leaves contrast arri
   expect(screen.queryByRole("combobox")).toBeNull();
 }, 60000);
 
-test("says when the saved frame cannot be read, and starts nothing while the studio is busy or the mask has changed", async () => {
+test("says why the saved proposal's frames or mask were not used: not the confirmed ones, spoiled, or not to be had", async () => {
   canvases();
+  const said = async (text: string) => {
+    fireEvent.click(button(/^Compare/));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe(text),
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+  };
   // The stored frame is not the one the proposal was confirmed on.
   server({ frames: { 8: early, 12: late } });
-  const view = render(<Panel />);
-  fireEvent.click(button("Compare 2D and 3D"));
-  await waitFor(() =>
-    expect(screen.getByRole("alert").textContent).toBe(
-      "The frames and vessel mask of the saved proposal could not be read. Check their availability, then retry.",
-    ),
+  render(<Panel />);
+  await said(
+    "The stored frames are not the ones this proposal was confirmed on. Save a new proposal to compare.",
   );
-  expect(screen.queryByRole("table")).toBeNull();
+  // Stored bytes that are not what the manifest names.
+  server({ spoiled: 8 });
+  await said(
+    "A frame or the vessel mask of the saved proposal failed its integrity check and is not used.",
+  );
+  server({ mask: () => bytes(Uint8Array.from(maskBlob).reverse()) });
+  await said(
+    "A frame or the vessel mask of the saved proposal failed its integrity check and is not used.",
+  );
+  // A mask that cannot be fetched is not called an integrity failure.
+  server({ mask: () => json({}, 503) });
+  await said(
+    "The frames and vessel mask of the saved proposal could not be read. Check their availability, then retry.",
+  );
+}, 60000);
+
+test("starts nothing while the studio is busy or the mask has changed", async () => {
+  canvases();
+  server();
+  const view = render(<Panel />);
   view.rerender(<Panel disabled />);
   expect(button("Compare 2D and 3D").disabled).toBe(true);
   view.rerender(
@@ -594,6 +623,38 @@ test("says when the reading took too long", async () => {
     "Reading the frames and vessel mask of the saved proposal took longer than 30 seconds. Retry.",
   );
   expect(button("Compare 2D and 3D").disabled).toBe(false);
+}, 60000);
+
+test("builds a frame's picture once, and draws the cursor over it again as it moves", async () => {
+  canvases();
+  let built = 0,
+    put = 0;
+  const context = {
+    createImageData: (width: number, height: number) => {
+      built++;
+      return { data: new Uint8ClampedArray(4 * width * height), width, height };
+    },
+    putImageData: () => put++,
+    fillRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    arc() {},
+  };
+  vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue(
+    context as unknown as CanvasRenderingContext2D,
+  );
+  server({ frames: { 12: gray } });
+  render(<Panel />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  expect(built).toBe(1);
+  const before = put,
+    frame = screen.getByRole("img");
+  for (let k = 0; k < 3; k++) fireEvent.keyDown(frame, { key: "ArrowRight" });
+  expect(put).toBe(before + 3);
+  expect(built).toBe(1);
 }, 60000);
 
 test("marks a place from the keyboard: the arrow keys move a cursor over the frame and Enter marks", async () => {

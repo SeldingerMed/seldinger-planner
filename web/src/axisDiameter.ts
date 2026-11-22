@@ -26,8 +26,6 @@ export const AXIS_DIAMETER_LIMITS = {
   out_of_round: 0.25,
   /** Depth in the mask is not followed farther than this. */
   deepest_mm: 10,
-  /** Samples between yields of `axisDiameterSteps`. */
-  slice: 64,
 } as const;
 
 export type AxisCuts = {
@@ -130,7 +128,9 @@ export function* axisDiameterSteps(
   let seen = new Uint8Array(0),
     queue = new Int32Array(0);
   for (let k = 0; k < count; k++) {
-    if (k % L.slice === L.slice - 1) yield;
+    // One sample of a wide vessel can take a slice's time: the job can be
+    // stopped after each.
+    yield;
     const before = k > 0 && run(k - 1) === run(k) ? k - 1 : k,
       after = k + 1 < count && run(k + 1) === run(k) ? k + 1 : k,
       t = [0, 1, 2].map((i) => points[3 * after + i] - points[3 * before + i]),

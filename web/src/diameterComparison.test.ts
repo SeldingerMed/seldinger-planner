@@ -178,7 +178,8 @@ describe("diameters at the axis samples of the 3D mask", () => {
       yields++;
       next = steps.next();
     }
-    expect(yields).toBeGreaterThan(0);
+    // It can be stopped after every sample.
+    expect(yields).toBe(segments.labels.length);
     expect((next.value as AxisCuts).mm).toEqual(maskMm);
     expect(() =>
       axisDiameters(

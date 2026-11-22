@@ -25,6 +25,7 @@ import { DEVICE_CATALOG } from "./devices/analysis";
 import type { Vec3 } from "./obliqueSlice";
 import {
   decodeVesselMask,
+  FRAME_INTEGRITY_FAILURE,
   isBiplane,
   loadFrameBundle,
   loadVerifiedFrame,
@@ -32,7 +33,11 @@ import {
   type VerifiedFrame,
 } from "./projectionFrames";
 import { projectRegistered } from "./projectionRegistration";
-import { loadSegmentationMask, type SegmentationEntry } from "./segmentation";
+import {
+  loadSegmentationMask,
+  SEGMENTATION_INTEGRITY_FAILURE,
+  type SegmentationEntry,
+} from "./segmentation";
 import { stable, type Identity } from "./territoryWorkflow";
 
 export const COMPARISON_REQUEST_TIMEOUT_MS = 30_000;
@@ -76,6 +81,8 @@ const MARKINGS: Record<Marking, { word: string; color: string }> = {
 };
 type Marks = Record<Marking, FrameMark[]>;
 const NO_MARKS: Marks = { place: [], end_1: [], end_2: [] };
+/** The stored frames are not the ones the proposal was confirmed on. */
+const NOT_THE_CONFIRMED = "not the confirmed frames";
 
 /** The frame pixel under a pointer on a canvas shown at any size. */
 export function framePixel(
@@ -144,17 +151,23 @@ function ComparisonCanvas({
   onMark: (x: number, y: number) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement | null>(null),
+    // The frame's picture is built once and drawn again under every change
+    // of the cursor and the marks.
+    picture = useRef<{ of: VerifiedFrame; image: ImageData } | null>(null),
     [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   useEffect(() => {
     const context = canvas.current?.getContext("2d");
     if (!context) return;
-    const { width, height, gray } = frame,
-      image = context.createImageData(width, height);
-    for (let i = 0, o = 0; i < gray.length; i++, o += 4) {
-      image.data[o] = image.data[o + 1] = image.data[o + 2] = gray[i];
-      image.data[o + 3] = 255;
+    const { width, height, gray } = frame;
+    if (picture.current?.of !== frame) {
+      const image = context.createImageData(width, height);
+      for (let i = 0, o = 0; i < gray.length; i++, o += 4) {
+        image.data[o] = image.data[o + 1] = image.data[o + 2] = gray[i];
+        image.data[o + 3] = 255;
+      }
+      picture.current = { of: frame, image };
     }
-    context.putImageData(image, 0, 0);
+    context.putImageData(picture.current.image, 0, 0);
     const size = Math.max(1, Math.round(width / 256)),
       { placed, frame_mm } = computed.result.planes[plane];
     for (let k = 0; k < frame_mm.length; k++) {
@@ -370,7 +383,7 @@ export default function ComparisonPanel({
     try {
       const bundle = await loadFrameBundle(inputs.frame_source_id, signal);
       if (bundle.manifest_revision !== inputs.frame_manifest_revision)
-        throw new Error("revision");
+        throw new Error(NOT_THE_CONFIRMED);
       // One frame, or one from each plane; each is checked against the
       // record. The other frames of a plane are its run.
       const named = isBiplane(inputs) ? inputs.planes : [inputs],
@@ -386,7 +399,8 @@ export default function ComparisonPanel({
             await loadVerifiedFrame(bundle, entry.plane, index, signal),
           );
         const one = series.find((frame) => frame.index === entry.frame_index);
-        if (!one || one.sha256 !== entry.frame_sha256) throw new Error("frame");
+        if (!one || one.sha256 !== entry.frame_sha256)
+          throw new Error(NOT_THE_CONFIRMED);
         frames.push(one);
         runs.push(series.map(({ index, gray }) => ({ index, gray })));
       }
@@ -445,13 +459,21 @@ export default function ComparisonPanel({
           devices,
         }),
       });
-    } catch {
+    } catch (error) {
+      // Stored bytes that fail their digest, and frames that are no longer
+      // the confirmed ones, are not an availability problem.
+      const why = error instanceof Error ? error.message : "";
       if (live.current === owned)
         setOutcome({
           key: owned,
           failure: late
             ? `Reading the frames and vessel mask of the saved proposal took longer than ${COMPARISON_REQUEST_TIMEOUT_MS / 1000} seconds. Retry`
-            : "The frames and vessel mask of the saved proposal could not be read. Check their availability, then retry",
+            : why === FRAME_INTEGRITY_FAILURE ||
+                why === SEGMENTATION_INTEGRITY_FAILURE
+              ? "A frame or the vessel mask of the saved proposal failed its integrity check and is not used"
+              : why === NOT_THE_CONFIRMED
+                ? "The stored frames are not the ones this proposal was confirmed on. Save a new proposal to compare"
+                : "The frames and vessel mask of the saved proposal could not be read. Check their availability, then retry",
         });
     } finally {
       clearTimeout(deadline);
