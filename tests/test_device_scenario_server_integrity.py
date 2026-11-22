@@ -152,6 +152,39 @@ def test_409_for_measurements_not_current_names_its_reason(tmp_path, monkeypatch
     )
 
 
+@pytest.mark.parametrize("status", ["not_computed", "stale"])
+def test_measurements_that_stop_being_current_during_a_request_are_a_change(
+    tmp_path, monkeypatch, status
+):
+    client, case, geometry, ledger, _ = routes(tmp_path)
+    url, body = request_body(client, case)
+    original, calls, good = geometry.current, 0, 1
+
+    def current(*args):
+        nonlocal calls
+        calls += 1
+        return original(*args) if calls <= good else {"status": status}
+
+    monkeypatch.setattr(geometry, "current", current)
+    # Current when the request began: the case had its measurements, and
+    # plans bound to them may exist. The reason is not named, so a reader
+    # asks again instead of taking the case to have no plans.
+    # The read looks twice; the save looks twice before it stores, and reads
+    # again after.
+    for send, looks, stored in (
+        (lambda: client.get(url), 1, 0),
+        (lambda: client.put(url, json=body), 1, 0),
+        (lambda: client.put(url, json=body), 2, 1),
+    ):
+        calls, good = 0, looks
+        refused = send()
+        assert calls == looks + 1
+        assert refused.status_code == 409, refused.text
+        assert CONFLICT_REASON_HEADER not in refused.headers
+        assert refused.headers["Cache-Control"] == "no-store"
+        assert count(ledger) == stored
+
+
 def test_default_application_registers_both_scenario_routes(tmp_path):
     from planner.server import build_app
 

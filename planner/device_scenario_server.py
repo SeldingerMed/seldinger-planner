@@ -47,7 +47,11 @@ def register_device_scenario_routes(
 ):
     """Providers and catalog are trusted configuration, never request selectors."""
 
-    def capture(case_id):
+    def capture(case_id, *, began=True):
+        """`began` is the request's first look at the case. Only there is the
+        409 for measurements not current the case's own state, and named: on
+        a later look the measurements were current when the request began,
+        so the same refusal is a change during it and carries no reason."""
         # Independent parse prevents provider aliases changing while projected.
         geometry_token = encoded(read_geometry(case_id))
         geometry = json.loads(geometry_token)
@@ -59,7 +63,10 @@ def register_device_scenario_routes(
             raise HTTPException(
                 409,
                 "Confirm and compute current measurements first",
-                headers={**_NO_STORE, CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT},
+                headers={
+                    **_NO_STORE,
+                    **({CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT} if began else {}),
+                },
             )
         if current["status"] != "current":
             raise ValueError("Unrecognized geometry readiness")
@@ -86,10 +93,10 @@ def register_device_scenario_routes(
             raise ValueError("Contradictory geometry dependencies")
         return identity, geometry_token, catalog_token
 
-    def read(case_id):
-        before = capture(case_id)
+    def read(case_id, *, began=True):
+        before = capture(case_id, began=began)
         state = json.loads(encoded(ledger.read(before[0])))
-        after = capture(case_id)
+        after = capture(case_id, began=False)
         latest = json.loads(encoded(ledger.read(after[0])))
         if before != after or state != latest:
             raise DeviceScenarioConflict("Scenario or upstream source changed during read")
@@ -114,10 +121,10 @@ def register_device_scenario_routes(
         except (ValueError, TypeError, OverflowError):
             # This 422 is definitively before persistence; later failures are not.
             raise HTTPException(422, "Invalid device alternative geometry") from None
-        if capture(case_id) != before:
+        if capture(case_id, began=False) != before:
             raise DeviceScenarioConflict("Scenario source changed before persistence")
         saved = ledger.store(before[0], payload.scenario_revision, scenarios)
-        result = read(case_id)
+        result = read(case_id, began=False)
         if (
             any(result[key] != value for key, value in before[0].items())
             or result["scenario_revision"] != saved["scenario_revision"]
