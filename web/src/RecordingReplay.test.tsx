@@ -12,7 +12,7 @@ import type { VerifiedFrame } from "./projectionFrames";
 import { projectRegistered } from "./projectionRegistration";
 import RecordingReplay, { type ReplaySource } from "./RecordingReplay";
 import { REPLAY_LATENCY_METHOD } from "./replayLatency";
-import { SIDECAR_LIMITS } from "./recordingSidecar";
+import { SIDECAR_LAYOUT, SIDECAR_LIMITS } from "./recordingSidecar";
 import { REPLAY_OVERLAY_METHOD } from "./replayOverlay";
 
 // The figures are worked out from every frame drawn so far: how often that is
@@ -367,6 +367,8 @@ test("measures the latency of the stretch played, and saves the figures", async 
   expect(JSON.parse(text)).toEqual({
     method: REPLAY_LATENCY_METHOD,
     overlay_method: REPLAY_OVERLAY_METHOD,
+    // The layout the frame table was read as.
+    frame_table_layout: SIDECAR_LAYOUT,
     // The plane and the saved frame the figures were measured under.
     plane: "single",
     saved_frame: {

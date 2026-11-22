@@ -325,6 +325,10 @@ export default function ComparisonPanel({
       finish: (result: ComparisonResult) => Computed;
     } | null>(null),
     [outcome, setOutcome] = useState<Outcome | null>(null),
+    // The replay is of the saved proposal, not of one run of the comparison:
+    // it stays up, with a recording opened in it, while the same proposal is
+    // compared again, and goes with a comparison that fails.
+    [replayed, setReplayed] = useState<Computed | null>(null),
     [marking, setMarking] = useState<Marking>("place"),
     // Marks are of the result shown: a new comparison starts without any.
     [marks, setMarks] = useState<Marks>(NO_MARKS),
@@ -343,6 +347,7 @@ export default function ComparisonPanel({
     active = run?.key === key ? run : null,
     shown = outcome?.key === key ? outcome : null,
     computed = shown && "result" in shown ? shown : null,
+    replay = replayed?.key === key ? replayed : null,
     ready =
       saved.status === "current" &&
       saved.evidence === "verified" &&
@@ -382,8 +387,10 @@ export default function ComparisonPanel({
         const found = active.finish(active.job.result());
         setRun(null);
         setOutcome(found);
+        setReplayed((held) => (held?.key === found.key ? held : found));
       } catch (error) {
         setRun(null);
+        setReplayed(null);
         setOutcome({
           key: active.key,
           failure:
@@ -523,7 +530,8 @@ export default function ComparisonPanel({
       // Stored bytes that fail their digest, and frames that are no longer
       // the confirmed ones, are not an availability problem.
       const why = error instanceof Error ? error.message : "";
-      if (live.current === owned)
+      if (live.current === owned) {
+        setReplayed(null);
         setOutcome({
           key: owned,
           failure: late
@@ -535,6 +543,7 @@ export default function ComparisonPanel({
                 ? "The stored frames are not the ones this proposal was confirmed on. Save a new proposal to compare"
                 : "The frames and vessel mask of the saved proposal could not be read. Check their availability, then retry",
         });
+      }
     } finally {
       clearTimeout(deadline);
       controllers.current.delete(controller);
@@ -824,12 +833,12 @@ export default function ComparisonPanel({
           </>
         )}
       </fieldset>
-      {computed && (
+      {replay && (
         <RecordingReplay
-          planes={computed.sources}
-          isocenter={computed.isocenter}
-          matrix={computed.matrix}
-          points={computed.result.segments.points}
+          planes={replay.sources}
+          isocenter={replay.isocenter}
+          matrix={replay.matrix}
+          points={replay.result.segments.points}
           disabled={disabled}
         />
       )}
