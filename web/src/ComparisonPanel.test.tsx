@@ -499,25 +499,31 @@ test("compares without a planned device, and with one frame leaves contrast arri
 
 test("tells a case without measurements from device plans that could not be read", async () => {
   canvases();
-  // No current measurements: the case has no device plans to compare. The
-  // server gives the same answer where the plans changed while it read them,
-  // so they are asked for once more, and no more than that.
-  const calls = server({
-    frames: { 12: gray },
-    devices: () => json({}, 409),
-  });
+  // No current measurements, as the server says with its refusal: the case
+  // has no device plans to compare, and they are not asked for again.
+  const asked = (calls: string[]) =>
+      calls.filter((call) => call.endsWith("/device-scenarios")).length,
+    calls = server({
+      frames: { 12: gray },
+      devices: () =>
+        new Response("{}", {
+          status: 409,
+          headers: { "X-Conflict-Reason": "measurements-not-current" },
+        }),
+    });
   render(<Panel />);
   fireEvent.click(button("Compare 2D and 3D"));
   await compared();
   expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
-  expect(
-    calls.filter((call) => call.endsWith("/device-scenarios")),
-  ).toHaveLength(2);
-  for (const unread of [
-    () => json({}, 503),
-    () => json({ case_id: "another" }),
-  ]) {
-    server({ frames: { 12: gray }, devices: unread });
+  expect(asked(calls)).toBe(1);
+  // A refusal for another reason is plans that changed while they were read:
+  // they are asked for once more, and one that stands is plans not read.
+  for (const [unread, reads] of [
+    [() => json({}, 409), 2],
+    [() => json({}, 503), 1],
+    [() => json({ case_id: "another" }), 1],
+  ] as const) {
+    const again = server({ frames: { 12: gray }, devices: unread });
     fireEvent.click(button("Compare again"));
     await waitFor(() =>
       expect(
@@ -528,6 +534,7 @@ test("tells a case without measurements from device plans that could not be read
     );
     expect(rows("Segment comparison").length).toBeGreaterThan(1);
     expect(screen.queryByRole("combobox")).toBeNull();
+    expect(asked(again)).toBe(reads);
   }
 }, 60000);
 

@@ -6,7 +6,7 @@
  * computed here from the frames, the mask and the saved pose; nothing is
  * saved. Pixels are read, verified and drawn; they are never sent. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, RevisionConflictError } from "./api";
+import { api, MEASUREMENTS_NOT_CURRENT, RevisionConflictError } from "./api";
 import { carryPoint, type CarriedPoint, type FrameMark } from "./carryPoint";
 import type { ViewNumbers } from "./carmGeometry";
 import {
@@ -43,7 +43,7 @@ import { stable, type Identity } from "./territoryWorkflow";
 export const COMPARISON_REQUEST_TIMEOUT_MS = 30_000;
 const SLICE_MS = 12,
   HIDDEN_SLICE_MS = 800,
-  /** Times the saved device plans are asked for before a 409 stands. */
+  /** Times the saved device plans are asked for before a refusal stands. */
   DEVICE_PLAN_READS = 2;
 
 type Props = {
@@ -406,9 +406,9 @@ export default function ComparisonPanel({
       }
       const stored = await loadSegmentationMask(mask, binding, signal);
       // Saved planned devices are optional: a case may have none. The server
-      // answers 409 both for a case without current measurements, which has
-      // no plans, and for plans that changed while it read them. The second
-      // clears when they are asked for again; a 409 that stands is the first.
+      // answers 409 for a case without current measurements, which has no
+      // plans, and says so; any other 409 is plans that changed while it read
+      // them, which are asked for again.
       let devices: DeviceScenarioEntry[] = [],
         unread = false;
       for (let read = 0; read < DEVICE_PLAN_READS; read++) {
@@ -432,12 +432,17 @@ export default function ComparisonPanel({
                 )?.category === "flow-diverter" &&
                 liesOnPath(scenario.placement),
             );
+          unread = false;
           break;
         } catch (error) {
           if (signal.aborted) throw new Error("aborted");
-          if (error instanceof RevisionConflictError) continue;
+          if (
+            error instanceof RevisionConflictError &&
+            error.reason === MEASUREMENTS_NOT_CURRENT
+          )
+            break;
           unread = true;
-          break;
+          if (!(error instanceof RevisionConflictError)) break;
         }
       }
       // Everything is fetched; decoding a large mask is local work.

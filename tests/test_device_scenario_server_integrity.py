@@ -8,6 +8,7 @@ from test_device_scenario_server import routes
 from test_device_scenarios import scenario
 
 from planner.device_checks import device_catalog, encoded
+from planner.device_scenario_server import CONFLICT_REASON_HEADER, MEASUREMENTS_NOT_CURRENT
 from planner.workspace import _connect
 
 
@@ -119,7 +120,10 @@ def test_read_catalog_race_is_409_but_bad_catalog_is_503(tmp_path):
 
     client, case, _, _, _ = routes(tmp_path / "race", catalog_provider=changing)
     url = f"/api/cases/{case['case_id']}/device-scenarios"
-    assert client.get(url).status_code == 409
+    raced = client.get(url)
+    assert raced.status_code == 409
+    # A change during the read is not the answer of measurements not current.
+    assert CONFLICT_REASON_HEADER not in raced.headers
 
     def corrupt():
         value = device_catalog()
@@ -128,6 +132,22 @@ def test_read_catalog_race_is_409_but_bad_catalog_is_503(tmp_path):
 
     client, case, _, _, _ = routes(tmp_path / "corrupt", catalog_provider=corrupt)
     assert client.get(f"/api/cases/{case['case_id']}/device-scenarios").status_code == 503
+
+
+@pytest.mark.parametrize("status", ["not_computed", "stale"])
+def test_409_for_measurements_not_current_names_its_reason(tmp_path, monkeypatch, status):
+    client, case, geometry, ledger, _ = routes(tmp_path)
+    url, body = request_body(client, case)
+    monkeypatch.setattr(geometry, "current", lambda *args: {"status": status})
+    for refused in (client.get(url), client.put(url, json=body)):
+        assert refused.status_code == 409, refused.text
+        assert refused.json() == {"detail": "Confirm and compute current measurements first"}
+        assert refused.headers[CONFLICT_REASON_HEADER] == MEASUREMENTS_NOT_CURRENT
+    assert count(ledger) == 0
+    assert (CONFLICT_REASON_HEADER, MEASUREMENTS_NOT_CURRENT) == (
+        "X-Conflict-Reason",
+        "measurements-not-current",
+    )
 
 
 def test_default_application_registers_both_scenario_routes(tmp_path):

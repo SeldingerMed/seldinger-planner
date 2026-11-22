@@ -1,5 +1,11 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { restoreOrCreateCase } from "./api";
+import {
+  api,
+  CONFLICT_REASON_HEADER,
+  MEASUREMENTS_NOT_CURRENT,
+  restoreOrCreateCase,
+  RevisionConflictError,
+} from "./api";
 afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
@@ -80,15 +86,13 @@ test.each(["missing", "wrong-image", "wrong-case"])(
       case_id: mode === "wrong-case" ? "M".repeat(22) : id,
       image_sha256: mode === "wrong-image" ? "c".repeat(64) : sha,
     };
-    const fetcher = vi
-      .fn()
-      .mockImplementation(() =>
-        Promise.resolve(
-          new Response(JSON.stringify(state), {
-            status: mode === "missing" ? 404 : 200,
-          }),
-        ),
-      );
+    const fetcher = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response(JSON.stringify(state), {
+          status: mode === "missing" ? 404 : 200,
+        }),
+      ),
+    );
     vi.stubGlobal("fetch", fetcher);
     await expect(
       restoreOrCreateCase({
@@ -131,3 +135,28 @@ test.each(["", "../not-a-case", "short"])(
     expect(fetcher).not.toHaveBeenCalled();
   },
 );
+
+test("a refusal for a changed case carries the reason the server gave, or none", async () => {
+  // The names the server uses: planner/device_scenario_server.py.
+  expect([CONFLICT_REASON_HEADER, MEASUREMENTS_NOT_CURRENT]).toEqual([
+    "X-Conflict-Reason",
+    "measurements-not-current",
+  ]);
+  for (const [headers, reason] of [
+    [
+      { "X-Conflict-Reason": "measurements-not-current" },
+      "measurements-not-current",
+    ],
+    [{}, null],
+  ] as const) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("{}", { status: 409, headers })),
+    );
+    const refused = await api("/cases/one/device-scenarios").catch(
+      (error: unknown) => error,
+    );
+    expect(refused).toBeInstanceOf(RevisionConflictError);
+    expect((refused as RevisionConflictError).reason).toBe(reason);
+  }
+});

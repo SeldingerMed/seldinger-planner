@@ -15,6 +15,11 @@ from planner.device_scenarios import DeviceScenarioConflict, validate_identity, 
 from planner.geometry_state import GeometryConflict
 
 _NO_STORE = {"Cache-Control": "no-store"}
+# A 409 is given both where the measurements are not current and where a source
+# changed during the request. The first names itself in this header, so a
+# reader can tell a case that has no plans yet from plans it should ask for again.
+CONFLICT_REASON_HEADER = "X-Conflict-Reason"
+MEASUREMENTS_NOT_CURRENT = "measurements-not-current"
 _ERRORS = (ValueError, TypeError, KeyError, OSError, OverflowError, sqlite3.Error)
 
 
@@ -51,7 +56,11 @@ def register_device_scenario_routes(
         validate_catalog(catalog)
         current = geometry["current"]
         if current["status"] in ("not_computed", "stale"):
-            raise HTTPException(409, "Confirm and compute current measurements first")
+            raise HTTPException(
+                409,
+                "Confirm and compute current measurements first",
+                headers={CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT},
+            )
         if current["status"] != "current":
             raise ValueError("Unrecognized geometry readiness")
         identity = validate_identity(
