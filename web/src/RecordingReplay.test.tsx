@@ -358,6 +358,14 @@ test("measures the latency of the stretch played, and saves the figures", async 
   expect(JSON.parse(text)).toEqual({
     method: REPLAY_LATENCY_METHOD,
     overlay_method: REPLAY_OVERLAY_METHOD,
+    // The plane and the saved frame the figures were measured under.
+    plane: "single",
+    saved_frame: {
+      source_id: "s",
+      manifest_revision: "r",
+      index: 12,
+      sha256: "a".repeat(64),
+    },
     recording: { frames: 300, seconds: 10, frames_per_second: 30 },
     frame_size: [SIDE, SIDE],
     axis_points: 3,

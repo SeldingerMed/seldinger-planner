@@ -345,6 +345,13 @@ export default function RecordingReplay({
                 {
                   ...figures.summary,
                   overlay_method: REPLAY_OVERLAY_METHOD,
+                  plane: plane.frame.plane,
+                  saved_frame: {
+                    source_id: plane.frame.source_id,
+                    manifest_revision: plane.frame.manifest_revision,
+                    index: plane.frame.index,
+                    sha256: plane.frame.sha256,
+                  },
                   recording: {
                     frames: sidecar.frames,
                     seconds,

@@ -288,7 +288,7 @@ Before anything plays, the recording is taken to the saved frame and the picture
 
 **Play** draws every frame the browser presents with the vessel axis of the saved proposal over it. The saved pose is kept. Where the screen shows other angles or another field size than at the saved frame, the axis is projected at the saved view turned and sized by that change, so it turns with the C-arm (`saved_pose_at_frame_angles_v1`). Under the picture the studio names the frame, its kind, the angles and the field size. **Vessel axis** hides and shows the axis, the slider goes to any frame, and **Go to the saved frame** returns to it. With two planes, choose the plane and open that plane's recording.
 
-After a stretch is played the studio gives the time from the browser presenting each frame to the frame and its axis being drawn, as median, 95th percentile and worst, the part of it spent placing and drawing, and how many of the frames presented from the first drawn to the last were drawn (`presentation_to_overlay_drawn_v1`). **Save latency figures** writes them to a small file.
+After a stretch is played the studio gives the time from the browser presenting each frame to the frame and its axis being drawn, as median, 95th percentile and worst, the part of it spent placing and drawing, and how many of the frames presented from the first drawn to the last were drawn (`presentation_to_overlay_drawn_v1`). **Save latency figures** writes them to a small file that names the plane and the saved frame they were measured under.
 
 On three public recordings of 720 by 480 at 30 frames a second, 20 seconds each on a Mac Studio in Chrome, every presented frame was drawn (600 of 600 in each); the median time to the axis drawn was 9 ms, the 95th percentile 19 ms and the worst 25 ms, of which placing and drawing took 2 ms.
 
@@ -296,6 +296,7 @@ On three public recordings of 720 by 480 at 30 frames a second, 20 seconds each 
 
 - Rigid, and one frame per plane. No vessel deformation, cardiac or respiratory motion, or table movement.
 - The replay follows the C-arm angles and the field size on the screen. The table's position is not on the screen: after the table moves, the axis stays where the saved frame placed it.
+- The replay numbers a recording's frames by their time, at an even rate over its length, and reads one table row per frame. A recording with a varying frame rate, or a table with another number of rows than the recording has frames, is outside it.
 - A two-plane proposal assumes both frames show one patient position. That is attested by the operator and not checked.
 - On public clinical frames with a reference pose, most two-plane proposals were more than 1 mm from the reference, some were tens of millimeters away, and the score did not tell them apart.
 - With one plane, depth along the beam is not determined, and a turn about an in-plane axis only weakly. On the synthetic phantoms the total rotation error reached 7.7 degrees while the in-plane error stayed under 1 degree.
