@@ -44,7 +44,10 @@ export const COMPARISON_REQUEST_TIMEOUT_MS = 30_000;
 const SLICE_MS = 12,
   HIDDEN_SLICE_MS = 800,
   /** Times the saved device plans are asked for before a refusal stands. */
-  DEVICE_PLAN_READS = 2;
+  DEVICE_PLAN_READS = 2,
+  /** The wait before they are asked for again, for a change of several
+   * steps under way at the first read to be over. */
+  DEVICE_PLAN_WAIT_MS = 250;
 
 type Props = {
   identity: Identity;
@@ -440,6 +443,11 @@ export default function ComparisonPanel({
           // Each read stands for itself: the last one decides.
           unread = !(conflict && error.reason === MEASUREMENTS_NOT_CURRENT);
           if (!conflict || !unread) break;
+          // A request given up during the wait ends at the next read.
+          if (read + 1 < DEVICE_PLAN_READS)
+            await new Promise((resolve) =>
+              setTimeout(resolve, DEVICE_PLAN_WAIT_MS),
+            );
         }
       }
       // Everything is fetched; decoding a large mask is local work.

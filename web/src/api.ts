@@ -51,7 +51,7 @@ export async function api<T>(
   if (!response.ok) {
     if (response.status === 409)
       throw new RevisionConflictError(
-        response.headers.get(CONFLICT_REASON_HEADER),
+        response.headers.get(CONFLICT_REASON_HEADER) || null,
       );
     throw new WorkspaceRequestError(response.status);
   }

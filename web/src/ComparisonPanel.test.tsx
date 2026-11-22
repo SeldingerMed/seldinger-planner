@@ -506,7 +506,10 @@ test("tells a case without measurements from device plans that could not be read
     none = () =>
       new Response("{}", {
         status: 409,
-        headers: { "X-Conflict-Reason": "measurements-not-current" },
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Conflict-Reason": "measurements-not-current",
+        },
       }),
     calls = server({ frames: { 12: gray }, devices: none });
   render(<Panel />);
@@ -553,6 +556,10 @@ test("reads the device plans again where they changed while they were read", asy
   server({ devices: () => (asked++ ? json(planned) : json({}, 409)) });
   render(<Panel />);
   fireEvent.click(button("Compare 2D and 3D"));
+  // The second read waits a moment, for a change under way to be over.
+  await waitFor(() => expect(asked).toBe(1));
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(asked).toBe(1);
   await compared();
   expect(asked).toBe(2);
   expect(screen.getByRole("combobox", { name: /Planned device/ })).toBeTruthy();

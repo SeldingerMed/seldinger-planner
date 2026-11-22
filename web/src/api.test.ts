@@ -148,6 +148,8 @@ test("a refusal for a changed case carries the reason the server gave, or none",
       "measurements-not-current",
     ],
     [{}, null],
+    // A header that came through empty is no reason.
+    [{ "X-Conflict-Reason": "" }, null],
   ] as const) {
     vi.stubGlobal(
       "fetch",
