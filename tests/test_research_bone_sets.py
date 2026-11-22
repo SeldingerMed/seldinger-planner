@@ -13,7 +13,7 @@ import prepare_bone_sets as bone
 from prepare_ljubljana import PrepareError
 
 
-def test_lspine_cases_split_frames_from_scan_and_refuse_other_folders():
+def test_lspine_cases_split_frames_from_scan_and_set_other_folders_aside():
     names = [
         "C-ArmLSpine/",
         "C-ArmLSpine/case2/",
@@ -26,8 +26,11 @@ def test_lspine_cases_split_frames_from_scan_and_refuse_other_folders():
     cases = bone.lspine_cases(names)
     assert sorted(cases) == ["case10", "case2"]
     assert len(cases["case2"]["C-arm"]) == 2 and len(cases["case2"]["CBCT"]) == 1
-    with pytest.raises(PrepareError, match="Unexpected member"):
-        bone.lspine_cases(["C-ArmLSpine/case2/Other/a.dcm"])
+    assert cases["case2"]["other"] == []
+    # One case of the set carries a further folder; it is listed, not read.
+    extra = bone.lspine_cases(["C-ArmLSpine/case134/ori/XA.1", "C-ArmLSpine/case134/CBCT/0.dcm"])
+    assert extra["case134"]["other"] == ["C-ArmLSpine/case134/ori/XA.1"]
+    assert extra["case134"]["C-arm"] == [] and len(extra["case134"]["CBCT"]) == 1
 
 
 def test_a_file_that_is_not_the_fetched_one_is_refused(tmp_path):
@@ -52,3 +55,15 @@ def test_a_fetch_record_that_is_not_complete_is_refused(tmp_path):
         json.dumps({"complete": True, "files": [{"name": "x", "size": 1}]})
     )
     assert bone._listed(tmp_path) == {"x": {"name": "x", "size": 1}}
+
+
+def test_the_stored_size_of_a_frame_is_read_from_the_frame_itself(tmp_path):
+    def element(tag: str, value: int) -> bytes:
+        return bytes.fromhex(tag) + b"US\x02\x00" + value.to_bytes(2, "little")
+
+    path = tmp_path / "frame.dcm"
+    path.write_bytes(b"\x00" * 128 + b"DICM" + element("28001000", 6) + element("28001100", 4))
+    assert bone.stored_size(path) == (6, 4)
+    path.write_bytes(b"\x00" * 128 + b"DICM" + element("28001000", 6))
+    with pytest.raises(PrepareError, match="No stored size: frame.dcm"):
+        bone.stored_size(path)

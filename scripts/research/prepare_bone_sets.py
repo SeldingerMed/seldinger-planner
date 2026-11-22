@@ -21,7 +21,10 @@ because the evaluation depends on them:
 For each subject or case it writes, under the destination:
   volume.i16       intensities, little-endian, x fastest, clipped to int16
   fiducials.f32    deepfluoro only: the stored points, x y z triples
-  NNN.u16          one reduced frame each, little-endian, rows from the top
+  NNN.u16          one reduced frame each, little-endian, rows from the top.
+                   A deepfluoro frame is the whole stored frame; its stored
+                   intrinsics describe a smaller frame cut from it, and are
+                   recorded as stored
   subject.json     shapes, the volume affine, and for every frame what the
                    source stored about its camera
 
@@ -101,6 +104,22 @@ def _u16(frame) -> bytes:
     return numpy.clip(numpy.rint(frame), 0, 65535).astype("<u2").tobytes()
 
 
+def stored_size(path: Path) -> tuple[int, int]:
+    """Rows and columns a frame states for itself.
+
+    The stored intrinsics of this set describe a frame cut down from the one
+    in the file, so the size of the file's own pixels is read from the file.
+    """
+    data = path.read_bytes()[:4096]
+    size = []
+    for tag in ("28001000", "28001100"):
+        at = data.find(bytes.fromhex(tag) + b"US\x02\x00")
+        if at < 0:
+            raise PrepareError(f"No stored size: {path.name}")
+        size.append(int.from_bytes(data[at + 8 : at + 10], "little"))
+    return size[0], size[1]
+
+
 def _listed(source: Path) -> dict:
     """Sizes and checksums the fetch recorded, by name."""
     try:
@@ -152,8 +171,8 @@ def prepare_deepfluoro_subject(source: Path, destination: Path, listed: dict, pr
         stored = torch.load(io.BytesIO(read(f"xrays/{name}.pt")), weights_only=True)
         pose = stored["pose"].reshape(4, 4).to(torch.float64).numpy()
         intrinsics = {key: float(value) for key, value in stored["intrinsics"].items()}
-        height, width = int(intrinsics.pop("height")), int(intrinsics.pop("width"))
         read(f"xrays/{name}.dcm")
+        height, width = stored_size(source / "xrays" / f"{name}.dcm")
         pixels = numpy.frombuffer(
             frame_pixels(source / "xrays" / f"{name}.dcm", height, width), dtype="<u2"
         ).reshape(height, width)
@@ -194,15 +213,15 @@ def prepare_deepfluoro(source: Path, destination: Path) -> list[dict]:
 
 
 def lspine_cases(names: list[str]) -> dict:
-    """Member names of the archive by case, split into frames and scan."""
+    """Member names of the archive by case, split into frames, scan and
+    whatever else the case holds, which is listed and not read."""
     cases: dict = {}
     for name in names:
         parts = name.split("/")
         if len(parts) != 4 or not parts[3] or parts[3].startswith("."):
             continue
-        if parts[2] not in ("C-arm", "CBCT"):
-            raise PrepareError(f"Unexpected member: {name}")
-        cases.setdefault(parts[1], {"C-arm": [], "CBCT": []})[parts[2]].append(name)
+        folder = parts[2] if parts[2] in ("C-arm", "CBCT") else "other"
+        cases.setdefault(parts[1], {"C-arm": [], "CBCT": [], "other": []})[folder].append(name)
     return cases
 
 
@@ -283,6 +302,7 @@ def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, dest
         "volume_affine": block_affine(affine, SCAN_BLOCK).tolist(),
         "frame_block": FRAME_BLOCK,
         "frames": frames,
+        "members_not_read": sorted(members["other"]),
         "sha256": {name: _sha256(data) for name, data in files.items()},
     }
     publish(created_outside(destination), files, record)
