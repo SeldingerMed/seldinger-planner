@@ -516,10 +516,10 @@ test("tells a case without measurements from device plans that could not be read
   expect(asked(calls)).toBe(1);
   // The same where the measurements stopped being current between a first
   // read refused for another reason and the second.
-  let reads = 0;
+  let turn = 0;
   const between = server({
     frames: { 12: gray },
-    devices: () => (reads++ ? none() : json({}, 409)),
+    devices: () => (turn++ ? none() : json({}, 409)),
   });
   fireEvent.click(button("Compare again"));
   await waitFor(() => expect(asked(between)).toBe(2));
