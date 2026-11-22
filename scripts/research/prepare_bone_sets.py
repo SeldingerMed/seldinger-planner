@@ -232,9 +232,14 @@ def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, dest
 
     # The scan is read one slice at a time, so a case never holds more than
     # one block of slices in memory.
-    heads = []
+    # A few cases keep the sweep's own projections beside the slices of the
+    # scan. Only the slices are read here; the rest is listed in the record.
+    heads, aside = [], sorted(members["other"])
     for name in members["CBCT"]:
         ds = pydicom.dcmread(io.BytesIO(archive.read(name)), stop_before_pixels=True)
+        if ds.get("Modality") != "CT":
+            aside.append(name)
+            continue
         heads.append(
             (
                 [float(v) for v in ds.ImagePositionPatient],
@@ -245,6 +250,8 @@ def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, dest
             )
         )
     heads.sort(key=lambda s: s[0][2])
+    if not heads:
+        raise PrepareError(f"No scan: {case}")
     first = heads[0]
     steps = {round(b[0][2] - a[0][2], 4) for a, b in itertools.pairwise(heads)}
     if (
@@ -314,7 +321,8 @@ def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, dest
         "volume_affine": block_affine(affine, SCAN_BLOCK).tolist(),
         "frame_block": FRAME_BLOCK,
         "frames": frames,
-        "members_not_read": sorted(members["other"]),
+        "members_not_read": len(aside),
+        "members_not_read_first": aside[:3],
         "sha256": {name: _sha256(data) for name, data in files.items()},
     }
     publish(created_outside(destination), files, record)
