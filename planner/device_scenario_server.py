@@ -15,6 +15,11 @@ from planner.device_scenarios import DeviceScenarioConflict, validate_identity, 
 from planner.geometry_state import GeometryConflict
 
 _NO_STORE = {"Cache-Control": "no-store"}
+# A 409 is given both where the measurements are not current and where a source
+# changed during the request. The first names itself in this header, so a
+# reader can tell a case that has no plans yet from plans it should ask for again.
+CONFLICT_REASON_HEADER = "X-Conflict-Reason"
+MEASUREMENTS_NOT_CURRENT = "measurements-not-current"
 _ERRORS = (ValueError, TypeError, KeyError, OSError, OverflowError, sqlite3.Error)
 
 
@@ -42,7 +47,12 @@ def register_device_scenario_routes(
 ):
     """Providers and catalog are trusted configuration, never request selectors."""
 
-    def capture(case_id):
+    def capture(case_id, since=None):
+        """`since` is what the request's first look at the case returned, on
+        every later look. Only on the first is the 409 for measurements not
+        current the case's own state, and named: on a later look they were
+        current when the request began, so the same refusal is a change
+        during it and carries no reason."""
         # Independent parse prevents provider aliases changing while projected.
         geometry_token = encoded(read_geometry(case_id))
         geometry = json.loads(geometry_token)
@@ -51,7 +61,18 @@ def register_device_scenario_routes(
         validate_catalog(catalog)
         current = geometry["current"]
         if current["status"] in ("not_computed", "stale"):
-            raise HTTPException(409, "Confirm and compute current measurements first")
+            raise HTTPException(
+                409,
+                "Confirm and compute current measurements first",
+                headers={
+                    **_NO_STORE,
+                    **(
+                        {}
+                        if since is not None
+                        else {CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT}
+                    ),
+                },
+            )
         if current["status"] != "current":
             raise ValueError("Unrecognized geometry readiness")
         identity = validate_identity(
@@ -77,10 +98,10 @@ def register_device_scenario_routes(
             raise ValueError("Contradictory geometry dependencies")
         return identity, geometry_token, catalog_token
 
-    def read(case_id):
-        before = capture(case_id)
+    def read(case_id, since=None):
+        before = capture(case_id, since)
         state = json.loads(encoded(ledger.read(before[0])))
-        after = capture(case_id)
+        after = capture(case_id, before)
         latest = json.loads(encoded(ledger.read(after[0])))
         if before != after or state != latest:
             raise DeviceScenarioConflict("Scenario or upstream source changed during read")
@@ -105,10 +126,10 @@ def register_device_scenario_routes(
         except (ValueError, TypeError, OverflowError):
             # This 422 is definitively before persistence; later failures are not.
             raise HTTPException(422, "Invalid device alternative geometry") from None
-        if capture(case_id) != before:
+        if capture(case_id, before) != before:
             raise DeviceScenarioConflict("Scenario source changed before persistence")
         saved = ledger.store(before[0], payload.scenario_revision, scenarios)
-        result = read(case_id)
+        result = read(case_id, before)
         if (
             any(result[key] != value for key, value in before[0].items())
             or result["scenario_revision"] != saved["scenario_revision"]

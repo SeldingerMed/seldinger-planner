@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, test, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -416,10 +417,13 @@ test("compares the saved proposal's frame with the mask: a row per segment with 
   // Every frame of the plane was read, and nothing was sent.
   expect(calls.filter((call) => call.includes("/frames/"))).toHaveLength(4);
   expect(calls.every((call) => call.startsWith("GET "))).toBe(true);
-  expect(requests.at(-1)).toBe(false);
   expect(requests).toContain(true);
   expect(computing).toContain(true);
-  expect(computing.at(-1)).toBe(false);
+  // The owner is told of the end in an effect after the table is drawn.
+  await waitFor(() => {
+    expect(requests.at(-1)).toBe(false);
+    expect(computing.at(-1)).toBe(false);
+  });
 }, 60000);
 
 test("carries a clicked place to the 3D model, and measures a planned device against its two marked ends", async () => {
@@ -499,17 +503,43 @@ test("compares without a planned device, and with one frame leaves contrast arri
 
 test("tells a case without measurements from device plans that could not be read", async () => {
   canvases();
-  // No current measurements: the case has no device plans to compare.
-  server({ frames: { 12: gray }, devices: () => json({}, 409) });
+  // No current measurements, as the server says with its refusal: the case
+  // has no device plans to compare, and they are not asked for again.
+  const asked = (calls: string[]) =>
+      calls.filter((call) => call.endsWith("/device-scenarios")).length,
+    none = () =>
+      new Response("{}", {
+        status: 409,
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Conflict-Reason": "measurements-not-current",
+        },
+      }),
+    calls = server({ frames: { 12: gray }, devices: none });
   render(<Panel />);
   fireEvent.click(button("Compare 2D and 3D"));
   await compared();
   expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
-  for (const unread of [
-    () => json({}, 503),
-    () => json({ case_id: "another" }),
-  ]) {
-    server({ frames: { 12: gray }, devices: unread });
+  expect(asked(calls)).toBe(1);
+  // The same where the measurements stopped being current between a first
+  // read refused for another reason and the second.
+  let turn = 0;
+  const between = server({
+    frames: { 12: gray },
+    devices: () => (turn++ ? none() : json({}, 409)),
+  });
+  fireEvent.click(button("Compare again"));
+  await waitFor(() => expect(asked(between)).toBe(2));
+  await compared();
+  expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
+  // A refusal for another reason is a source the server could not read as
+  // one: it is asked once more, and a refusal that stands is plans not read.
+  for (const [unread, reads] of [
+    [() => json({}, 409), 2],
+    [() => json({}, 503), 1],
+    [() => json({ case_id: "another" }), 1],
+  ] as const) {
+    const again = server({ frames: { 12: gray }, devices: unread });
     fireEvent.click(button("Compare again"));
     await waitFor(() =>
       expect(
@@ -520,7 +550,51 @@ test("tells a case without measurements from device plans that could not be read
     );
     expect(rows("Segment comparison").length).toBeGreaterThan(1);
     expect(screen.queryByRole("combobox")).toBeNull();
+    expect(asked(again)).toBe(reads);
   }
+}, 60000);
+
+test("reads the device plans again where they changed while they were read", async () => {
+  canvases();
+  let asked = 0;
+  server({ devices: () => (asked++ ? json(planned) : json({}, 409)) });
+  render(<Panel />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  // The second read waits a moment, for a change under way to be over.
+  await waitFor(() => expect(asked).toBe(1));
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  expect(asked).toBe(1);
+  await compared();
+  expect(asked).toBe(2);
+  expect(screen.getByRole("combobox", { name: /Planned device/ })).toBeTruthy();
+  expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
+}, 60000);
+
+test("does not ask for the device plans again for a saved proposal replaced during the wait", async () => {
+  canvases();
+  let asked = 0;
+  server({ devices: () => (asked++, json({}, 409)) });
+  const requests: boolean[] = [],
+    open = (now: boolean) => requests.push(now),
+    view = render(<Panel onRequests={open} />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await waitFor(() => expect(asked).toBe(1));
+  // The wait has begun: the request is still open.
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(requests.at(-1)).toBe(true);
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    // The request ends with the proposal, not with the wait.
+    view.rerender(<Panel saved={later} onRequests={open} />);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(requests.at(-1)).toBe(false);
+    await act(() => vi.advanceTimersByTimeAsync(400));
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(asked).toBe(1);
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(button("Compare 2D and 3D").disabled).toBe(false);
 }, 60000);
 
 test("says why the saved proposal's frames or mask were not used: not the confirmed ones, spoiled, or not to be had", async () => {
