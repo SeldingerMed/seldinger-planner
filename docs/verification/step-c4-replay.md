@@ -43,6 +43,6 @@ Ninety single-site changes made by hand to the six changed source files (the fra
 
 ## Checks
 
-- Backend: ruff and format clean; 1,481 passed, 133 skipped.
-- Frontend: TypeScript typecheck clean and the changed files formatted; the seven test files of the touched code, 283 of 283; production build; no high-severity advisory in the shipped dependencies.
+- Backend: ruff and format clean; 1,485 passed, 133 skipped.
+- Frontend: TypeScript typecheck clean and the changed files formatted; the seven test files of the touched code, 285 of 285; production build; no high-severity advisory in the shipped dependencies.
 - Real browser: the three recordings above, at `a532ebb`.
