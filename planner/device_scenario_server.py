@@ -59,7 +59,7 @@ def register_device_scenario_routes(
             raise HTTPException(
                 409,
                 "Confirm and compute current measurements first",
-                headers={CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT},
+                headers={**_NO_STORE, CONFLICT_REASON_HEADER: MEASUREMENTS_NOT_CURRENT},
             )
         if current["status"] != "current":
             raise ValueError("Unrecognized geometry readiness")

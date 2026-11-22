@@ -143,6 +143,8 @@ def test_409_for_measurements_not_current_names_its_reason(tmp_path, monkeypatch
         assert refused.status_code == 409, refused.text
         assert refused.json() == {"detail": "Confirm and compute current measurements first"}
         assert refused.headers[CONFLICT_REASON_HEADER] == MEASUREMENTS_NOT_CURRENT
+        # A reader acts on this answer: it is not to be kept by a cache.
+        assert refused.headers["Cache-Control"] == "no-store"
     assert count(ledger) == 0
     assert (CONFLICT_REASON_HEADER, MEASUREMENTS_NOT_CURRENT) == (
         "X-Conflict-Reason",
