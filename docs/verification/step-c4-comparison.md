@@ -51,5 +51,5 @@ The review on the pull request added three points, all taken up: a failure names
 
 On the head of this pull request:
 
-- Backend: 1483 passed and 133 skipped; Python lint and format checks clean.
+- Backend: 1485 passed and 133 skipped; Python lint and format checks clean.
 - Frontend: TypeScript typecheck clean and the changed files formatted; the seven test files of the touched code, 126 of 126, and `web/src/api.test.ts`, 9 of 9; production build and dependency audit clean. The full frontend suite is the frontend job in CI.
