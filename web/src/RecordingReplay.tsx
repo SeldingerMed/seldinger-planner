@@ -566,7 +566,7 @@ export default function RecordingReplay({
             max={sidecar ? sidecar.frames - 1 : 0}
             step={1}
             defaultValue={0}
-            disabled={disabled || !ready}
+            disabled={disabled || !ready || playing}
             onChange={(event) => go(Number(event.target.value))}
           />
         </label>
