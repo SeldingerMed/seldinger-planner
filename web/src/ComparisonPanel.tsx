@@ -407,8 +407,8 @@ export default function ComparisonPanel({
       const stored = await loadSegmentationMask(mask, binding, signal);
       // Saved planned devices are optional: a case may have none. The server
       // answers 409 for a case without current measurements, which has no
-      // plans, and says so; any other 409 is plans that changed while it read
-      // them, which are asked for again.
+      // plans, and says so; any other 409 is a source it could not read as
+      // one, which is asked for once more before the plans count as unread.
       let devices: DeviceScenarioEntry[] = [],
         unread = false;
       for (let read = 0; read < DEVICE_PLAN_READS; read++) {
@@ -436,13 +436,10 @@ export default function ComparisonPanel({
           break;
         } catch (error) {
           if (signal.aborted) throw new Error("aborted");
-          if (
-            error instanceof RevisionConflictError &&
-            error.reason === MEASUREMENTS_NOT_CURRENT
-          )
-            break;
-          unread = true;
-          if (!(error instanceof RevisionConflictError)) break;
+          const conflict = error instanceof RevisionConflictError;
+          // Each read stands for itself: the last one decides.
+          unread = !(conflict && error.reason === MEASUREMENTS_NOT_CURRENT);
+          if (!conflict || !unread) break;
         }
       }
       // Everything is fetched; decoding a large mask is local work.

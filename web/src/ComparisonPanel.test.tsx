@@ -503,21 +503,30 @@ test("tells a case without measurements from device plans that could not be read
   // has no device plans to compare, and they are not asked for again.
   const asked = (calls: string[]) =>
       calls.filter((call) => call.endsWith("/device-scenarios")).length,
-    calls = server({
-      frames: { 12: gray },
-      devices: () =>
-        new Response("{}", {
-          status: 409,
-          headers: { "X-Conflict-Reason": "measurements-not-current" },
-        }),
-    });
+    none = () =>
+      new Response("{}", {
+        status: 409,
+        headers: { "X-Conflict-Reason": "measurements-not-current" },
+      }),
+    calls = server({ frames: { 12: gray }, devices: none });
   render(<Panel />);
   fireEvent.click(button("Compare 2D and 3D"));
   await compared();
   expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
   expect(asked(calls)).toBe(1);
-  // A refusal for another reason is plans that changed while they were read:
-  // they are asked for once more, and one that stands is plans not read.
+  // The same where the measurements stopped being current between a first
+  // read refused for another reason and the second.
+  let reads = 0;
+  const between = server({
+    frames: { 12: gray },
+    devices: () => (reads++ ? none() : json({}, 409)),
+  });
+  fireEvent.click(button("Compare again"));
+  await waitFor(() => expect(asked(between)).toBe(2));
+  await compared();
+  expect(screen.queryByRole("status", { name: "Planned devices" })).toBeNull();
+  // A refusal for another reason is a source the server could not read as
+  // one: it is asked once more, and a refusal that stands is plans not read.
   for (const [unread, reads] of [
     [() => json({}, 409), 2],
     [() => json({}, 503), 1],
