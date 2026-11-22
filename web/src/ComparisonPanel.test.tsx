@@ -8,6 +8,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { useEffect } from "react";
 import { renderFrame, TREE } from "./__fixtures__/angioPhantom";
 import {
   binding,
@@ -551,6 +552,52 @@ test("offers the replay of a recording under a comparison, with the saved frame,
   // Held with the panel while the studio is busy.
   view.rerender(<Panel disabled />);
   expect(given[given.length - 1].disabled).toBe(true);
+}, 60000);
+
+test("keeps the replay, and a recording opened in it, while the same saved proposal is compared again", async () => {
+  canvases();
+  server({ frames: { 12: gray } });
+  const given: Parameters<typeof replay.default>[0][] = [];
+  let put = 0,
+    taken = 0;
+  vi.spyOn(replay, "default").mockImplementation((props) => {
+    given.push(props);
+    useEffect(() => {
+      put++;
+      return () => {
+        taken++;
+      };
+    }, []);
+    return <p>replay</p>;
+  });
+  const view = render(<Panel />);
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  const first = given[given.length - 1];
+  fireEvent.click(button("Compare again"));
+  // Up while the comparison is worked out again, and after it.
+  expect(screen.getByText("replay")).toBeTruthy();
+  await waitFor(() => expect(button("Compare again").disabled).toBe(false));
+  await compared();
+  expect([put, taken]).toEqual([1, 0]);
+  // What it was given is unchanged, so nothing in it starts over.
+  const last = given[given.length - 1];
+  expect(last.planes).toBe(first.planes);
+  expect(last.points).toBe(first.points);
+  expect(last.matrix).toBe(first.matrix);
+  // A comparison that fails takes it down.
+  server({ mask: () => json({}, 503) });
+  fireEvent.click(button("Compare again"));
+  await waitFor(() => expect(screen.queryByText("replay")).toBeNull());
+  expect(taken).toBe(1);
+  // It is of one saved proposal: another takes it down at once.
+  server({ frames: { 12: gray } });
+  fireEvent.click(button("Compare 2D and 3D"));
+  await compared();
+  expect(screen.getByText("replay")).toBeTruthy();
+  view.rerender(<Panel saved={later} />);
+  expect(screen.queryByText("replay")).toBeNull();
+  view.unmount();
 }, 60000);
 
 test("compares without a planned device, and with one frame leaves contrast arrival out", async () => {

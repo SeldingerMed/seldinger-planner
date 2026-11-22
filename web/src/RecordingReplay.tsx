@@ -10,6 +10,7 @@ import type { Vec3 } from "./obliqueSlice";
 import type { VerifiedFrame } from "./projectionFrames";
 import {
   parseSidecar,
+  SIDECAR_LAYOUT,
   SIDECAR_LIMITS,
   TABLE_TOO_LARGE,
   type RecordingSidecar,
@@ -345,6 +346,7 @@ export default function RecordingReplay({
                 {
                   ...figures.summary,
                   overlay_method: REPLAY_OVERLAY_METHOD,
+                  frame_table_layout: SIDECAR_LAYOUT,
                   plane: plane.frame.plane,
                   saved_frame: {
                     source_id: plane.frame.source_id,
