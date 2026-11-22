@@ -49,7 +49,9 @@ import ProjectionOverlayStudio, {
   VIEW_NETWORK_WAIT_MS,
 } from "./ProjectionOverlayStudio";
 import { projectRegistered } from "./projectionRegistration";
+import * as comparisonJobs from "./comparisonJob";
 import * as overlayJobs from "./projectionOverlayJob";
+import * as presenceJobs from "./vesselPresenceJob";
 import * as segmentation from "./segmentation";
 import * as files from "./viewNetworkFile";
 import * as viewProposals from "./viewProposals";
@@ -138,11 +140,14 @@ function Harness({
   onDirty,
   locked = false,
   withVolume = true,
+  feedback = true,
 }: {
   cursor?: Vec3 | null;
   onDirty?: (dirty: boolean) => void;
   locked?: boolean;
   withVolume?: boolean;
+  /** The workspace disables the studio while the studio says it is busy. */
+  feedback?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -154,7 +159,7 @@ function Harness({
         binding={binding}
         volume={withVolume ? volume : null}
         cursor={cursor}
-        disabled={busy || locked}
+        disabled={(feedback && busy) || locked}
         onBusy={setBusy}
         onDirtyChange={(value) => {
           setDirty(value);
@@ -2804,3 +2809,163 @@ test.each(["one plane", "two planes"])(
   },
   90000,
 );
+
+// The 2D and 3D comparison of a saved proposal.
+
+test("compares the frame and the mask of a saved proposal while the report waits, and saves nothing", async () => {
+  const api = server({
+    registration: () => json(currentAnswer()),
+    bundle: () =>
+      json(
+        bundleAnswer({
+          planes: [
+            {
+              ...bundleAnswer().manifest.planes[0],
+              frames: [
+                { index: 12, sha256: hex(gray), input_sha256: "c".repeat(64) },
+              ],
+            },
+          ],
+        }),
+      ),
+  });
+  const view = render(<Harness />);
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toMatch(
+      /^No vessel presence report/,
+    ),
+  );
+  const other = screen.getByRole("button", { name: "Other workspace action" }),
+    report = () =>
+      within(group()).getByRole("button", { name: "Compute vessel presence" }),
+    comparison = () =>
+      within(screen.getByRole("group", { name: "2D and 3D comparison" }));
+  await waitFor(() => expect(other).toHaveProperty("disabled", false));
+  fireEvent.click(
+    comparison().getByRole("button", { name: "Compare 2D and 3D" }),
+  );
+  expect(report()).toHaveProperty("disabled", true);
+  expect(other).toHaveProperty("disabled", true);
+  expect(
+    screen.getByRole("button", { name: "Show saved overlay" }),
+  ).toHaveProperty("disabled", true);
+  await waitFor(
+    () => comparison().getByRole("table", { name: "Segment comparison" }),
+    { timeout: 30000 },
+  );
+  await waitFor(() => expect(report()).toHaveProperty("disabled", false));
+  expect(other).toHaveProperty("disabled", false);
+  expect(api.keys()).toEqual(
+    expect.arrayContaining([
+      "GET /api/projection-frames/phantom-run/planes/single/frames/12",
+      `GET ${maskEntry.mask_url}`,
+      `GET /api/cases/${identity.case_id}/device-scenarios`,
+    ]),
+  );
+  expect(api.keys().filter((key) => !key.startsWith("GET "))).toEqual([]);
+  // A stale proposal has no comparison.
+  view.unmount();
+  server({
+    registration: () =>
+      json(registrationAnswer({ status: "stale", registration_id: "r-0" }, 2)),
+  });
+  render(<Harness />);
+  await screen.findByText(/confirmed for an earlier revision of this case/);
+  expect(
+    screen.queryByRole("group", { name: "2D and 3D comparison" }),
+  ).toBeNull();
+}, 60000);
+
+test("each panel under a saved proposal holds the other and the saved overlay while it reads and while it computes", async () => {
+  // The frame is answered when the test lets it be; each computation ends
+  // when the test lets it end.
+  let answer: ((response: Response) => void) | null = null,
+    finish = false;
+  const frame = () => bytes(gray, { "X-Frame-Manifest-Revision": REVISION }),
+    realComparison = comparisonJobs.createComparisonJob,
+    realPresence = presenceJobs.createPresenceJob;
+  vi.spyOn(comparisonJobs, "createComparisonJob").mockImplementation(
+    (input) => {
+      const job = realComparison(input);
+      return { ...job, advance: (expired) => finish && job.advance(expired) };
+    },
+  );
+  vi.spyOn(presenceJobs, "createPresenceJob").mockImplementation((input) => {
+    const job = realPresence(input);
+    return { ...job, advance: (expired) => finish && job.advance(expired) };
+  });
+  server({
+    registration: () => json(currentAnswer()),
+    bundle: () =>
+      json(
+        bundleAnswer({
+          planes: [
+            {
+              ...bundleAnswer().manifest.planes[0],
+              frames: [
+                { index: 12, sha256: hex(gray), input_sha256: "c".repeat(64) },
+              ],
+            },
+          ],
+        }),
+      ),
+    frame: () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      }) as unknown as Response,
+  });
+  // A workspace that does not disable the studio while it is busy: the
+  // studio holds its own controls.
+  render(<Harness feedback={false} />);
+  await waitFor(() =>
+    expect(status("Saved vessel presence report").textContent).toMatch(
+      /^No vessel presence report/,
+    ),
+  );
+  const report = () =>
+      within(group()).getByRole("button", { name: "Compute vessel presence" }),
+    comparison = () =>
+      within(screen.getByRole("group", { name: "2D and 3D comparison" })),
+    compare = () =>
+      comparison().getByRole("button", {
+        name: /^Compare/,
+      }) as HTMLButtonElement,
+    overlay = () => screen.getByRole("button", { name: "Show saved overlay" }),
+    held = (panel: () => HTMLElement) => {
+      expect(panel()).toHaveProperty("disabled", true);
+      expect(overlay()).toHaveProperty("disabled", true);
+    };
+  await waitFor(() => expect(overlay()).toHaveProperty("disabled", false));
+
+  // The comparison reads its frame, then computes.
+  fireEvent.click(compare());
+  await waitFor(() => expect(answer).not.toBeNull());
+  held(report);
+  answer!(frame());
+  answer = null;
+  await waitFor(() => comparison().getByText("Comparing…"));
+  held(report);
+  finish = true;
+  await waitFor(
+    () => comparison().getByRole("table", { name: "Segment comparison" }),
+    { timeout: 30000 },
+  );
+  await waitFor(() => expect(report()).toHaveProperty("disabled", false));
+  expect(overlay()).toHaveProperty("disabled", false);
+
+  // The report reads its frame, then computes.
+  finish = false;
+  fireEvent.click(report());
+  await waitFor(() => expect(answer).not.toBeNull());
+  held(compare);
+  answer!(frame());
+  await waitFor(() =>
+    expect(status("Vessel presence status").textContent).toMatch(/^Computing/),
+  );
+  held(compare);
+  finish = true;
+  await waitFor(() => expect(compare()).toHaveProperty("disabled", false), {
+    timeout: 30000,
+  });
+  expect(overlay()).toHaveProperty("disabled", false);
+}, 120000);

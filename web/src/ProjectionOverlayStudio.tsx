@@ -61,6 +61,7 @@ import { loadSegmentationMask, type SegmentationEntry } from "./segmentation";
 import { stable, type Identity } from "./territoryWorkflow";
 import type { Polarity, VesselTarget } from "./vesselness2d";
 import VesselPresencePanel from "./VesselPresencePanel";
+import ComparisonPanel from "./ComparisonPanel";
 import { STUDIO_REQUEST_TIMEOUT_MS } from "./requestDeadline";
 import { evidenceViews, viewNetwork, viewNetworkWithin } from "./viewProposals";
 import "./reformats.css";
@@ -461,8 +462,17 @@ export default function ProjectionOverlayStudio({
     [localBusy, setLocalBusy] = useState(false),
     [requestFailed, setRequestFailed] = useState(false),
     // The vessel-presence report below has a request open, or is computing.
-    [reporting, setReporting] = useState(false),
-    [reportComputing, setReportComputing] = useState(false);
+    // The panels under a saved proposal: open requests and running
+    // computations of each.
+    [panels, setPanels] = useState({
+      report: false,
+      comparison: false,
+      reportComputing: false,
+      comparisonComputing: false,
+    }),
+    reporting = panels.report || panels.comparison,
+    reportComputing = panels.reportComputing || panels.comparisonComputing;
+  const panelRequests = useRef({ report: false, comparison: false });
   const reportingNow = useRef(false);
   // Each request releases the same callback it acquired, even after a case
   // switch. Cleanup is idempotent so late acknowledgements cannot relock it.
@@ -620,17 +630,41 @@ export default function ProjectionOverlayStudio({
     !requestFailed &&
     !reporting &&
     !reportComputing;
-  const onReporting = useCallback((value: boolean) => {
-    reportingNow.current = value;
-    setReporting(value);
-    const owner = callbacks.current.onBusy;
-    owner?.(
-      value ||
-        [...pending.current.values()].some(
-          (request) => request.owner === owner,
-        ),
+  const onPanelRequests = useCallback(
+    (panel: "report" | "comparison", value: boolean) => {
+      panelRequests.current[panel] = value;
+      const any =
+        panelRequests.current.report || panelRequests.current.comparison;
+      reportingNow.current = any;
+      setPanels((now) => ({ ...now, [panel]: value }));
+      const owner = callbacks.current.onBusy;
+      owner?.(
+        any ||
+          [...pending.current.values()].some(
+            (request) => request.owner === owner,
+          ),
+      );
+    },
+    [],
+  );
+  const onReporting = useCallback(
+      (value: boolean) => onPanelRequests("report", value),
+      [onPanelRequests],
+    ),
+    onComparing = useCallback(
+      (value: boolean) => onPanelRequests("comparison", value),
+      [onPanelRequests],
+    ),
+    setReportComputing = useCallback(
+      (value: boolean) =>
+        setPanels((now) => ({ ...now, reportComputing: value })),
+      [],
+    ),
+    setComparisonComputing = useCallback(
+      (value: boolean) =>
+        setPanels((now) => ({ ...now, comparisonComputing: value })),
+      [],
     );
-  }, []);
   const grid = useMemo(() => {
     try {
       return volume
@@ -1889,10 +1923,36 @@ export default function ProjectionOverlayStudio({
               mask={mask}
               grid={grid}
               disabled={
-                disabled || localBusy || !!run || requestFailed || dirty
+                disabled ||
+                localBusy ||
+                !!run ||
+                requestFailed ||
+                dirty ||
+                panels.comparison ||
+                panels.comparisonComputing
               }
               onRequests={onReporting}
               onComputing={setReportComputing}
+            />
+          )}
+          {saved?.status === "current" && (
+            <ComparisonPanel
+              identity={identity}
+              binding={binding}
+              registration={current.saved}
+              mask={mask}
+              grid={grid}
+              disabled={
+                disabled ||
+                localBusy ||
+                !!run ||
+                requestFailed ||
+                dirty ||
+                panels.report ||
+                panels.reportComputing
+              }
+              onRequests={onComparing}
+              onComputing={setComparisonComputing}
             />
           )}
         </>

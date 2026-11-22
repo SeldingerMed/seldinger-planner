@@ -22,6 +22,9 @@ export type SegmentationBinding = Pick<
   SegmentationEntry,
   "case_id" | "image_sha256" | "reference_revision"
 >;
+/** The stored mask bytes are not the ones its entry names. */
+export const SEGMENTATION_INTEGRITY_FAILURE =
+  "Segmentation integrity check failed.";
 export async function loadSegmentationMask(
   entry: SegmentationEntry,
   binding: SegmentationBinding,
@@ -54,6 +57,6 @@ export async function loadSegmentationMask(
     throw new Error("Segmentation size exceeds its bound.");
   const actual = await sha256Hex(buffer);
   if (actual !== entry.mask_sha256)
-    throw new Error("Segmentation integrity check failed.");
+    throw new Error(SEGMENTATION_INTEGRITY_FAILURE);
   return buffer;
 }
