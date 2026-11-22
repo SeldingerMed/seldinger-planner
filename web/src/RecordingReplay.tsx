@@ -543,7 +543,7 @@ export default function RecordingReplay({
         </button>
         <button
           type="button"
-          disabled={disabled || !ready}
+          disabled={disabled || !ready || playing}
           onClick={() => go(plane.frame.index)}
         >
           Go to the saved frame

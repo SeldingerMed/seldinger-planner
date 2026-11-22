@@ -315,9 +315,12 @@ test("measures the latency of the stretch played, and saves the figures", async 
   present(40, clock - 500, 2);
   const slider = screen.getByLabelText("Frame") as HTMLInputElement;
   expect(slider.disabled).toBe(false);
+  expect(button("Go to the saved frame").disabled).toBe(false);
   fireEvent.click(button("Play"));
-  // The stretch measured is one run of play: the slider is held during it.
+  // The stretch measured is one run of play: the slider and the way back to
+  // the saved frame are held during it.
   expect(slider.disabled).toBe(true);
+  expect(button("Go to the saved frame").disabled).toBe(true);
   // Three frames, drawn 8, 20 and 12 ms after they were presented; the
   // browser presented two more between the second and the third.
   present(41, clock - 6, 2);
@@ -326,6 +329,7 @@ test("measures the latency of the stretch played, and saves the figures", async 
   present(45, clock - 11, 1);
   fireEvent.click(button("Pause"));
   expect(slider.disabled).toBe(false);
+  expect(button("Go to the saved frame").disabled).toBe(false);
   const cells = Array.from(
     within(screen.getByRole("table", { name: "Overlay latency" })).getAllByRole(
       "row",
