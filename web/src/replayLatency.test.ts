@@ -58,9 +58,12 @@ describe("latency of the overlay on a replayed recording", () => {
   it("starts again when cleared, and keeps one figure for one frame", () => {
     const log = createLatencyLog();
     log.add({ presented_ms: 0, drawn_ms: 9, work_ms: 2, presented_frames: 3 });
+    expect(log.drawn()).toBe(1);
     log.clear();
     expect(log.summary().frames_drawn).toBe(0);
+    expect(log.drawn()).toBe(0);
     log.add({ presented_ms: 5, drawn_ms: 8, work_ms: 2, presented_frames: 90 });
+    expect(log.drawn()).toBe(1);
     expect(log.summary()).toMatchObject({
       frames_presented: 1,
       frames_drawn: 1,

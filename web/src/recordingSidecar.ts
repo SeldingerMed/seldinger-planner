@@ -112,13 +112,14 @@ function carried(values: Float32Array) {
     values[k] = first;
 }
 
+/** Said of a table over the limits, read or not. */
+export const TABLE_TOO_LARGE = "The frame table is too large";
+
 export function parseSidecar(text: string): RecordingSidecar {
-  if (text.length > SIDECAR_LIMITS.max_chars)
-    throw new Error("The frame table is too large");
+  if (text.length > SIDECAR_LIMITS.max_chars) throw new Error(TABLE_TOO_LARGE);
   const [head, ...body] = rows(text);
   if (!head || !body.length) throw new Error("The frame table is empty");
-  if (body.length > SIDECAR_LIMITS.max_frames)
-    throw new Error("The frame table is too large");
+  if (body.length > SIDECAR_LIMITS.max_frames) throw new Error(TABLE_TOO_LARGE);
   const at = Object.fromEntries(
     Object.entries(COLUMNS).map(([name, column]) => {
       const k = head.indexOf(column);

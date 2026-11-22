@@ -64,6 +64,10 @@ export function createLatencyLog() {
       latency = [];
       work = [];
     },
+    /** Frames drawn so far, at no cost: the figures sort every one of them. */
+    drawn() {
+      return latency.length;
+    },
     summary(): LatencySummary {
       const presented = latency.length ? last - first + 1 : 0;
       return {

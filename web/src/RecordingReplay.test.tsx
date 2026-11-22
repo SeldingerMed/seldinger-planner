@@ -12,7 +12,28 @@ import type { VerifiedFrame } from "./projectionFrames";
 import { projectRegistered } from "./projectionRegistration";
 import RecordingReplay, { type ReplaySource } from "./RecordingReplay";
 import { REPLAY_LATENCY_METHOD } from "./replayLatency";
+import { SIDECAR_LIMITS } from "./recordingSidecar";
 import { REPLAY_OVERLAY_METHOD } from "./replayOverlay";
+
+// The figures are worked out from every frame drawn so far: how often that is
+// done is counted.
+const worked = vi.hoisted(() => ({ out: 0 }));
+vi.mock("./replayLatency", async (original) => {
+  const real = await original<typeof import("./replayLatency")>();
+  return {
+    ...real,
+    createLatencyLog: () => {
+      const log = real.createLatencyLog();
+      return {
+        ...log,
+        summary: () => {
+          worked.out++;
+          return log.summary();
+        },
+      };
+    },
+  };
+});
 
 // A recording of 300 frames in 10 s, decoded at 720 by 480; the saved frame
 // is frame 12, admitted from the crop at (100, 50).
@@ -353,6 +374,24 @@ test("measures the latency of the stretch played, and saves the figures", async 
   );
 });
 
+test("shows the figures again every 30 frames drawn, and works them out only then", async () => {
+  await ready();
+  fireEvent.click(button("Play"));
+  worked.out = 0;
+  for (let frame = 13; frame < 42; frame++) present(frame, clock - 5, 1);
+  expect(worked.out).toBe(0);
+  expect(screen.queryByRole("table", { name: "Overlay latency" })).toBeNull();
+  present(42, clock - 5, 1);
+  expect(worked.out).toBe(1);
+  expect(
+    (await screen.findByRole("status", { name: "Frames drawn" })).textContent,
+  ).toBe(
+    "30 of the 30 frames the browser presented were drawn, frames 13 to 42.",
+  );
+  for (let frame = 43; frame < 73; frame++) present(frame, clock - 5, 1);
+  expect(worked.out).toBe(2);
+});
+
 test("goes to a frame by the slider and back to the saved frame", async () => {
   await ready();
   fireEvent.change(screen.getByLabelText("Frame"), {
@@ -377,6 +416,27 @@ test("refuses a frame table that does not fit the recording or the saved frame",
   );
   expect(button("Play").disabled).toBe(true);
   view.unmount();
+  // A file with more bytes than any table within the limit can have (three
+  // to a character) is refused by its size, without being read.
+  const sized = (bytes: number) => {
+      const file = new File(["frame"], "run.mp4");
+      Object.defineProperty(file, "size", { value: bytes });
+      return file;
+    },
+    read = vi.spyOn(FileReader.prototype, "readAsText");
+  await open(sized(3 * SIDECAR_LIMITS.max_chars + 1));
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "The frame table is too large.",
+  );
+  expect(read).not.toHaveBeenCalled();
+  cleanup();
+  // One of fewer bytes may be within the limit, and is read to tell.
+  await open(sized(3 * SIDECAR_LIMITS.max_chars));
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "The frame table is empty.",
+  );
+  expect(read).toHaveBeenCalledTimes(1);
+  cleanup();
   // The saved frame is frame 12; this table ends at frame 9.
   await open(table(() => "0°/0°", 10));
   expect((await screen.findByRole("alert")).textContent).toBe(

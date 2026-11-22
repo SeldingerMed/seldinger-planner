@@ -8,7 +8,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewNumbers } from "./carmGeometry";
 import type { Vec3 } from "./obliqueSlice";
 import type { VerifiedFrame } from "./projectionFrames";
-import { parseSidecar, type RecordingSidecar } from "./recordingSidecar";
+import {
+  parseSidecar,
+  SIDECAR_LIMITS,
+  TABLE_TOO_LARGE,
+  type RecordingSidecar,
+} from "./recordingSidecar";
 import { createLatencyLog, type LatencySummary } from "./replayLatency";
 import {
   createReplayOverlay,
@@ -208,8 +213,7 @@ export default function RecordingReplay({
           from: played.current?.from ?? frame,
           to: frame,
         };
-        if (log.current.summary().frames_drawn % REFRESH_FRAMES === 0)
-          snapshot();
+        if (log.current.drawn() % REFRESH_FRAMES === 0) snapshot();
       }
       if (status.current) {
         const p = sidecar.primary_deg[frame],
@@ -416,7 +420,12 @@ export default function RecordingReplay({
               setTable(null);
               forget();
               if (!file) return;
-              readText(file)
+              // A character takes at most three bytes, so a file of more
+              // bytes than three times the limit is refused unread.
+              (file.size > 3 * SIDECAR_LIMITS.max_chars
+                ? Promise.reject(new Error(TABLE_TOO_LARGE))
+                : readText(file)
+              )
                 .then((text) => ({ sidecar: parseSidecar(text) }))
                 .catch((error: unknown) => ({
                   failure:
