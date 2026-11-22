@@ -6,7 +6,7 @@
  * computed here from the frames, the mask and the saved pose; nothing is
  * saved. Pixels are read, verified and drawn; they are never sent. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, RevisionConflictError } from "./api";
+import { api, MEASUREMENTS_NOT_CURRENT, RevisionConflictError } from "./api";
 import { carryPoint, type CarriedPoint, type FrameMark } from "./carryPoint";
 import type { ViewNumbers } from "./carmGeometry";
 import {
@@ -43,7 +43,12 @@ import { stable, type Identity } from "./territoryWorkflow";
 
 export const COMPARISON_REQUEST_TIMEOUT_MS = 30_000;
 const SLICE_MS = 12,
-  HIDDEN_SLICE_MS = 800;
+  HIDDEN_SLICE_MS = 800,
+  /** Times the saved device plans are asked for before a refusal stands. */
+  DEVICE_PLAN_READS = 2,
+  /** The wait before they are asked for again, for a change of several
+   * steps under way at the first read to be over. */
+  DEVICE_PLAN_WAIT_MS = 250;
 
 type Props = {
   identity: Identity;
@@ -431,32 +436,56 @@ export default function ComparisonPanel({
       }
       const sources = replaySources(named, frames, bundle.planes);
       const stored = await loadSegmentationMask(mask, binding, signal);
-      // Saved planned devices are optional: a case may have none, and one
-      // without current measurements (409) has none to read.
+      // Saved planned devices are optional: a case may have none. The server
+      // answers 409 for a case without current measurements, which has no
+      // plans, and says so; any other 409 is a source it could not read as
+      // one, which is asked for once more before the plans count as unread.
       let devices: DeviceScenarioEntry[] = [],
         unread = false;
-      try {
-        const raw = await api<Record<string, unknown>>(
-            `/cases/${encodeURIComponent(identity.case_id)}/device-scenarios`,
-            undefined,
-            "GET",
-            signal,
-          ),
-          envelope = parseDeviceScenarios(raw, {
-            ...identity,
-            geometry_result_id: String(raw?.geometry_result_id),
-            catalog_version: String(raw?.catalog_version),
-          });
-        if (envelope.current.status === "current")
-          devices = envelope.current.scenarios.filter(
-            (scenario) =>
-              DEVICE_CATALOG.devices.find(
-                (device) => device.id === scenario.placement.deviceId,
-              )?.category === "flow-diverter" && liesOnPath(scenario.placement),
-          );
-      } catch (error) {
-        if (signal.aborted) throw new Error("aborted");
-        unread = !(error instanceof RevisionConflictError);
+      for (let read = 0; read < DEVICE_PLAN_READS; read++) {
+        try {
+          const raw = await api<Record<string, unknown>>(
+              `/cases/${encodeURIComponent(identity.case_id)}/device-scenarios`,
+              undefined,
+              "GET",
+              signal,
+            ),
+            envelope = parseDeviceScenarios(raw, {
+              ...identity,
+              geometry_result_id: String(raw?.geometry_result_id),
+              catalog_version: String(raw?.catalog_version),
+            });
+          if (envelope.current.status === "current")
+            devices = envelope.current.scenarios.filter(
+              (scenario) =>
+                DEVICE_CATALOG.devices.find(
+                  (device) => device.id === scenario.placement.deviceId,
+                )?.category === "flow-diverter" &&
+                liesOnPath(scenario.placement),
+            );
+          unread = false;
+          break;
+        } catch (error) {
+          if (signal.aborted) throw new Error("aborted");
+          const conflict = error instanceof RevisionConflictError;
+          // Each read stands for itself: the last one decides.
+          unread = !(conflict && error.reason === MEASUREMENTS_NOT_CURRENT);
+          if (!conflict || !unread) break;
+          if (read + 1 < DEVICE_PLAN_READS) {
+            // The wait ends at once for a request that is given up, and no
+            // second read is made for it.
+            await new Promise<void>((resolve) => {
+              const timer = setTimeout(done, DEVICE_PLAN_WAIT_MS);
+              function done() {
+                clearTimeout(timer);
+                signal.removeEventListener("abort", done);
+                resolve();
+              }
+              signal.addEventListener("abort", done);
+            });
+            if (signal.aborted) throw new Error("aborted");
+          }
+        }
       }
       // Everything is fetched; decoding a large mask is local work.
       clearTimeout(deadline);

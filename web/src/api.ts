@@ -21,8 +21,13 @@ export type CaseState = {
   measurements: Measurement[];
   aneurysm_plan?: AneurysmPlan | null;
 };
+/** The header in which the server names the reason of a 409, where it does. */
+export const CONFLICT_REASON_HEADER = "X-Conflict-Reason";
+/** The case's measurements are not current: nothing resting on them exists. */
+export const MEASUREMENTS_NOT_CURRENT = "measurements-not-current";
 export class RevisionConflictError extends Error {
-  constructor() {
+  /** `reason` is the server's own, or null where it gave none. */
+  constructor(public readonly reason: string | null = null) {
     super("Case changed. Reload saved state to review it before saving again.");
   }
 }
@@ -44,7 +49,10 @@ export async function api<T>(
     ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
-    if (response.status === 409) throw new RevisionConflictError();
+    if (response.status === 409)
+      throw new RevisionConflictError(
+        response.headers.get(CONFLICT_REASON_HEADER) || null,
+      );
     throw new WorkspaceRequestError(response.status);
   }
   return response.json();
