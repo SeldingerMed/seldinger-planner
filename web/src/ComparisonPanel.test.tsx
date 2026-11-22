@@ -416,10 +416,13 @@ test("compares the saved proposal's frame with the mask: a row per segment with 
   // Every frame of the plane was read, and nothing was sent.
   expect(calls.filter((call) => call.includes("/frames/"))).toHaveLength(4);
   expect(calls.every((call) => call.startsWith("GET "))).toBe(true);
-  expect(requests.at(-1)).toBe(false);
   expect(requests).toContain(true);
   expect(computing).toContain(true);
-  expect(computing.at(-1)).toBe(false);
+  // The owner is told of the end in an effect after the table is drawn.
+  await waitFor(() => {
+    expect(requests.at(-1)).toBe(false);
+    expect(computing.at(-1)).toBe(false);
+  });
 }, 60000);
 
 test("carries a clicked place to the 3D model, and measures a planned device against its two marked ends", async () => {
