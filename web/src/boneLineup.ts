@@ -281,29 +281,45 @@ function prepareFrame(frame: BoneFrameInput, divisors: number[]) {
     if (value > high) high = value;
   }
   if (!(high > low)) throw new Error("Frame shows nothing to line up on");
-  // The working picture: whole source pixels averaged, sides a multiple of
-  // the coarsest divisor.
+  // The working picture: each of its pixels is the mean of the source
+  // pixels it covers, part pixels by their share, so the picture stays
+  // where the frame is. Sides are a multiple of the coarsest divisor.
   const coarsest = Math.max(...divisors),
     shrink = Math.min(1, L.working_px / Math.max(width, height)),
     side = (n: number) =>
       Math.max(2 * coarsest, coarsest * Math.floor((n * shrink) / coarsest)),
     w = side(width),
     h = side(height);
+  /** For each working pixel, the source pixels it covers and their shares. */
+  const spans = (from: number, to: number) =>
+    Array.from({ length: to }, (_, k) => {
+      const a = (k * from) / to,
+        b = ((k + 1) * from) / to,
+        first = Math.floor(a),
+        last = Math.min(from, Math.ceil(b)),
+        share = new Float64Array(last - first);
+      for (let i = first; i < last; i++)
+        share[i - first] = (Math.min(i + 1, b) - Math.max(i, a)) / (b - a);
+      return { first, share };
+    });
+  const across = spans(width, w),
+    down = spans(height, h);
   const floor = high / 256,
     full = new Float32Array(w * h);
   for (let y = 0; y < h; y++) {
-    const y0 = Math.floor((y * height) / h),
-      y1 = Math.max(y0 + 1, Math.floor(((y + 1) * height) / h));
+    const rows = down[y];
     for (let x = 0; x < w; x++) {
-      const x0 = Math.floor((x * width) / w),
-        x1 = Math.max(x0 + 1, Math.floor(((x + 1) * width) / w));
+      const columns = across[x];
       let sum = 0;
-      for (let j = y0; j < y1; j++)
-        for (let i = x0; i < x1; i++) sum += pixels[j * width + i];
+      for (let j = 0; j < rows.share.length; j++) {
+        const at = (rows.first + j) * width + columns.first;
+        let line = 0;
+        for (let i = 0; i < columns.share.length; i++)
+          line += columns.share[i] * pixels[at + i];
+        sum += rows.share[j] * line;
+      }
       // What the beam lost on the way: bright where a detector reads dark.
-      full[y * w + x] = -Math.log(
-        (sum / ((y1 - y0) * (x1 - x0)) + floor) / (high + floor),
-      );
+      full[y * w + x] = -Math.log((sum + floor) / (high + floor));
     }
   }
   const levels = new Map<number, Level>();

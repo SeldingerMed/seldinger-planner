@@ -342,6 +342,26 @@ describe("proposeBoneLineup", () => {
     expect(apart(found.matrix, TRUE)).toBeLessThan(1.5);
   }, 120_000);
 
+  it("is not moved by a frame size its working picture does not divide", () => {
+    // 180 pixels onto a 128-pixel working picture: averaging whole pixels
+    // only would set the frame half a pixel off, 0.6 mm at the bone.
+    const volume = phantom(),
+      samples = boneSamples(volume),
+      cam = camera(view(0), [0, 0, 0]);
+    for (const shift of [
+      [0.3, 0, 0.3],
+      [-5.2, 1, 4.4],
+    ]) {
+      const truth = rigid(0, 0, shift);
+      const found = proposeBoneLineup({
+        samples,
+        frames: [render(volume, truth, view(0), 180)],
+        start: truth,
+      });
+      expect(apart(found.matrix, truth, cam.d)).toBeLessThan(0.35);
+    }
+  }, 120_000);
+
   it("with one frame, places the bone across the beam", () => {
     const frames = [render(volume, TRUE, view(0))];
     const found = proposeBoneLineup({ samples, frames, start: IDENTITY });
