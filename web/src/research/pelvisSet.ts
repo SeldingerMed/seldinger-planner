@@ -21,6 +21,11 @@ export const PELVIS = {
   /** Specimen numbers, first and last. Fixed before any run. */
   design: [1, 3],
   held_back: [4, 6],
+  /** The set's own bone labels: 1 and 2 the hip bones, 3 vertebrae, 4 and 7
+   * the sacrum, 5 and 6 the femurs. A femur turns at the hip between the
+   * scan and the frames, and the stored pose is the pelvis's. */
+  labels: [0, 1, 2, 3, 4, 5, 6, 7],
+  femur_labels: [5, 6],
   /** Frames taken per specimen, evenly through its frames. */
   frames_per_subject: 12,
   /** Disturbed starts per frame, and how far each may be from the stored
@@ -55,6 +60,7 @@ export type PelvisRecord = {
   volume_affine: number[][];
   fiducial_count: number;
   frame_block: number;
+  label_values: number[];
   frames: Record<string, StoredFrame>;
 };
 
@@ -194,6 +200,27 @@ export function pelvisInputs(
     fiducials: storedPoints(fiducials, center),
     residual_px: window.residual_px,
   };
+}
+
+/** The scan's bone that moves against the pelvis: its femurs. */
+export function pelvisMoving(
+  record: PelvisRecord,
+  labels: Uint8Array,
+): Uint8Array {
+  const shape = record.volume_shape,
+    values = record.label_values;
+  if (
+    labels.length !== shape[0] * shape[1] * shape[2] ||
+    !Array.isArray(values) ||
+    values.length !== PELVIS.labels.length ||
+    !PELVIS.labels.every((label, i) => values[i] === label)
+  )
+    throw new Error("Labels do not match their record");
+  const femurs: readonly number[] = PELVIS.femur_labels,
+    moving = new Uint8Array(labels.length);
+  for (let i = 0; i < labels.length; i++)
+    if (femurs.includes(labels[i])) moving[i] = 1;
+  return moving;
 }
 
 /** Mean distance between where two poses put the landmarks; with `beam`,

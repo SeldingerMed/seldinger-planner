@@ -213,6 +213,28 @@ describe("boneSamples", () => {
     expect(kept).toBeLessThan(coarse / 5);
   });
 
+  it("leaves out bone marked as moving against the rest", () => {
+    const volume = phantom(),
+      moving = new Uint8Array(volume.data.length);
+    let bone = 0,
+      marked = 0;
+    for (let i = 0; i < volume.data.length; i++) {
+      if (!(volume.data[i] > BONE_LINEUP.threshold_hu)) continue;
+      bone++;
+      if (i % 3 === 0) {
+        moving[i] = 5;
+        marked++;
+      }
+    }
+    expect(marked).toBeGreaterThan(0);
+    expect(boneSamples({ ...volume, moving }).weights.length).toBe(
+      bone - marked,
+    );
+    expect(() =>
+      boneSamples({ ...volume, moving: moving.subarray(1) }),
+    ).toThrow("Marked bone does not match the scan");
+  });
+
   it("refuses a scan with no bone to line up on", () => {
     const empty = phantom();
     empty.data.fill(40);
@@ -287,6 +309,36 @@ describe("proposeBoneLineup", () => {
       render(long, TRUE, small(90)),
     ];
     const found = proposeBoneLineup({ samples: some, frames, start: IDENTITY });
+    expect(apart(found.matrix, TRUE)).toBeLessThan(1.5);
+  }, 120_000);
+
+  it("lines up on the bone that holds still when a marked bone has moved", () => {
+    // A femur turns at the hip between the scan and the procedure. Marked,
+    // it is left out; the rest decides the pose.
+    const scan = phantom(),
+      later = phantom(),
+      moving = new Uint8Array(scan.data.length);
+    const bar = (into: BoneVolume, y: number, z: number, mark: boolean) => {
+      for (let k = z; k < z + 26; k++)
+        for (let j = y; j < y + 6; j++)
+          for (let i = 2; i < 7; i++) {
+            const at = i + N * (j + N * k);
+            expect(into.data[at]).toBeLessThan(BONE_LINEUP.threshold_hu);
+            into.data[at] = 800;
+            if (mark) moving[at] = 1;
+          }
+    };
+    bar(scan, 38, 4, true);
+    bar(later, 30, 14, false);
+    const frames = [
+      render(later, TRUE, view(0)),
+      render(later, TRUE, view(90)),
+    ];
+    const found = proposeBoneLineup({
+      samples: boneSamples({ ...scan, moving }),
+      frames,
+      start: IDENTITY,
+    });
     expect(apart(found.matrix, TRUE)).toBeLessThan(1.5);
   }, 120_000);
 

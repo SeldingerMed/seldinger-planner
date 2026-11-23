@@ -18,6 +18,7 @@ import {
   PELVIS,
   pelvisFrames,
   pelvisInputs,
+  pelvisMoving,
   pelvisSubjects,
   targetErrorMm,
   type PelvisRecord,
@@ -56,6 +57,10 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
         ),
         scan = new Int16Array(bytes(`${prepared}/${name}/volume.i16`)),
         marks = new Float32Array(bytes(`${prepared}/${name}/fiducials.f32`));
+      const moving = pelvisMoving(
+        record,
+        new Uint8Array(bytes(`${prepared}/${name}/labels.u8`)),
+      );
       let samples: ReturnType<typeof boneSamples> | null = null;
       const random = seeded(PELVIS.seed);
       for (const key of pelvisFrames(Object.keys(record.frames))) {
@@ -66,7 +71,7 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
           key,
           new Uint16Array(bytes(`${prepared}/${name}/${key}.u16`)),
         );
-        samples ??= boneSamples(read.volume);
+        samples ??= boneSamples({ ...read.volume, moving });
         const cam = camera(read.frame.view, read.frame.isocenter),
           axes = [cam.u, cam.v, cam.d];
         const run = (start: number[][]) => {

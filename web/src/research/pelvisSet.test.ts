@@ -3,6 +3,7 @@ import {
   PELVIS,
   pelvisFrames,
   pelvisInputs,
+  pelvisMoving,
   pelvisSubjects,
   targetErrorMm,
   type PelvisRecord,
@@ -41,6 +42,7 @@ const record = (): PelvisRecord => ({
   ],
   fiducial_count: 2,
   frame_block: 4,
+  label_values: [0, 1, 2, 3, 4, 5, 6, 7],
   frames: { "000": frame(0), "001": frame(5) },
 });
 const pixels = () => {
@@ -174,5 +176,26 @@ describe("targetErrorMm", () => {
     expect(targetErrorMm(points, identity, identity)).toBe(0);
     expect(targetErrorMm(points, moved, identity)).toBeCloseTo(5, 9);
     expect(targetErrorMm(points, moved, identity, [0, 1, 0])).toBeCloseTo(3, 9);
+  });
+});
+
+describe("pelvisMoving", () => {
+  it("marks the femurs, which turn at the hip, and nothing else", () => {
+    const labels = new Uint8Array(96);
+    labels.set([0, 1, 2, 3, 4, 5, 6, 7]);
+    const moving = pelvisMoving(record(), labels);
+    expect(Array.from(moving.subarray(0, 8))).toEqual([0, 0, 0, 0, 0, 1, 1, 0]);
+    expect(moving.subarray(8).every((value) => value === 0)).toBe(true);
+  });
+
+  it("refuses labels it would have to guess at", () => {
+    expect(() => pelvisMoving(record(), new Uint8Array(95))).toThrow(
+      "Labels do not match their record",
+    );
+    const other = record();
+    other.label_values = [0, 1, 2];
+    expect(() => pelvisMoving(other, new Uint8Array(96))).toThrow(
+      "Labels do not match their record",
+    );
   });
 });

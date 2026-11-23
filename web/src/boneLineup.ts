@@ -37,9 +37,11 @@ export const BONE_LINEUP = {
   /** Longer side of the working picture. */
   working_px: 128,
   /** Working picture divisors, coarse to fine: for the first frame alone,
-   * then for both frames. */
+   * then for both frames. Both frames are scanned along the first beam and
+   * searched at the finest level only: at a coarser one a lateral spine
+   * scores as well a vertebral body's depth off as in place. */
   first_levels: [4, 2, 1],
-  both_levels: [2, 1],
+  both_levels: [1],
   blur_px: 1.5,
   /** Least strength an edge is pressed flat against, as a share of the
    * frame's strong edges (its 95th percentile). */
@@ -61,7 +63,7 @@ export const BONE_LINEUP = {
   second_looks: 2,
   second_look_levels: [2, 1],
   depth_scan_mm: 60,
-  depth_step_mm: 4,
+  depth_step_mm: 2,
   depth_candidates: 3,
   depth_apart_mm: 8,
   /** How far a proposal may move from the start. */
@@ -84,6 +86,9 @@ export type BoneVolume = {
   shape: readonly number[];
   /** Voxel index to RAS millimeters. */
   affine: number[][];
+  /** Nonzero where bone moves against the rest between the scan and the
+   * procedure, a femur at the hip. It is left out of the line-up. */
+  moving?: Uint8Array;
 };
 export type BoneSamples = {
   /** x y z triples in volume RAS millimeters. */
@@ -134,7 +139,7 @@ const rad = Math.PI / 180;
 
 export function boneSamples(volume: BoneVolume): BoneSamples {
   const L = BONE_LINEUP,
-    { data, shape, affine } = volume;
+    { data, shape, affine, moving } = volume;
   if (
     !Array.isArray(shape) ||
     shape.length !== 3 ||
@@ -143,6 +148,11 @@ export function boneSamples(volume: BoneVolume): BoneSamples {
     data.length !== shape[0] * shape[1] * shape[2]
   )
     throw new Error("Scan does not match its shape");
+  if (
+    moving !== undefined &&
+    !(moving instanceof Uint8Array && moving.length === data.length)
+  )
+    throw new Error("Marked bone does not match the scan");
   if (
     !Array.isArray(affine) ||
     affine.length !== 4 ||
@@ -164,8 +174,9 @@ export function boneSamples(volume: BoneVolume): BoneSamples {
     for (let k = 0; k < nz; k += stride[2])
       for (let j = 0; j < ny; j += stride[1])
         for (let i = 0; i < nx; i += stride[0]) {
-          const hu = data[i + nx * (j + ny * k)];
-          if (!(hu > L.threshold_hu)) continue;
+          const at = i + nx * (j + ny * k),
+            hu = data[at];
+          if (!(hu > L.threshold_hu) || moving?.[at]) continue;
           for (let a = 0; a < 3; a++)
             points.push(
               affine[a][0] * i +
@@ -565,10 +576,11 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
     which: number[],
     divisor: number,
     from: number[],
+    opening: readonly number[] = L.step,
   ): Generator<void, Found> {
     let p = from.slice(),
       best = score(which, divisor, p);
-    const step = L.step.map((value) => (value * divisor) / 2);
+    const step = opening.map((value) => (value * divisor) / 2);
     let since = 0;
     while (Math.max(...step) > L.stop && evaluations < L.max_evaluations) {
       let improved = false;
@@ -665,6 +677,16 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
   if (two) {
     // Depth along the first beam is what one frame cannot see and the other
     // sees as a plain shift.
+    // The second frame sees depth as plainly as the first sees a shift
+    // across, so depth is stepped like one.
+    const opening = [
+      L.step[0],
+      L.step[1],
+      L.step[0],
+      L.step[3],
+      L.step[4],
+      L.step[5],
+    ];
     const both = [0, 1],
       first: Found = found,
       scan: [number, number[]][] = [];
@@ -685,7 +707,7 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
       let next: Found = { p: first.p.slice(), score: 0 };
       next.p[2] += depth;
       for (const divisor of L.both_levels)
-        next = yield* descend(both, divisor, next.p);
+        next = yield* descend(both, divisor, next.p, opening);
       if (!best || next.score > best.score) best = next;
     }
     if (best) found = best;
