@@ -269,6 +269,58 @@ export function referenceGeometry(
   return { center, matrix, planes: [planes[0], planes[1]] };
 }
 
+/** One stored view on its own: the C-arm frame is chosen so that the view is
+ * the one at primary 0 and secondary 0, with the volume center at its
+ * origin. For sets whose frames are not a frontal and lateral pair. A set
+ * whose frames are already cut gives its own `window`. */
+export function singleViewGeometry(
+  volumeShape: readonly number[],
+  volumeAffine: number[][],
+  view: StoredView,
+  window: FrameWindow = frameWindow(view),
+): { center: Vec3; matrix: number[][]; plane: ReferencePlane } {
+  const middle = volumeShape.map((n) => (n - 1) / 2),
+    center = [0, 1, 2].map(
+      (i) =>
+        volumeAffine[i][0] * middle[0] +
+        volumeAffine[i][1] * middle[1] +
+        volumeAffine[i][2] * middle[2] +
+        volumeAffine[i][3],
+    ) as Vec3;
+  const stored = storedCamera(view),
+    turn = mul(BASE, transpose(stored.axes)),
+    moved = apply(turn, center),
+    source = apply(turn, stored.source),
+    { d } = viewFrame(0, 0);
+  const source_isocenter_mm = -(
+    source[0] * d[0] +
+    source[1] * d[1] +
+    source[2] * d[2]
+  );
+  return {
+    center,
+    matrix: orthonormal(turn.map((row, i) => [...row, -moved[i]])),
+    plane: {
+      view: {
+        primary_deg: 0,
+        secondary_deg: 0,
+        source_detector_mm: view.intrinsics.sdd,
+        source_isocenter_mm,
+        detector_width_mm: window.width * view.intrinsics.delx,
+        detector_height_mm: window.height * view.intrinsics.dely,
+      },
+      isocenter: source.map(
+        (value, i) => value + source_isocenter_mm * d[i],
+      ) as Vec3,
+      frame: {
+        width: window.width / window.factor,
+        height: window.height / window.factor,
+      },
+      window,
+    },
+  };
+}
+
 /** Stored points, relative to the volume center, as volume RAS triples. */
 export function storedPoints(
   relative: Float32Array,
