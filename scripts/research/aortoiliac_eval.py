@@ -186,7 +186,24 @@ def as_expected(expected: str, scored: dict | None) -> bool | None:
     )
 
 
-GRID_AGREES_MM = 0.1
+class CaseError(PrepareError):
+    """One case cannot be read; the run sets it aside and goes on."""
+
+
+MODEL_FILE = Path(__file__).resolve().parents[2] / "planner" / "aortoiliac_model.py"
+
+
+def code_digest(*files: Path) -> str:
+    """One digest of the files a run is made of, as they are on disk now."""
+    return _sha256(b"".join(Path(file).read_bytes() for file in files))
+
+
+def peak_mb(who: int) -> float:
+    peak = resource.getrusage(who).ru_maxrss
+    return peak / (1 << 20 if sys.platform == "darwin" else 1 << 10)
+
+
+GRID_AGREES_VOXELS = 0.25
 BOX_MARGIN = 2
 SLAB_VOXELS = 4_000_000
 
@@ -198,8 +215,9 @@ def load_case(lifted, case: dict) -> tuple[dict, object]:
     margin, and the affine of that box: a scan is tens of millions of voxels
     and the arteries a few thousandths of it. Each label is read a few
     slices at a time. The three files must lie on one grid; their
-    stored headers may differ in the last digit, so the grids agree when no
-    corner of the scan moves by more than `GRID_AGREES_MM`.
+    stored headers may differ by a rounding or a small turn, so the grids
+    agree when no corner of the scan moves by more than `GRID_AGREES_VOXELS`
+    of a voxel. A case whose grids differ raises `CaseError`.
     """
     import gzip
     import io
@@ -227,14 +245,10 @@ def load_case(lifted, case: dict) -> tuple[dict, object]:
                     for k in (0, shape[2])
                 ]
             )
-        elif (
-            grid != shape
-            or np.abs(
-                corners @ (np.asarray(header.get_best_affine(), dtype=float) - affine).T
-            ).max()
-            > GRID_AGREES_MM
-        ):
-            raise PrepareError(f"Labels on different grids: {case['subject']}")
+        elif grid != shape or np.abs(
+            corners @ (np.asarray(header.get_best_affine(), dtype=float) - affine).T
+        ).max() > GRID_AGREES_VOXELS * min(header.get_zooms()[:3]):
+            raise CaseError(f"Labels on different grids: {case['subject']}")
         # A few slices at a time, in the order the file stores them: only
         # the labelled voxels are kept.
         stream.seek(header.get_data_offset())
@@ -272,8 +286,11 @@ def run_case(lifted, case: dict) -> dict:
 
     from planner.aortoiliac_model import propose_aortoiliac_model
 
-    labels, affine = load_case(lifted, case)
     out = {"subject": case["subject"], "meta": case["meta"]}
+    try:
+        labels, affine = load_case(lifted, case)
+    except CaseError as fault:
+        return {**out, "left_out": str(fault)}
     union = np.zeros(labels["aorta"].shape, dtype=np.uint8)
     for label in labels.values():
         union |= (label > 0).astype(np.uint8)
@@ -300,7 +317,12 @@ def _worker(job: tuple[str, dict]) -> dict:
     prepared, case = job
     if prepared not in _OPEN:
         _OPEN[prepared] = zipfile.ZipFile(Path(prepared) / "labels.zip")
-    return run_case(_OPEN[prepared], case)
+    run = run_case(_OPEN[prepared], case)
+    # Every case is scored by a process of its own, which reads the code as
+    # it is on disk at that moment: the run records which code that was.
+    run["code"] = code_digest(MODEL_FILE, Path(__file__))
+    run["peak_mb"] = peak_mb(resource.RUSAGE_SELF)
+    return run
 
 
 def summarize(runs: list[dict]) -> dict:
@@ -312,7 +334,11 @@ def summarize(runs: list[dict]) -> dict:
         values = [v for v in values if v is not None]
         return max(values) if values else None
 
-    summary: dict = {"cases": len(runs), "no_aorta_label": 0}
+    summary: dict = {
+        "cases": len(runs),
+        "left_out": sum("left_out" in r for r in runs),
+        "no_aorta_label": 0,
+    }
     for expected in ("both", "none", "partial"):
         rows = [r for r in runs if r.get("expected") == expected]
         scored = [r["scored"] for r in rows if "scored" in r]
@@ -387,6 +413,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
         cases = cases[: args.first] if args.first else cases
         created_outside(root)
+        code = code_digest(MODEL_FILE, Path(__file__))
         runs = []
         # Each case runs in a worker of its own: the memory a large case
         # leaves behind is not handed back while its process lives.
@@ -396,14 +423,19 @@ def main(argv: list[str] | None = None) -> int:
             (root / "runs.jsonl").open("w", encoding="utf-8") as lines,
         ):
             for run in pool.imap(_worker, jobs):
+                if run["code"] != code:
+                    raise PrepareError("The code changed during the run")
                 runs.append(run)
                 lines.write(json.dumps(run) + "\n")
                 lines.flush()
             pool.close()
             pool.join()
-        peak = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-        peak_mb = peak / (1 << 20 if sys.platform == "darwin" else 1 << 10)
-        summary = {"set": args.set, "peak_worker_mb": peak_mb, "summary": summarize(runs)}
+        summary = {
+            "set": args.set,
+            "code": code,
+            "peak_worker_mb": peak_mb(resource.RUSAGE_CHILDREN),
+            "summary": summarize(runs),
+        }
         (root / "summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
     except (PrepareError, FetchError, OSError, KeyError, zipfile.BadZipFile) as error:
         print(f"error: {error}", file=sys.stderr)

@@ -207,6 +207,65 @@ def test_in_a_wide_aorta_the_bifurcation_is_still_where_the_lumen_divides():
     assert model["bifurcation_below_meeting_mm"] > 8
 
 
+def test_an_artery_that_leaves_the_front_of_the_aorta_and_runs_down_is_not_an_iliac_artery():
+    # The superior mesenteric artery leaves the aorta forward and runs down
+    # in front of it for most of its length. The aorta is wider above it
+    # than below, and the artery is half as wide as the aorta beside it: by
+    # widths alone the two could pass for a bifurcation under a wider aorta
+    # than the true one has.
+    upper = ((0.0, 0.0, 150.0), (0.0, 0.0, 78.0), 11.5)
+    mesenteric = [
+        ((0.0, 8.0, 70.0), (0.0, 34.0, 40.0), 4.3),
+        ((0.0, 34.0, 40.0), (4.0, 36.0, -40.0), 4.3),
+    ]
+    shape, affine = grid(high=(62.0, 46.0, 166.0))
+    mask = tubes(shape, affine, [AORTA, upper, RIGHT, LEFT, *RENALS, *mesenteric])
+    model = propose_aortoiliac_model(mask, affine)
+    assert [b["name"] for b in model["branches"]] == ["aorta", "right_iliac", "left_iliac"]
+    assert abs(model["bifurcation_ras"][0]) < 2 and -17 < model["bifurcation_ras"][2] < -9
+    aorta = np.asarray(branch(model, "aorta")["path_ras"])
+    assert aorta[0][2] > 125 and off_axis(aorta, AORTA).max() < 3.5
+    for name, capsule, end in (("right_iliac", RIGHT, RIGHT_END), ("left_iliac", LEFT, LEFT_END)):
+        path = np.asarray(branch(model, name)["path_ras"])
+        assert off_axis(path, capsule).max() < 2.5 and np.linalg.norm(path[-1] - end) < 6
+
+
+def test_the_aorta_line_runs_past_a_wide_blind_channel_to_the_top_of_the_aorta():
+    # A channel as wide as the aorta that leaves it and ends blind, as the
+    # sac of an aneurysm or a second lumen does. It runs down beside the
+    # aorta and is as wide; the aorta is the way that goes on.
+    blind = ((0.0, 0.0, 100.0), (24.0, 0.0, 34.0), 9.3)
+    shape, affine = grid()
+    model = propose_aortoiliac_model(tubes(shape, affine, [AORTA, RIGHT, LEFT, blind]), affine)
+    assert [b["name"] for b in model["branches"]] == ["aorta", "right_iliac", "left_iliac"]
+    assert -17 < model["bifurcation_ras"][2] < -9
+    aorta = np.asarray(branch(model, "aorta")["path_ras"])
+    assert np.linalg.norm(aorta[0] - AORTA_TOP) < 6
+    assert off_axis(aorta, AORTA).max() < 6
+
+
+@pytest.mark.parametrize(("across", "flap_ends"), [(0, 30.0), (1, 30.0), (0, -14.0)])
+def test_an_aorta_divided_by_a_flap_still_ends_at_its_bifurcation(across, flap_ends):
+    # A dissection: a flap 3 mm thick divides a wide aorta into two channels,
+    # side by side or front and back. They join again above the bifurcation,
+    # or the flap runs down to it and each channel feeds one iliac artery.
+    wide = ((0.0, 0.0, 150.0), (0.0, 0.0, 0.0), 14.0)
+    shape, affine = grid()
+    mask = tubes(shape, affine, [wide, RIGHT, LEFT])
+    index = np.indices(shape).reshape(3, -1).T
+    ras = index @ affine[:3, :3].T + affine[:3, 3]
+    flap = (np.abs(ras[:, across]) < 1.6) & (ras[:, 2] > flap_ends) & (ras[:, 2] < 120)
+    mask[tuple(index[flap].T)] = 0
+    model = propose_aortoiliac_model(mask, affine)
+    assert [b["name"] for b in model["branches"]] == ["aorta", "right_iliac", "left_iliac"]
+    assert abs(model["bifurcation_ras"][0]) < 3 and -22 < model["bifurcation_ras"][2] < -9
+    aorta = np.asarray(branch(model, "aorta")["path_ras"])
+    # The line ends where the aorta is widest when that is near its end.
+    assert aorta[0][2] > 118 and off_axis(aorta, wide).max() < 12
+    for name, end in (("right_iliac", RIGHT_END), ("left_iliac", LEFT_END)):
+        assert np.linalg.norm(np.asarray(branch(model, name)["path_ras"][-1]) - end) < 6
+
+
 def test_a_scan_that_ends_above_the_pelvis_gives_the_aorta_alone():
     shape, affine = grid(low=(-62.0, -40.0, 20.0))
     model = propose_aortoiliac_model(tubes(shape, affine, [AORTA, *RENALS]), affine)

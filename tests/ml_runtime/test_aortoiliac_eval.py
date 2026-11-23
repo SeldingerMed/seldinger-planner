@@ -189,12 +189,26 @@ def test_labels_on_grids_that_differ_are_refused_and_a_rounded_header_is_not(tmp
     lifted, case = stored(tmp_path, whole, [affine, rounded, rounded])
     labels, boxed = measure.load_case(lifted, case)
     assert measure.reference(labels, boxed)["expected"] == "both"
+    # One scan's labels can be stored a small turn apart: a tenth of a
+    # millimetre at the far corner, well inside a voxel.
+    turned = affine.copy()
+    turned[2, 1] += 0.12 / (shape[1] * abs(affine[1, 1])) * abs(affine[1, 1])
+    (tmp_path / "turned").mkdir()
+    lifted, case = stored(tmp_path / "turned", whole, [affine, turned, turned])
+    assert measure.reference(*measure.load_case(lifted, case))["expected"] == "both"
     moved = affine.copy()
     moved[0, 3] += 1.5
     (tmp_path / "moved").mkdir()
     lifted, case = stored(tmp_path / "moved", whole, [affine, moved, affine])
-    with pytest.raises(measure.PrepareError, match="different grids"):
+    with pytest.raises(measure.CaseError, match="different grids"):
         measure.load_case(lifted, case)
+    # Such a case is set aside with its reason and the run goes on.
+    assert measure.run_case(lifted, case) == {
+        "subject": "s0001",
+        "meta": {"split": "train"},
+        "left_out": "Labels on different grids: s0001",
+    }
+    assert measure.summarize([measure.run_case(lifted, case)])["left_out"] == 1
     case["sha256"]["aorta.nii.gz"] = "0" * 64
     with pytest.raises(measure.PrepareError, match="Not the prepared file"):
         measure.load_case(lifted, case)
@@ -260,6 +274,20 @@ def test_a_run_scores_its_set_and_the_held_back_set_is_run_whole(tmp_path, monke
     assert summary["set"] == "held_back" and summary["summary"]["cases"] == 2
     assert summary["summary"]["both"]["as_expected"] == 1
     assert 20 < summary["peak_worker_mb"] < 2000
+    # Each case says which code scored it and what its own process came to.
+    assert len(summary["code"]) == 64 and {r["code"] for r in runs} == {summary["code"]}
+    assert all(20 < r["peak_mb"] <= summary["peak_worker_mb"] for r in runs)
+
+    # A run whose code is edited under it stops; it does not write a summary.
+    monkeypatch.setattr(measure, "code_digest", lambda *files: "0" * 64)
+    assert measure.main([str(prepared), str(tmp_path / "edited"), "--set", "held_back"]) == 1
+    assert "changed during the run" in capsys.readouterr().err
+    assert not (tmp_path / "edited" / "summary.json").exists()
+    monkeypatch.undo()
+    monkeypatch.setattr(measure, "outside_repository", lambda path: path)
+    monkeypatch.setattr(
+        measure, "created_outside", lambda path: (path.mkdir(parents=True, exist_ok=True), path)[1]
+    )
 
     # A finished run is not run over.
     assert measure.main([str(prepared), str(tmp_path / "held"), "--set", "held_back"]) == 1
