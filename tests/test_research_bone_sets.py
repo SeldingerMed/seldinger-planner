@@ -71,6 +71,34 @@ def test_a_large_fetched_file_is_checked_without_being_held(tmp_path):
             bone._fetched_path(tmp_path / "big.bin", "big.bin", wrong)
 
 
+def test_the_lumbar_archive_is_checked_against_the_digest_its_fetch_recorded(tmp_path, monkeypatch):
+    import zipfile
+
+    def made(path):
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    monkeypatch.setattr(bone, "outside_repository", lambda destination: destination)
+    monkeypatch.setattr(bone, "created_outside", made)
+
+    source = tmp_path / "source"
+    source.mkdir()
+    with zipfile.ZipFile(source / "C-ArmLSpine.zip", "w"):
+        pass
+    size = (source / "C-ArmLSpine.zip").stat().st_size
+    # The record of a fetch checked by another digest carries its own under `sha256_local`.
+    for key in ("sha256", "sha256_local"):
+        item = {"name": "C-ArmLSpine.zip", "size": size, key: "0" * 64}
+        (source / "SOURCE.json").write_text(json.dumps({"complete": True, "files": [item]}))
+        with pytest.raises(PrepareError, match="Not the fetched file: C-ArmLSpine.zip"):
+            bone.prepare_lspine(source, tmp_path / f"out-{key}")
+        assert not (tmp_path / f"out-{key}").exists()
+    item = {"name": "C-ArmLSpine.zip", "size": size}
+    item["sha256_local"] = bone._sha256((source / "C-ArmLSpine.zip").read_bytes())
+    (source / "SOURCE.json").write_text(json.dumps({"complete": True, "files": [item]}))
+    assert bone.prepare_lspine(source, tmp_path / "out") == []
+
+
 def test_an_output_written_in_parts_reports_the_digest_of_the_whole(tmp_path):
     out = bone.Written(tmp_path / "volume.i16")
     out.write(b"abc")

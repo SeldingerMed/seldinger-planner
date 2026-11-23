@@ -327,13 +327,19 @@ def _listed(source: Path) -> dict:
         raise PrepareError("The source has no readable fetch record") from error
 
 
+def _recorded_digest(item: dict) -> str | None:
+    """The SHA-256 a fetch recorded for a file: the source's own, or the one
+    taken of the file once the source's other digest had checked it."""
+    return item.get("sha256") or item.get("sha256_local")
+
+
 def _fetched(path: Path, name: str, listed: dict) -> bytes:
     """The bytes of a fetched file, refused unless they are the listed ones."""
     item = listed.get(name)
     data = path.read_bytes()
     if item is None or len(data) != item["size"]:
         raise PrepareError(f"Not the fetched file: {name}")
-    if item.get("sha256") and _sha256(data) != item["sha256"]:
+    if _recorded_digest(item) and _sha256(data) != _recorded_digest(item):
         raise PrepareError(f"Not the fetched file: {name}")
     return data
 
@@ -343,12 +349,12 @@ def _fetched_path(path: Path, name: str, listed: dict) -> Path:
     item = listed.get(name)
     if item is None or not path.is_file() or path.stat().st_size != item["size"]:
         raise PrepareError(f"Not the fetched file: {name}")
-    if item.get("sha256"):
+    if _recorded_digest(item):
         digest = hashlib.sha256()
         with path.open("rb") as file:
             for chunk in iter(lambda: file.read(1 << 20), b""):
                 digest.update(chunk)
-        if digest.hexdigest() != item["sha256"]:
+        if digest.hexdigest() != _recorded_digest(item):
             raise PrepareError(f"Not the fetched file: {name}")
     return path
 
@@ -584,10 +590,7 @@ def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, dest
 def prepare_lspine(source: Path, destination: Path, only: list[str] | None = None) -> list[dict]:
     root = outside_repository(destination)
     listed = _listed(source)
-    path = source / "C-ArmLSpine.zip"
-    item = listed.get("C-ArmLSpine.zip")
-    if item is None or not path.is_file() or path.stat().st_size != item["size"]:
-        raise PrepareError("Not the fetched file: C-ArmLSpine.zip")
+    path = _fetched_path(source / "C-ArmLSpine.zip", "C-ArmLSpine.zip", listed)
     records = []
     with zipfile.ZipFile(path) as archive:
         cases = lspine_cases(archive.namelist())

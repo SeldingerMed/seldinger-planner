@@ -735,6 +735,11 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
     ) {
       const p = first.p.slice();
       p[2] += depth;
+      // A depth where a frame no longer holds its share of the bone scores
+      // -1 and is still listed. On the 49 design and 99 held-back lumbar
+      // cases every answer held the bone in both frames (lowest frame score
+      // 0.16). Leaving such depths out is for the next method version, under
+      // its own protocol.
       if (within(p)) scan.push([score(both, L.both_levels[0], p), [depth]]);
     }
     yield;
