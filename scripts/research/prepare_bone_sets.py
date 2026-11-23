@@ -21,6 +21,8 @@ because the evaluation depends on them:
 For each subject or case it writes, under the destination:
   volume.i16       intensities, little-endian, x fastest, clipped to int16
   fiducials.f32    deepfluoro only: the stored points, x y z triples
+  labels.u8        deepfluoro only: the set's bone labels on the scan grid,
+                   one byte a voxel, values as stored
   NNN.u16          one reduced frame each, little-endian, rows from the top.
                    A deepfluoro frame is the whole stored frame; its stored
                    intrinsics describe a smaller frame cut from it, and are
@@ -34,7 +36,9 @@ model runtime); lspine needs numpy and pydicom.
 """
 
 import argparse
+import contextlib
 import gzip
+import hashlib
 import io
 import itertools
 import json
@@ -218,52 +222,98 @@ def read_pt(data: bytes):
         refuse(error)
 
 
-def scan_i16(packed: bytes, slab: int = 16) -> tuple[bytes, list[int], object]:
+@contextlib.contextmanager
+def _slabs(source: bytes | Path, slab: int):
+    """The header of a gzipped NIfTI volume, bytes or a file, then its values
+    `slab` slices at a time, scaled as the header says. The volume is never
+    held whole."""
+    import nibabel
+    import numpy
+
+    with contextlib.ExitStack() as stack:
+        raw = (
+            stack.enter_context(source.open("rb"))
+            if isinstance(source, Path)
+            else io.BytesIO(source)
+        )
+        stream = stack.enter_context(gzip.GzipFile(fileobj=raw))
+
+        def take(count: int) -> bytes:
+            try:
+                data = stream.read(count)
+            except (OSError, EOFError, zlib.error) as error:
+                raise PrepareError("Unexpected volume") from error
+            if len(data) != count:
+                raise PrepareError("Unexpected volume")
+            return data
+
+        try:
+            header = nibabel.Nifti1Header(take(348))
+        except (
+            ValueError,
+            nibabel.spatialimages.HeaderDataError,
+            nibabel.wrapstruct.WrapStructError,
+        ) as error:
+            raise PrepareError("Unexpected volume") from error
+        shape = [int(n) for n in header.get_data_shape()]
+        if len(shape) != 3 or min(shape) < 1:
+            raise PrepareError("Unexpected volume")
+        dtype = header.get_data_dtype()
+        slope, inter = header.get_slope_inter()
+        skip = int(header.get_data_offset()) - 348
+        if skip < 0:
+            raise PrepareError("Unexpected volume")
+        take(skip)
+
+        def values():
+            for first in range(0, shape[2], slab):
+                count = shape[0] * shape[1] * min(slab, shape[2] - first)
+                part = numpy.frombuffer(take(count * dtype.itemsize), dtype=dtype)
+                yield part if slope is None else part * slope + (inter or 0.0)
+
+        yield shape, numpy.asarray(header.get_best_affine(), dtype=numpy.float64), values()
+
+
+def scan_i16(source: bytes | Path, slab: int = 16, sink=None) -> tuple[bytes, list[int], object]:
     """A gzipped NIfTI scan as little-endian 16-bit values, first index
     fastest, with its shape and affine.
 
     The scan is unpacked and converted `slab` slices at a time, so the step
-    never holds the whole scan as floating point.
+    never holds the whole scan as floating point. With a `sink` each part is
+    handed over as it is made and nothing is returned to hold.
     """
-    import nibabel
+    out = bytearray()
+    with _slabs(source, slab) as (shape, affine, values):
+        for part in values:
+            (sink or out.extend)(_i16(part))
+    return bytes(out), shape, affine
+
+
+def labels_u8(
+    source: bytes | Path, shape: list[int], affine, slab: int = 16, sink=None
+) -> tuple[bytes, list[int]]:
+    """A gzipped NIfTI label volume as bytes, first index fastest, with the
+    label values it holds. It must lie on the scan's own grid. A `sink` takes
+    the parts as `scan_i16` hands them over."""
     import numpy
 
-    stream = gzip.GzipFile(fileobj=io.BytesIO(packed))
-
-    def take(count: int) -> bytes:
-        try:
-            data = stream.read(count)
-        except (OSError, EOFError, zlib.error) as error:
-            raise PrepareError("Unexpected volume") from error
-        if len(data) != count:
-            raise PrepareError("Unexpected volume")
-        return data
-
-    try:
-        header = nibabel.Nifti1Header(take(348))
-    except (
-        ValueError,
-        nibabel.spatialimages.HeaderDataError,
-        nibabel.wrapstruct.WrapStructError,
-    ) as error:
-        raise PrepareError("Unexpected volume") from error
-    shape = [int(n) for n in header.get_data_shape()]
-    if len(shape) != 3 or min(shape) < 1:
-        raise PrepareError("Unexpected volume")
-    dtype = header.get_data_dtype()
-    slope, inter = header.get_slope_inter()
-    skip = int(header.get_data_offset()) - 348
-    if skip < 0:
-        raise PrepareError("Unexpected volume")
-    take(skip)
     out = bytearray()
-    for first in range(0, shape[2], slab):
-        count = shape[0] * shape[1] * min(slab, shape[2] - first)
-        values = numpy.frombuffer(take(count * dtype.itemsize), dtype=dtype)
-        if slope is not None:
-            values = values * slope + (inter or 0.0)
-        out += _i16(values)
-    return bytes(out), shape, numpy.asarray(header.get_best_affine(), dtype=numpy.float64)
+    seen: set[int] = set()
+    with _slabs(source, slab) as (own_shape, own_affine, values):
+        if own_shape != list(shape) or not numpy.allclose(own_affine, affine, rtol=0, atol=1e-4):
+            raise PrepareError("Labels are not on the scan grid")
+        for part in values:
+            whole = numpy.rint(part)
+            if (
+                not numpy.isfinite(part).all()
+                or (whole != part).any()
+                or whole.min() < 0
+                or whole.max() > 255
+            ):
+                raise PrepareError("Unexpected labels")
+            (sink or out.extend)(whole.astype(numpy.uint8).tobytes())
+            seen.update(int(v) for v in numpy.unique(whole))
+    return bytes(out), sorted(seen)
 
 
 def _listed(source: Path) -> dict:
@@ -288,19 +338,66 @@ def _fetched(path: Path, name: str, listed: dict) -> bytes:
     return data
 
 
+def _fetched_path(path: Path, name: str, listed: dict) -> Path:
+    """A fetched file too large to hold, refused unless it is the listed one."""
+    item = listed.get(name)
+    if item is None or not path.is_file() or path.stat().st_size != item["size"]:
+        raise PrepareError(f"Not the fetched file: {name}")
+    if item.get("sha256"):
+        digest = hashlib.sha256()
+        with path.open("rb") as file:
+            for chunk in iter(lambda: file.read(1 << 20), b""):
+                digest.update(chunk)
+        if digest.hexdigest() != item["sha256"]:
+            raise PrepareError(f"Not the fetched file: {name}")
+    return path
+
+
+class Written:
+    """An output file written in parts; `close` gives the digest of the whole."""
+
+    def __init__(self, path: Path):
+        self._file = path.open("wb")
+        self._digest = hashlib.sha256()
+
+    def write(self, data: bytes) -> None:
+        self._file.write(data)
+        self._digest.update(data)
+
+    def close(self) -> str:
+        self._file.close()
+        return self._digest.hexdigest()
+
+
 def prepare_deepfluoro_subject(source: Path, destination: Path, listed: dict, prefix: str) -> dict:
     import numpy
 
     def read(name: str) -> bytes:
         return _fetched(source / name, f"{prefix}/{name}", listed)
 
-    scan, shape, affine = scan_i16(read("volume.nii.gz"))
-    files = {"volume.i16": scan}
+    def big(name: str) -> Path:
+        return _fetched_path(source / name, f"{prefix}/{name}", listed)
+
+    # The scan and its labels go to the destination as they are read. Its
+    # record is removed first and written last, so a run that stops part way
+    # leaves no record beside half-written files.
+    root = created_outside(destination)
+    (root / "subject.json").unlink(missing_ok=True)
+    digests = {}
+    out = Written(root / "volume.i16")
+    _, shape, affine = scan_i16(big("volume.nii.gz"), sink=out.write)
+    digests["volume.i16"] = out.close()
+    files = {}
 
     points = numpy.asarray(read_pt(read("fiducials.pt")), dtype=numpy.float64).reshape(-1, 3)
     if points.shape[0] < 3 or not numpy.isfinite(points).all():
         raise PrepareError("Unexpected fiducials")
     files["fiducials.f32"] = points.astype("<f4").tobytes()
+    digests["fiducials.f32"] = _sha256(files["fiducials.f32"])
+
+    out = Written(root / "labels.u8")
+    _, label_values = labels_u8(big("mask.nii.gz"), shape, affine, sink=out.write)
+    digests["labels.u8"] = out.close()
 
     frames = {}
     names = sorted(p.stem for p in (source / "xrays").glob("[0-9]*.pt"))
@@ -319,7 +416,9 @@ def prepare_deepfluoro_subject(source: Path, destination: Path, listed: dict, pr
             frame_pixels(source / "xrays" / f"{name}.dcm", height, width), dtype="<u2"
         ).reshape(height, width)
         reduced = block_mean(pixels, FRAME_BLOCK)
-        files[f"{name}.u16"] = _u16(reduced)
+        out = Written(root / f"{name}.u16")
+        out.write(_u16(reduced))
+        digests[f"{name}.u16"] = out.close()
         frames[name] = {
             "pose": pose.tolist(),
             "intrinsics": intrinsics,
@@ -335,10 +434,11 @@ def prepare_deepfluoro_subject(source: Path, destination: Path, listed: dict, pr
         "volume_affine": affine.tolist(),
         "fiducial_count": int(points.shape[0]),
         "frame_block": FRAME_BLOCK,
+        "label_values": label_values,
         "frames": frames,
-        "sha256": {name: _sha256(data) for name, data in files.items()},
+        "sha256": digests,
     }
-    publish(created_outside(destination), files, record)
+    publish(root, files, record)
     return record
 
 

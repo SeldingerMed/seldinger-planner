@@ -47,6 +47,28 @@ def test_a_file_that_is_not_the_fetched_one_is_refused(tmp_path):
             bone._fetched(tmp_path / "a.bin", "a.bin", wrong)
 
 
+def test_a_large_fetched_file_is_checked_without_being_held(tmp_path):
+    data = bytes(range(256)) * 9000
+    (tmp_path / "big.bin").write_bytes(data)
+    listed = {"big.bin": {"size": len(data), "sha256": bone._sha256(data)}}
+    assert bone._fetched_path(tmp_path / "big.bin", "big.bin", listed) == tmp_path / "big.bin"
+    for wrong in (
+        {"big.bin": {"size": len(data) + 1, "sha256": bone._sha256(data)}},
+        {"big.bin": {"size": len(data), "sha256": "0" * 64}},
+        {},
+    ):
+        with pytest.raises(PrepareError, match="Not the fetched file: big.bin"):
+            bone._fetched_path(tmp_path / "big.bin", "big.bin", wrong)
+
+
+def test_an_output_written_in_parts_reports_the_digest_of_the_whole(tmp_path):
+    out = bone.Written(tmp_path / "volume.i16")
+    out.write(b"abc")
+    out.write(b"defg")
+    assert out.close() == bone._sha256(b"abcdefg")
+    assert (tmp_path / "volume.i16").read_bytes() == b"abcdefg"
+
+
 def test_a_fetch_record_that_is_not_complete_is_refused(tmp_path):
     (tmp_path / "SOURCE.json").write_text(json.dumps({"complete": False, "files": []}))
     with pytest.raises(PrepareError, match="does not say the set is complete"):

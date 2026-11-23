@@ -109,7 +109,7 @@ def _nifti(array, affine, slope=None, inter=None) -> bytes:
     return gzip.compress(image.to_bytes())
 
 
-def test_a_scan_is_read_in_slabs_to_the_same_bytes_as_in_one_piece():
+def test_a_scan_is_read_in_slabs_to_the_same_bytes_as_in_one_piece(tmp_path):
     import gzip
 
     nibabel = pytest.importorskip("nibabel")
@@ -125,6 +125,15 @@ def test_a_scan_is_read_in_slabs_to_the_same_bytes_as_in_one_piece():
         whole = bone._i16(numpy.asanyarray(image.dataobj))
         data, shape, read_affine = bone.scan_i16(packed, slab=2)
         assert data == whole
+        # From a file, written as it is read: nothing is returned to hold.
+        (tmp_path / "volume.nii.gz").write_bytes(packed)
+        parts = []
+        data, shape, read_affine = bone.scan_i16(
+            tmp_path / "volume.nii.gz", slab=2, sink=parts.append
+        )
+        assert data == b""
+        assert b"".join(parts) == whole
+        assert len(parts) == 5
         assert shape == [7, 5, 9]
         assert numpy.array_equal(read_affine, image.affine)
     broken = (rng.random((4, 4, 4))).astype(numpy.float32)
@@ -137,3 +146,29 @@ def test_a_scan_is_read_in_slabs_to_the_same_bytes_as_in_one_piece():
         bone.scan_i16(gzip.compress(b"not a scan"))
     with pytest.raises(PrepareError, match="Unexpected volume"):
         bone.scan_i16(_nifti(numpy.zeros((4, 4, 4), dtype=numpy.float32), affine)[:-40])
+
+
+def test_bone_labels_are_read_on_the_scan_grid_and_refused_off_it():
+    pytest.importorskip("nibabel")
+    rng = numpy.random.default_rng(5)
+    affine = numpy.array([[-1, 0, 0, 12.5], [0, -1, 0, -7], [0, 0, 1, -1041.5], [0, 0, 0, 1.0]])
+    labels = rng.integers(0, 8, (7, 5, 9)).astype(numpy.uint8)
+    data, values = bone.labels_u8(_nifti(labels, affine), [7, 5, 9], affine, slab=2)
+    assert data == labels.tobytes(order="F")
+    parts = []
+    data, again = bone.labels_u8(
+        _nifti(labels, affine), [7, 5, 9], affine, slab=4, sink=parts.append
+    )
+    assert (data, again) == (b"", values)
+    assert b"".join(parts) == labels.tobytes(order="F")
+    assert values == sorted(int(v) for v in numpy.unique(labels))
+    with pytest.raises(PrepareError, match="Labels are not on the scan grid"):
+        bone.labels_u8(_nifti(labels, affine), [7, 5, 8], affine)
+    moved = affine.copy()
+    moved[0, 3] += 1
+    with pytest.raises(PrepareError, match="Labels are not on the scan grid"):
+        bone.labels_u8(_nifti(labels, moved), [7, 5, 9], affine)
+    with pytest.raises(PrepareError, match="Unexpected labels"):
+        bone.labels_u8(_nifti(labels.astype(numpy.float32) + 0.5, affine), [7, 5, 9], affine)
+    with pytest.raises(PrepareError, match="Unexpected labels"):
+        bone.labels_u8(_nifti(labels.astype(numpy.int16) + 300, affine), [7, 5, 9], affine)
