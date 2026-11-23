@@ -29,7 +29,7 @@ For each subject or case it writes, under the destination:
                    source stored about its camera
 
 The destination must lie outside the repository and on another storage
-device. deepfluoro needs numpy, nibabel and torch (the planner's optional
+device. deepfluoro needs numpy and nibabel (the planner's optional
 model runtime); lspine needs numpy and pydicom.
 """
 
@@ -40,6 +40,7 @@ import itertools
 import json
 import sys
 import zipfile
+import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -120,6 +121,151 @@ def stored_size(path: Path) -> tuple[int, int]:
     return size[0], size[1]
 
 
+_STORAGE = {
+    "DoubleStorage": "<f8",
+    "FloatStorage": "<f4",
+    "HalfStorage": "<f2",
+    "LongStorage": "<i8",
+    "IntStorage": "<i4",
+    "ShortStorage": "<i2",
+    "CharStorage": "i1",
+    "ByteStorage": "u1",
+    "BoolStorage": "?",
+}
+
+
+def read_pt(data: bytes):
+    """A `torch.save` file of tensors, numbers and dicts, read with numpy.
+
+    The set stores each pose and each landmark list this way. Loading torch to
+    read sixteen numbers costs more than a gigabyte of memory, which on a
+    machine that is also training gets the step paused. Only tensors, plain
+    numbers, strings and dicts are accepted; any other object in the file is
+    refused before anything is called.
+    """
+    import pickle
+
+    import numpy
+
+    def refuse(error=None):
+        raise PrepareError("Not a tensor file") from error
+
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except zipfile.BadZipFile as error:
+        refuse(error)
+    pickles = [n for n in archive.namelist() if n == "data.pkl" or n.endswith("/data.pkl")]
+    if len(pickles) != 1:
+        refuse()
+    root = pickles[0][: -len("data.pkl")]
+    if root + "byteorder" in archive.namelist() and archive.read(root + "byteorder") != b"little":
+        refuse()
+
+    def tensor(storage, offset, size, stride, *_):
+        size, stride = tuple(size), tuple(stride)
+        if (
+            len(size) != len(stride)
+            or offset < 0
+            or any(n < 0 for n in size)
+            or any(step < 0 for step in stride)
+        ):
+            refuse()
+        if 0 in size:
+            return numpy.empty(size, dtype=storage.dtype)
+        last = offset + sum((n - 1) * step for n, step in zip(size, stride, strict=True))
+        if last >= storage.size:
+            refuse()
+        view = numpy.lib.stride_tricks.as_strided(
+            storage[offset:], shape=size, strides=[step * storage.itemsize for step in stride]
+        )
+        return numpy.array(view)
+
+    class Reader(pickle.Unpickler):
+        def find_class(self, module, name):
+            if (module, name) == ("torch._utils", "_rebuild_tensor_v2"):
+                return tensor
+            if module == "torch" and name in _STORAGE:
+                return _STORAGE[name]
+            if (module, name) == ("collections", "OrderedDict"):
+                return dict
+            refuse()
+
+        def persistent_load(self, pid):
+            if not isinstance(pid, tuple) or len(pid) != 5 or pid[0] != "storage":
+                refuse()
+            _, dtype, key, _, count = pid
+            if dtype not in _STORAGE.values() or not str(key).isdigit():
+                refuse()
+            storage = numpy.frombuffer(archive.read(f"{root}data/{key}"), dtype=dtype)
+            if storage.size != count:
+                refuse()
+            return storage
+
+    try:
+        return Reader(io.BytesIO(archive.read(pickles[0]))).load()
+    except PrepareError:
+        raise
+    except (
+        pickle.UnpicklingError,
+        zipfile.BadZipFile,
+        AttributeError,
+        EOFError,
+        IndexError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as error:
+        refuse(error)
+
+
+def scan_i16(packed: bytes, slab: int = 16) -> tuple[bytes, list[int], object]:
+    """A gzipped NIfTI scan as little-endian 16-bit values, first index
+    fastest, with its shape and affine.
+
+    The scan is unpacked and converted `slab` slices at a time, so the step
+    never holds the whole scan as floating point.
+    """
+    import nibabel
+    import numpy
+
+    stream = gzip.GzipFile(fileobj=io.BytesIO(packed))
+
+    def take(count: int) -> bytes:
+        try:
+            data = stream.read(count)
+        except (OSError, EOFError, zlib.error) as error:
+            raise PrepareError("Unexpected volume") from error
+        if len(data) != count:
+            raise PrepareError("Unexpected volume")
+        return data
+
+    try:
+        header = nibabel.Nifti1Header(take(348))
+    except (
+        ValueError,
+        nibabel.spatialimages.HeaderDataError,
+        nibabel.wrapstruct.WrapStructError,
+    ) as error:
+        raise PrepareError("Unexpected volume") from error
+    shape = [int(n) for n in header.get_data_shape()]
+    if len(shape) != 3 or min(shape) < 1:
+        raise PrepareError("Unexpected volume")
+    dtype = header.get_data_dtype()
+    slope, inter = header.get_slope_inter()
+    skip = int(header.get_data_offset()) - 348
+    if skip < 0:
+        raise PrepareError("Unexpected volume")
+    take(skip)
+    out = bytearray()
+    for first in range(0, shape[2], slab):
+        count = shape[0] * shape[1] * min(slab, shape[2] - first)
+        values = numpy.frombuffer(take(count * dtype.itemsize), dtype=dtype)
+        if slope is not None:
+            values = values * slope + (inter or 0.0)
+        out += _i16(values)
+    return bytes(out), shape, numpy.asarray(header.get_best_affine(), dtype=numpy.float64)
+
+
 def _listed(source: Path) -> dict:
     """Sizes and checksums the fetch recorded, by name."""
     try:
@@ -143,22 +289,15 @@ def _fetched(path: Path, name: str, listed: dict) -> bytes:
 
 
 def prepare_deepfluoro_subject(source: Path, destination: Path, listed: dict, prefix: str) -> dict:
-    import nibabel
     import numpy
-    import torch
 
     def read(name: str) -> bytes:
         return _fetched(source / name, f"{prefix}/{name}", listed)
 
-    image = nibabel.Nifti1Image.from_bytes(gzip.decompress(read("volume.nii.gz")))
-    volume = numpy.asanyarray(image.dataobj)
-    affine = numpy.asarray(image.affine, dtype=numpy.float64)
-    if volume.ndim != 3:
-        raise PrepareError("Unexpected volume")
-    files = {"volume.i16": _i16(volume)}
+    scan, shape, affine = scan_i16(read("volume.nii.gz"))
+    files = {"volume.i16": scan}
 
-    points = torch.load(io.BytesIO(read("fiducials.pt")), weights_only=True)
-    points = points.reshape(-1, 3).to(torch.float64).numpy()
+    points = numpy.asarray(read_pt(read("fiducials.pt")), dtype=numpy.float64).reshape(-1, 3)
     if points.shape[0] < 3 or not numpy.isfinite(points).all():
         raise PrepareError("Unexpected fiducials")
     files["fiducials.f32"] = points.astype("<f4").tobytes()
@@ -168,9 +307,12 @@ def prepare_deepfluoro_subject(source: Path, destination: Path, listed: dict, pr
     if not names:
         raise PrepareError("No frames")
     for name in names:
-        stored = torch.load(io.BytesIO(read(f"xrays/{name}.pt")), weights_only=True)
-        pose = stored["pose"].reshape(4, 4).to(torch.float64).numpy()
-        intrinsics = {key: float(value) for key, value in stored["intrinsics"].items()}
+        stored = read_pt(read(f"xrays/{name}.pt"))
+        pose = numpy.asarray(stored["pose"], dtype=numpy.float64).reshape(4, 4)
+        intrinsics = {
+            key: float(numpy.asarray(value, dtype=numpy.float64).reshape(1)[0])
+            for key, value in stored["intrinsics"].items()
+        }
         read(f"xrays/{name}.dcm")
         height, width = stored_size(source / "xrays" / f"{name}.dcm")
         pixels = numpy.frombuffer(
@@ -189,7 +331,7 @@ def prepare_deepfluoro_subject(source: Path, destination: Path, listed: dict, pr
     record = {
         "set": "deepfluoro",
         "subject": source.name,
-        "volume_shape": list(volume.shape),
+        "volume_shape": shape,
         "volume_affine": affine.tolist(),
         "fiducial_count": int(points.shape[0]),
         "frame_block": FRAME_BLOCK,
