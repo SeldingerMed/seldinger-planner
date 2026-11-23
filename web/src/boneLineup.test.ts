@@ -98,14 +98,15 @@ function render(
   v: ViewNumbers,
   side = 256,
 ): BoneFrameInput {
-  const cam = camera(v, [0, 0, 0]),
+  const [nx, ny, nz] = volume.shape,
+    cam = camera(v, [0, 0, 0]),
     sum = new Float64Array(side * side);
   // Each voxel is spread over 27 points, so the picture has no grid in it.
   const parts = [-1 / 3, 0, 1 / 3];
-  for (let k = 0; k < N; k++)
-    for (let j = 0; j < N; j++)
-      for (let i = 0; i < N; i++) {
-        const hu = volume.data[i + N * (j + N * k)];
+  for (let k = 0; k < nz; k++)
+    for (let j = 0; j < ny; j++)
+      for (let i = 0; i < nx; i++) {
+        const hu = volume.data[i + nx * (j + ny * k)];
         if (hu <= 0) continue;
         for (const c of parts)
           for (const b of parts)
@@ -151,6 +152,36 @@ function apart(a: number[][], b: number[][], beam?: readonly number[]) {
 }
 const IDENTITY = rigid(0, 0, [0, 0, 0]);
 const TRUE = rigid(4, 3, [6, -4, 10]);
+
+/** A scan far longer than a frame shows: 480 mm of blocks, no two alike. */
+function longSpine(): BoneVolume {
+  const nz = 240,
+    data = new Int16Array(N * N * nz);
+  const set = (x: number[], y: number[], z: number[], hu: number) => {
+    for (let k = z[0]; k < z[1]; k++)
+      for (let j = y[0]; j < y[1]; j++)
+        for (let i = x[0]; i < x[1]; i++) data[i + N * (j + N * k)] = hu;
+  };
+  for (let at = 4, n = 0; at + 12 < nz; n++) {
+    const wide = 7 + ((n * 5) % 4),
+      tall = 8 + ((n * 3) % 4);
+    set([24 - wide, 24 + wide], [22, 34], [at, at + tall], 700);
+    set([24 - wide, 24 - wide + 4], [14, 22], [at + 2, at + 6], 900);
+    set([22, 25], [9, 22], [at + 1, at + 4], 900);
+    if (n % 2) set([24 + wide, 24 + wide + 8], [25, 28], [at + 5, at + 8], 800);
+    at += tall + 3 + (n % 3);
+  }
+  return {
+    data,
+    shape: [N, N, nz],
+    affine: [
+      [MM, 0, 0, (-(N - 1) * MM) / 2],
+      [0, MM, 0, (-(N - 1) * MM) / 2],
+      [0, 0, MM, (-(nz - 1) * MM) / 2],
+      [0, 0, 0, 1],
+    ],
+  };
+}
 
 describe("boneSamples", () => {
   it("keeps bone above the threshold, weighted by how far above, in volume RAS", () => {
@@ -241,6 +272,24 @@ describe("proposeBoneLineup", () => {
     }
   }, 120_000);
 
+  it("lines up a scan much longer than the frames show", () => {
+    // An abdominal CT against a 100 mm field: a fifth of the bone is in
+    // the picture. What counts is the bone in the frame, not its share.
+    const long = longSpine(),
+      some = boneSamples(long),
+      small = (primary_deg: number) => ({
+        ...view(primary_deg),
+        detector_width_mm: 150,
+        detector_height_mm: 150,
+      });
+    const frames = [
+      render(long, TRUE, small(0)),
+      render(long, TRUE, small(90)),
+    ];
+    const found = proposeBoneLineup({ samples: some, frames, start: IDENTITY });
+    expect(apart(found.matrix, TRUE)).toBeLessThan(1.5);
+  }, 120_000);
+
   it("with one frame, places the bone across the beam", () => {
     const frames = [render(volume, TRUE, view(0))];
     const found = proposeBoneLineup({ samples, frames, start: IDENTITY });
@@ -294,4 +343,62 @@ describe("proposeBoneLineup", () => {
       proposeBoneLineup({ ...input, start: rigid(0, 0, [400, 0, 0]) }),
     ).toThrow("The bone is not in the frame at the starting pose");
   });
+});
+
+describe("bone line-up from a population of starts", () => {
+  // Step D part 1, acceptance criterion 2: from starts up to 10 mm and 10
+  // degrees from the true pose, at least 90 percent of proposals come back
+  // within 1 mm mean target error with two frames, and within 1 mm across
+  // the beam with one.
+  const volume = phantom(),
+    samples = boneSamples(volume),
+    frames = [render(volume, TRUE, view(0)), render(volume, TRUE, view(90))],
+    beam = camera(view(0), [0, 0, 0]).d;
+  let state = 20261122;
+  const draw = () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return (state / 2 ** 32) * 2 - 1;
+  };
+  /** A start a random direction and distance (up to `mm`) from the true
+   * pose, turned about z and x by up to `deg` in all. */
+  const start = (mm: number, deg: number) => {
+    let d = [draw(), draw(), draw()];
+    while (Math.hypot(...d) > 1) d = [draw(), draw(), draw()];
+    const turn = [draw(), draw()].map((v) => (v * deg) / Math.SQRT2);
+    return rigid(4 + turn[0], 3 + turn[1], [
+      6 + mm * d[0],
+      -4 + mm * d[1],
+      10 + mm * d[2],
+    ]);
+  };
+  const RUNS = 10;
+
+  it("two frames: at least 90 percent within 1 mm", () => {
+    const errors = Array.from({ length: RUNS }, () =>
+      apart(
+        proposeBoneLineup({ samples, frames, start: start(10, 10) }).matrix,
+        TRUE,
+      ),
+    );
+    expect(errors.filter((mm) => mm < 1).length).toBeGreaterThanOrEqual(
+      0.9 * RUNS,
+    );
+  }, 300_000);
+
+  it("one frame: at least 90 percent within 1 mm across the beam", () => {
+    const errors = Array.from({ length: RUNS }, () =>
+      apart(
+        proposeBoneLineup({
+          samples,
+          frames: frames.slice(0, 1),
+          start: start(10, 10),
+        }).matrix,
+        TRUE,
+        beam,
+      ),
+    );
+    expect(errors.filter((mm) => mm < 1).length).toBeGreaterThanOrEqual(
+      0.9 * RUNS,
+    );
+  }, 300_000);
 });

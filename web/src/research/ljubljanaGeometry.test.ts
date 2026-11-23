@@ -5,6 +5,7 @@ import {
   frameWindow,
   meanTargetError,
   referenceGeometry,
+  singleViewGeometry,
   storedPoints,
   windowGray,
   type StoredView,
@@ -220,5 +221,49 @@ describe("Ljubljana reference geometry", () => {
     expect(
       meanTargetError(points, still, pose([0, 0, 90], [0, 0, 0])),
     ).toBeCloseTo((Math.hypot(3, 1) + Math.hypot(13, 9)) / 2);
+  });
+});
+
+describe("one stored view on its own", () => {
+  it("is the view at primary 0, secondary 0 of its own C-arm frame", () => {
+    for (const view of [frontal, lateral]) {
+      const g = singleViewGeometry(SHAPE, AFFINE, view),
+        { plane } = g,
+        { window } = plane,
+        cam = camera(plane.view, plane.isocenter);
+      expect(g.center).toEqual([0.25, -5.25, 9.75]);
+      expect(plane.view.primary_deg).toBe(0);
+      expect(plane.view.secondary_deg).toBe(0);
+      expect(plane.view.source_detector_mm).toBe(view.intrinsics.sdd);
+      // The volume center sits at the C-arm frame's origin.
+      for (let i = 0; i < 3; i++)
+        expect(
+          g.matrix[i][0] * g.center[0] +
+            g.matrix[i][1] * g.center[1] +
+            g.matrix[i][2] * g.center[2] +
+            g.matrix[i][3],
+        ).toBeCloseTo(0, 6);
+      for (const offset of [
+        [0, 0, 0],
+        [40, -25, 10],
+        [-30, 15, -45],
+        [5, 50, 35],
+      ]) {
+        const ras = offset.map((value, i) => g.center[i] + value),
+          carm = g.matrix
+            .slice(0, 3)
+            .map(
+              (row) =>
+                row[0] * ras[0] + row[1] * ras[1] + row[2] * ras[2] + row[3],
+            ),
+          [right, up] = project(cam, carm),
+          expected = storedPixel(view, offset);
+        const column =
+            window.left + window.width / 2 + right / view.intrinsics.delx,
+          row = window.top + window.height / 2 - up / view.intrinsics.dely;
+        expect(column - window.residual_px[0]).toBeCloseTo(expected[0], 3);
+        expect(row - window.residual_px[1]).toBeCloseTo(expected[1], 3);
+      }
+    }
   });
 });

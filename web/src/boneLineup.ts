@@ -49,13 +49,17 @@ export const BONE_LINEUP = {
   step: [4, 4, 12, 2, 2, 2],
   /** A level ends when its largest step is this small. */
   stop: 0.05,
-  /** A coarse look across the first frame before the search: how far each
-   * way, in what steps, and how many separate places are then searched
-   * beside the start. */
+  /** A look across the first frame for other places to start from: how far
+   * each way, in what steps, and how many separate places are then
+   * searched beside the one looked around. */
   opening_scan_mm: 48,
   opening_step_mm: 8,
   opening_candidates: 3,
   opening_apart_mm: 16,
+  /** The same look around the first answer, at these levels, at most this
+   * many times. */
+  second_looks: 2,
+  second_look_levels: [2, 1],
   depth_scan_mm: 60,
   depth_step_mm: 4,
   depth_candidates: 3,
@@ -63,8 +67,10 @@ export const BONE_LINEUP = {
   /** How far a proposal may move from the start. */
   translation_mm: 80,
   rotation_deg: 20,
-  /** Share of the bone that must fall in a frame for a pose to be scored. */
-  min_in_field: 0.25,
+  /** A pose is scored only while each frame holds at least this share of
+   * the bone it held at the start. A scan is often far longer than a frame
+   * shows, so the share of the whole scan says nothing. */
+  keep_in_field: 0.5,
   max_evaluations: 60_000,
   slice_evaluations: 40,
 } as const;
@@ -394,7 +400,9 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
   const views = input.frames.map((frame) => validateView(frame.view));
   if (two && !planesFarEnough(planeAngleDeg(views[0], views[1])))
     throw new Error("The two frames are too close to parallel");
-  const divisors = [...new Set([...L.first_levels, ...L.both_levels])];
+  const divisors: number[] = [
+    ...new Set([...L.first_levels, ...L.both_levels]),
+  ];
   const cameras = input.frames.map((frame, k) =>
     camera(views[k], frame.isocenter),
   );
@@ -449,19 +457,20 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
   });
 
   let evaluations = 0;
-  /** Edge agreement of one frame at one pose, and the share of the bone in
-   * the frame. p = shift along the first frame's axes, turns about them. */
-  const measure = (k: number, divisor: number, p: number[]) => {
+  /** Drops the bone on one frame's working picture at one pose. Returns
+   * the weight and the number of points that fell in the frame. p = shift
+   * along the first frame's axes, turns about them. */
+  const drop = (k: number, divisor: number, p: number[]) => {
     const frame = prepared[k],
       level = frame.levels.get(divisor) as Level,
-      { w, h, drr, soft, scratch, fx, fy } = level,
+      { w, h, drr } = level,
       { m, o } = frame,
       r = rotation(p[3], p[4], p[5]);
     // Fewer points carry a coarser picture.
     const stride = Math.max(1, Math.min(divisor, Math.floor(count / 2000)));
     drr.fill(0);
     let inside = 0,
-      all = 0;
+      seen = 0;
     for (let i = 0; i < count; i += stride) {
       const x = local[3 * i],
         y = local[3 * i + 1],
@@ -474,7 +483,6 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
       // source. Weighting by depth squared keeps a point's share of the
       // picture what its share of the beam's path is.
       const value = weights[i] * (depth / frame.sid) ** 2;
-      all += value;
       if (!(depth >= 1)) continue;
       const scale = frame.sid / depth;
       const px =
@@ -500,9 +508,29 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
       drr[at + w] += value * (1 - ax) * ay;
       drr[at + w + 1] += value * ax * ay;
       inside += value;
+      seen += stride;
     }
-    const share = inside / all;
-    if (share < L.min_in_field) return { score: -1, share };
+    return { inside, seen };
+  };
+  const zero = [0, 0, 0, 0, 0, 0];
+  // What each frame holds at the start, at each level.
+  const floors = prepared.map((_, k) => {
+    if (drop(k, 1, zero).seen < L.min_points)
+      throw new Error(BONE_NOT_IN_FRAME);
+    return new Map(
+      divisors.map((divisor) => [
+        divisor,
+        L.keep_in_field * drop(k, divisor, zero).inside,
+      ]),
+    );
+  });
+  /** Edge agreement of one frame at one pose; -1 when the bone has left
+   * the frame. */
+  const measure = (k: number, divisor: number, p: number[]) => {
+    const level = prepared[k].levels.get(divisor) as Level,
+      { w, h, drr, soft, scratch, fx, fy } = level;
+    if (drop(k, divisor, p).inside < (floors[k].get(divisor) as number))
+      return -1;
     blur(drr, w, h, L.blur_px, false, soft, scratch);
     let agree = 0,
       own = 0;
@@ -514,16 +542,13 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
         agree += dx * fx[at] + dy * fy[at];
         own += Math.hypot(dx, dy);
       }
-    return {
-      score: own > 0 ? agree / own : -1,
-      share,
-    };
+    return own > 0 ? agree / own : -1;
   };
   const score = (which: number[], divisor: number, p: number[]) => {
     evaluations++;
     let sum = 0;
     for (const k of which) {
-      const one = measure(k, divisor, p).score;
+      const one = measure(k, divisor, p);
       if (one <= -1) return -1;
       sum += one;
     }
@@ -534,11 +559,6 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
     Math.abs(p[3]) <= L.rotation_deg &&
     Math.abs(p[4]) <= L.rotation_deg &&
     Math.abs(p[5]) <= L.rotation_deg;
-
-  const zero = [0, 0, 0, 0, 0, 0];
-  for (let k = 0; k < prepared.length; k++)
-    if (measure(k, 1, zero).share < L.min_in_field)
-      throw new Error(BONE_NOT_IN_FRAME);
 
   type Found = { p: number[]; score: number };
   function* descend(
@@ -596,38 +616,50 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
     return picked;
   };
 
-  // The first frame alone, coarse to fine: from the start, and from the
-  // best places a coarse look across the frame finds. A spine repeats
-  // itself every vertebra, and a start a level off descends onto the wrong
-  // one; the finest level tells them apart.
-  const opening: [number, number[]][] = [];
-  for (
-    let u = -L.opening_scan_mm;
-    u <= L.opening_scan_mm;
-    u += L.opening_step_mm
-  )
+  // The first frame alone. A spine repeats itself every vertebra, and a
+  // start a level off descends onto the wrong one, so the search looks
+  // across the frame for other places to start from: coarsely around the
+  // start before the first descent, and more finely around its answer
+  // after it. The finest level tells the places apart.
+  const look = (around: number[], divisor: number) => {
+    const scan: [number, number[]][] = [];
     for (
-      let v = -L.opening_scan_mm;
-      v <= L.opening_scan_mm;
-      v += L.opening_step_mm
+      let u = -L.opening_scan_mm;
+      u <= L.opening_scan_mm;
+      u += L.opening_step_mm
     )
-      if (u !== 0 || v !== 0)
-        opening.push([
-          score([0], L.first_levels[0], [u, v, 0, 0, 0, 0]),
-          [u, v],
-        ]);
-  yield;
-  let found: Found | null = null;
-  for (const [u, v] of [
-    [0, 0],
-    ...separate(opening, L.opening_candidates, L.opening_apart_mm, [[0, 0]]),
-  ]) {
-    let next: Found = { p: [u, v, 0, 0, 0, 0], score: 0 };
-    for (const divisor of L.first_levels)
-      next = yield* descend([0], divisor, next.p);
-    if (!found || next.score > found.score) found = next;
+      for (
+        let v = -L.opening_scan_mm;
+        v <= L.opening_scan_mm;
+        v += L.opening_step_mm
+      ) {
+        if (u === 0 && v === 0) continue;
+        const p = around.slice();
+        p[0] += u;
+        p[1] += v;
+        if (within(p)) scan.push([score([0], divisor, p), p]);
+      }
+    return separate(scan, L.opening_candidates, L.opening_apart_mm, [around]);
+  };
+  const from = function* (p: number[], levels: readonly number[]) {
+    let next: Found = { p, score: 0 };
+    for (const divisor of levels) next = yield* descend([0], divisor, next.p);
+    return next;
+  };
+  let found = yield* from(zero, L.first_levels);
+  for (const p of look(zero, L.first_levels[0])) {
+    const next = yield* from(p, L.first_levels);
+    if (next.score > found.score) found = next;
   }
-  if (!found) throw new Error("Line-up failed");
+  for (let round = 0; round < L.second_looks; round++) {
+    let better: Found | null = null;
+    for (const p of look(found.p, L.second_look_levels[0])) {
+      const next = yield* from(p, L.second_look_levels);
+      if (next.score > (better ?? found).score + 1e-6) better = next;
+    }
+    if (!better) break;
+    found = better;
+  }
 
   const depth_candidates_mm: number[] = [];
   if (two) {
@@ -662,8 +694,8 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
   const which = prepared.map((_, k) => k),
     p = found.p,
     r = rotation(p[3], p[4], p[5]);
-  const frame_scores = which.map((k) => measure(k, 1, p).score),
-    start_scores = which.map((k) => measure(k, 1, zero).score);
+  const frame_scores = which.map((k) => measure(k, 1, p)),
+    start_scores = which.map((k) => measure(k, 1, zero));
   const mean = (values: number[]) =>
     values.reduce((sum, value) => sum + value, 0) / values.length;
   // The turn and the shift in C-arm axes, composed onto the start.

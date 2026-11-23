@@ -134,14 +134,15 @@ export function disturbedStart(
   random: () => number,
   axes: readonly (readonly number[])[],
   center: readonly number[],
+  reach: { across_mm: number; depth_mm: number; turn_deg: number } = LUMBAR,
 ): number[][] {
-  const draw = (reach: number) => (2 * random() - 1) * reach;
+  const draw = (most: number) => (2 * random() - 1) * most;
   const t = [
-      draw(LUMBAR.across_mm),
-      draw(LUMBAR.across_mm),
-      draw(LUMBAR.depth_mm),
+      draw(reach.across_mm),
+      draw(reach.across_mm),
+      draw(reach.depth_mm),
     ],
-    [rx, ry, rz] = [0, 1, 2].map(() => (draw(LUMBAR.turn_deg) * Math.PI) / 180);
+    [rx, ry, rz] = [0, 1, 2].map(() => (draw(reach.turn_deg) * Math.PI) / 180);
   const cx = Math.cos(rx),
     sx = Math.sin(rx),
     cy = Math.cos(ry),
