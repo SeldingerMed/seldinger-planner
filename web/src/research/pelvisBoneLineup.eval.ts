@@ -32,6 +32,12 @@ const bytes = (path: string) => {
   const file = readFileSync(path);
   return file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength);
 };
+/** A large file's own bytes, not a copy: the run stays small in memory. */
+const whole = (path: string) => {
+  const file = readFileSync(path);
+  if (file.byteOffset % 2) throw new Error(`Unexpected read: ${path}`);
+  return file;
+};
 const times = (a: number[][], b: number[][]) =>
   a.map((row) =>
     b[0].map((_, j) => row.reduce((sum, value, k) => sum + value * b[k][j], 0)),
@@ -55,12 +61,11 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
       const record: PelvisRecord = JSON.parse(
           readFileSync(`${prepared}/${name}/subject.json`, "utf8"),
         ),
-        scan = new Int16Array(bytes(`${prepared}/${name}/volume.i16`)),
+        held = whole(`${prepared}/${name}/volume.i16`),
+        scan = new Int16Array(held.buffer, held.byteOffset, held.length / 2),
         marks = new Float32Array(bytes(`${prepared}/${name}/fiducials.f32`));
-      const moving = pelvisMoving(
-        record,
-        new Uint8Array(bytes(`${prepared}/${name}/labels.u8`)),
-      );
+      const labels = whole(`${prepared}/${name}/labels.u8`),
+        moving = pelvisMoving(record, labels, labels);
       let samples: ReturnType<typeof boneSamples> | null = null;
       const random = seeded(PELVIS.seed);
       for (const key of pelvisFrames(Object.keys(record.frames))) {

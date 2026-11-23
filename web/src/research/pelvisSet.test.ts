@@ -188,6 +188,13 @@ describe("pelvisMoving", () => {
     expect(moving.subarray(8).every((value) => value === 0)).toBe(true);
   });
 
+  it("can write over the labels, for a scan too large to hold twice", () => {
+    const labels = new Uint8Array(96);
+    labels.set([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(pelvisMoving(record(), labels, labels)).toBe(labels);
+    expect(Array.from(labels.subarray(0, 8))).toEqual([0, 0, 0, 0, 0, 1, 1, 0]);
+  });
+
   it("refuses labels it would have to guess at", () => {
     expect(() => pelvisMoving(record(), new Uint8Array(95))).toThrow(
       "Labels do not match their record",

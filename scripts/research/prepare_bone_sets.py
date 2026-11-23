@@ -468,6 +468,16 @@ def lspine_cases(names: list[str]) -> dict:
     return cases
 
 
+def lspine_complete(cases: dict) -> tuple[list[str], list[str]]:
+    """The cases with two frames and a scan, and those without, each in case
+    order. One case of the set carries its frames in a further folder only."""
+    complete, left_out = [], []
+    for case in sorted(cases, key=lambda c: int(c.removeprefix("case"))):
+        whole = len(cases[case]["C-arm"]) >= 2 and len(cases[case]["CBCT"]) >= 1
+        (complete if whole else left_out).append(case)
+    return complete, left_out
+
+
 def prepare_lspine_case(archive: zipfile.ZipFile, case: str, members: dict, destination: Path):
     import numpy
     import pydicom
@@ -581,7 +591,11 @@ def prepare_lspine(source: Path, destination: Path, only: list[str] | None = Non
     records = []
     with zipfile.ZipFile(path) as archive:
         cases = lspine_cases(archive.namelist())
-        chosen = only or sorted(cases, key=lambda c: int(c.removeprefix("case")))
+        complete, left_out = lspine_complete(cases)
+        chosen = only or complete
+        if not only:
+            # A whole-set run leaves the incomplete cases out and says which.
+            (created_outside(root) / "left-out.json").write_text(json.dumps(left_out) + "\n")
         for case in chosen:
             if case not in cases:
                 raise PrepareError(f"No such case: {case}")

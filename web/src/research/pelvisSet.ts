@@ -206,6 +206,7 @@ export function pelvisInputs(
 export function pelvisMoving(
   record: PelvisRecord,
   labels: Uint8Array,
+  moving = new Uint8Array(labels.length),
 ): Uint8Array {
   const shape = record.volume_shape,
     values = record.label_values;
@@ -216,10 +217,9 @@ export function pelvisMoving(
     !PELVIS.labels.every((label, i) => values[i] === label)
   )
     throw new Error("Labels do not match their record");
-  const femurs: readonly number[] = PELVIS.femur_labels,
-    moving = new Uint8Array(labels.length);
+  const femurs: readonly number[] = PELVIS.femur_labels;
   for (let i = 0; i < labels.length; i++)
-    if (femurs.includes(labels[i])) moving[i] = 1;
+    moving[i] = femurs.includes(labels[i]) ? 1 : 0;
   return moving;
 }
 

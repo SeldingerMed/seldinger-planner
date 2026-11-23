@@ -33,6 +33,16 @@ def test_lspine_cases_split_frames_from_scan_and_set_other_folders_aside():
     assert extra["case134"]["C-arm"] == [] and len(extra["case134"]["CBCT"]) == 1
 
 
+def test_a_case_without_two_frames_and_a_scan_is_left_out_of_a_whole_set_run():
+    cases = {
+        "case10": {"C-arm": ["a", "b"], "CBCT": ["s"], "other": []},
+        "case2": {"C-arm": ["a", "b"], "CBCT": ["s"], "other": []},
+        "case134": {"C-arm": [], "CBCT": ["s"], "other": ["x"]},
+        "case7": {"C-arm": ["a", "b"], "CBCT": [], "other": []},
+    }
+    assert bone.lspine_complete(cases) == (["case2", "case10"], ["case7", "case134"])
+
+
 def test_a_file_that_is_not_the_fetched_one_is_refused(tmp_path):
     (tmp_path / "a.bin").write_bytes(b"abcd")
     digest = bone._sha256(b"abcd")
