@@ -8,13 +8,13 @@
  *     npx vitest run --config vitest.research.config.ts \
  *     src/research/pelvisBoneLineup.eval.ts
  * PELVIS_SUBJECTS is `design` (specimens 1 to 3) or design specimen numbers.
- * Held-back specimens are not run from here. Every path must lie outside
- * this repository. The results directory must not exist. */
+ * `held_back` (specimens 4 to 6) is the protocol's one run. Every path must
+ * lie outside this repository. The results directory must not exist. */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { it } from "vitest";
 import { boneSamples, proposeBoneLineup } from "../boneLineup";
 import { camera } from "../carmGeometry";
-import { disturbedStart, seeded } from "./lumbarSet";
+import { BONE_LINEUP_PROTOCOL, disturbedStart, seeded } from "./lumbarSet";
 import { outsideRepository } from "./outsideRepository";
 import {
   PELVIS,
@@ -170,6 +170,10 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
           subject: name,
           frame: key,
           residual_px: read.residual_px,
+          // What a check of the reference without the line-up reads.
+          stored_pose: read.stated,
+          view: read.frame.view,
+          isocenter: read.frame.isocenter,
           reference,
           starts,
         });
@@ -231,7 +235,15 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
     };
     writeFileSync(
       `${results}/summary.json`,
-      JSON.stringify({ id: PELVIS.id, set: SET, summary }, null, 1),
+      JSON.stringify(
+        {
+          id: SET === "held_back" ? BONE_LINEUP_PROTOCOL : PELVIS.id,
+          set: SET,
+          summary,
+        },
+        null,
+        1,
+      ),
     );
     console.log(JSON.stringify(summary));
   },

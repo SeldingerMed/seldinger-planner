@@ -362,6 +362,44 @@ describe("proposeBoneLineup", () => {
     }
   }, 120_000);
 
+  it("searches the frame nearer the front first, whichever way they come", () => {
+    const front = render(volume, TRUE, view(0)),
+      side = render(volume, TRUE, view(90));
+    const one = proposeBoneLineup({
+        samples,
+        frames: [front, side],
+        start: IDENTITY,
+      }),
+      other = proposeBoneLineup({
+        samples,
+        frames: [side, front],
+        start: IDENTITY,
+      });
+    expect(other.matrix).toEqual(one.matrix);
+    expect(other.frame_scores).toEqual([
+      one.frame_scores[1],
+      one.frame_scores[0],
+    ]);
+  }, 120_000);
+
+  it("refuses one frame from the side", () => {
+    // Measured: one frame up to 37 degrees off the front places the bone; a
+    // side frame alone does not. The limit is set between, at 60 degrees.
+    const from = (primary_deg: number) =>
+      proposeBoneLineup({
+        samples,
+        frames: [render(volume, TRUE, view(primary_deg), 64)],
+        start: IDENTITY,
+      });
+    expect(() => from(90)).toThrow(
+      "A frame from the side does not place the bone alone",
+    );
+    expect(() => from(-70)).toThrow(
+      "A frame from the side does not place the bone alone",
+    );
+    expect(from(40).method).toBe(BONE_LINEUP_METHOD);
+  }, 120_000);
+
   it("with one frame, places the bone across the beam", () => {
     const frames = [render(volume, TRUE, view(0))];
     const found = proposeBoneLineup({ samples, frames, start: IDENTITY });

@@ -72,21 +72,25 @@ export type PelvisRecord = {
 
 /** Specimen names: `design`, or design specimen numbers. */
 export function pelvisSubjects(set: string): string[] {
-  const [first, last] = PELVIS.design;
+  const [first, last] = PELVIS.design,
+    range = ([from, to]: readonly number[]) =>
+      Array.from({ length: to - from + 1 }, (_, i) => from + i);
   const numbers =
     set === "design"
-      ? Array.from({ length: last - first + 1 }, (_, i) => first + i)
-      : set.split(",").map((part) => {
-          const n = Number(part);
-          if (
-            part.trim() === "" ||
-            !Number.isInteger(n) ||
-            n < first ||
-            n > last
-          )
-            throw new Error("Not a design specimen: " + part.trim());
-          return n;
-        });
+      ? range(PELVIS.design)
+      : set === "held_back"
+        ? range(PELVIS.held_back)
+        : set.split(",").map((part) => {
+            const n = Number(part);
+            if (
+              part.trim() === "" ||
+              !Number.isInteger(n) ||
+              n < first ||
+              n > last
+            )
+              throw new Error("Not a design specimen: " + part.trim());
+            return n;
+          });
   return numbers.map((n) => "subject" + String(n).padStart(2, "0"));
 }
 

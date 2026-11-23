@@ -73,6 +73,12 @@ export const BONE_LINEUP = {
    * the bone it held at the start. A scan is often far longer than a frame
    * shows, so the share of the whole scan says nothing. */
   keep_in_field: 0.5,
+  /** One frame is taken when its beam is within this of the patient's
+   * front-to-back axis. One frame placed the bone at every angle measured,
+   * 2 to 37 degrees, on pelvis frames; a side frame of the spine alone
+   * brought 116 of 294 disturbed starts back on the lumbar design cases. The
+   * limit lies between the two. */
+  lone_frame_from_front_deg: 60,
   max_evaluations: 60_000,
   slice_evaluations: 40,
 } as const;
@@ -108,7 +114,9 @@ export type BoneFrameInput = {
 };
 export type BoneLineupInput = {
   samples: BoneSamples;
-  /** One frame, or two that share one patient pose. */
+  /** One frame, or two that share one patient pose, in any order: the one
+   * nearer the patient's front is searched first. One frame from the side is
+   * refused. */
   frames: BoneFrameInput[];
   /** Rigid volume-RAS to C-arm-RAS matrix the search starts from. */
   start: unknown;
@@ -120,9 +128,11 @@ export type BoneLineupProposal = {
   /** Share of the bone picture's edges that lie on frame edges running the
    * same way, at the finest level, mean over frames. Below 1 by design. */
   score: number;
+  /** In the order the frames were given. */
   frame_scores: number[];
   start_score: number;
-  /** Depths along the first beam that were searched with both frames. */
+  /** Depths along the beam of the frame nearer the front that were searched
+   * with both frames. */
   depth_candidates_mm: number[];
   translation_mm: number;
   rotation_deg: number;
@@ -424,15 +434,27 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
       !Number.isFinite(points[3 * i + 2])
     )
       throw new Error("Invalid bone points");
-  const views = input.frames.map((frame) => validateView(frame.view));
+  // How far each beam is from the patient's front-to-back axis at the
+  // start. The scan's second axis runs back to front.
+  const fromFront = input.frames.map((frame) => {
+    const { d } = camera(validateView(frame.view), frame.isocenter),
+      along = d[0] * start[0][1] + d[1] * start[1][1] + d[2] * start[2][1];
+    return Math.acos(Math.min(1, Math.abs(along))) / rad;
+  });
+  if (!two && fromFront[0] > L.lone_frame_from_front_deg)
+    throw new Error(
+      "A frame from the side does not place the bone alone: add a frame from the front",
+    );
+  // The frame nearer the front is searched first, then depth with both.
+  const order = two && fromFront[1] < fromFront[0] ? [1, 0] : [0, 1],
+    frames = order.slice(0, input.frames.length).map((k) => input.frames[k]);
+  const views = frames.map((frame) => validateView(frame.view));
   if (two && !planesFarEnough(planeAngleDeg(views[0], views[1])))
     throw new Error("The two frames are too close to parallel");
   const divisors: number[] = [
     ...new Set([...L.first_levels, ...L.both_levels]),
   ];
-  const cameras = input.frames.map((frame, k) =>
-    camera(views[k], frame.isocenter),
-  );
+  const cameras = frames.map((frame, k) => camera(views[k], frame.isocenter));
 
   // Points at the starting pose and their weighted middle, the pivot of
   // every turn; then the same points in the first frame's axes about it.
@@ -461,7 +483,7 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
         axes[a][1] * (world[3 * i + 1] - pivot[1]) +
         axes[a][2] * (world[3 * i + 2] - pivot[2]);
 
-  const prepared: Prepared[] = input.frames.map((frame, k) => {
+  const prepared: Prepared[] = frames.map((frame, k) => {
     const cam = cameras[k],
       rows = [cam.u, cam.v, cam.d];
     return {
@@ -732,8 +754,10 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
   const which = prepared.map((_, k) => k),
     p = found.p,
     r = rotation(p[3], p[4], p[5]);
-  const frame_scores = which.map((k) => measure(k, 1, p)),
-    start_scores = which.map((k) => measure(k, 1, zero));
+  // Scores are given in the order the frames came in.
+  const given = which.map((k) => order.indexOf(k)),
+    frame_scores = given.map((k) => measure(k, 1, p)),
+    start_scores = given.map((k) => measure(k, 1, zero));
   const mean = (values: number[]) =>
     values.reduce((sum, value) => sum + value, 0) / values.length;
   // The turn and the shift in C-arm axes, composed onto the start.

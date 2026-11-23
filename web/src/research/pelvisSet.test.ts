@@ -151,16 +151,19 @@ describe("pelvisInputs", () => {
 });
 
 describe("pelvis design set", () => {
-  it("keeps the held-back specimens out", () => {
+  it("keeps the design and held-back specimens apart", () => {
     expect(pelvisSubjects("design")).toEqual([
       "subject01",
       "subject02",
       "subject03",
     ]);
     expect(pelvisSubjects("2")).toEqual(["subject02"]);
-    expect(() => pelvisSubjects("held_back")).toThrow(
-      "Not a design specimen: held_back",
-    );
+    expect(pelvisSubjects("held_back")).toEqual([
+      "subject04",
+      "subject05",
+      "subject06",
+    ]);
+    // A named list is for design work: it cannot reach a held-back specimen.
     expect(() => pelvisSubjects("4")).toThrow("Not a design specimen: 4");
   });
 

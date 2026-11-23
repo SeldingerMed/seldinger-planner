@@ -20,6 +20,10 @@ import type { BoneFrameInput, BoneVolume } from "../boneLineup";
 import type { ViewNumbers } from "../carmGeometry";
 import type { Vec3 } from "../obliqueSlice";
 
+/** The one measurement on the held-back cases and specimens of both bone
+ * sets: docs/research/bone-lineup-held-back-protocol.md. */
+export const BONE_LINEUP_PROTOCOL = "bone-lineup-held-back-v1";
+
 export const LUMBAR = {
   id: "lumbar-bone-lineup-design",
   /** Case numbers, first and last. Fixed before any run. */

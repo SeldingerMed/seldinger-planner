@@ -1,13 +1,15 @@
 // @vitest-environment node
-/** Runs the bone line-up (../boneLineup.ts) on prepared C-ArmLSpine design
- * cases. Not part of the test suite:
+/** Runs the bone line-up (../boneLineup.ts) on prepared C-ArmLSpine cases,
+ * with both frames and with the front frame alone. Not part of the test
+ * suite:
  *   LUMBAR_PREPARED=<dir> LUMBAR_RESULTS=<dir> LUMBAR_CASES=<set> \
  *     npx vitest run --config vitest.research.config.ts \
  *     src/research/lumbarBoneLineup.eval.ts
  * LUMBAR_CASES is `design` (cases 1 to 49) or design case numbers, as in
- * `1,2,3`. Held-back cases are not run from here. Every path must lie
- * outside this repository. The results directory must not exist. */
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+ * `1,2,3`. `held_back` (cases 50 to 149) is the protocol's one run. A case
+ * the format step left out (`left-out.json`) is not run. Every path must
+ * lie outside this repository. The results directory must not exist. */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { it } from "vitest";
 import {
   boneSamples,
@@ -18,6 +20,7 @@ import {
 import { camera } from "../carmGeometry";
 import {
   apartMm,
+  BONE_LINEUP_PROTOCOL,
   disturbedStart,
   LUMBAR,
   lumbarCases,
@@ -35,10 +38,11 @@ const IDENTITY = [
   [0, 0, 1, 0],
   [0, 0, 0, 1],
 ];
+// The side frame alone is not an arm: it brought 116 of 294 disturbed starts
+// back on the design cases, and the line-up refuses it.
 const ARMS = [
   ["both", [0, 1]],
   ["front", [0]],
-  ["side", [1]],
 ] as const;
 
 const bytes = (path: string) => {
@@ -54,15 +58,17 @@ const median = (values: number[]) => {
 };
 
 it.skipIf(!PREPARED || !RESULTS || !SET)(
-  "bone line-up on lumbar design cases",
+  "bone line-up on lumbar cases",
   () => {
-    if (SET === "held_back")
-      throw new Error("Held-back cases are not run from here");
     const prepared = outsideRepository(PREPARED as string),
       results = outsideRepository(RESULTS as string);
     mkdirSync(results, { recursive: false });
+    const left_out: string[] = existsSync(`${prepared}/left-out.json`)
+      ? JSON.parse(readFileSync(`${prepared}/left-out.json`, "utf8"))
+      : [];
     const rows: Record<string, unknown>[] = [];
     for (const name of lumbarCases(SET as string)) {
+      if (left_out.includes(name)) continue;
       const record = JSON.parse(
         readFileSync(`${prepared}/${name}/subject.json`, "utf8"),
       );
@@ -88,7 +94,24 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
             performance.now() - began,
           ];
         };
-        const [stated, stated_ms] = run(IDENTITY);
+        // A case the line-up refuses from the stated geometry has no answer
+        // of its own: it is recorded, and none of its starts count as back.
+        let first: [BoneLineupProposal, number];
+        try {
+          first = run(IDENTITY);
+        } catch (error) {
+          rows.push({
+            case: name,
+            arm,
+            refused: String(error),
+            back_1mm: 0,
+            back_2mm: 0,
+          });
+          writeFileSync(`${results}/runs.json`, JSON.stringify(rows, null, 1));
+          console.log([name, arm, "refused:", String(error)].join(" "));
+          continue;
+        }
+        const [stated, stated_ms] = first;
         const random = seeded(LUMBAR.seed);
         const starts = Array.from({ length: LUMBAR.starts }, () => {
           const start = disturbedStart(random, axes, read.center);
@@ -161,18 +184,23 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
       }
     }
     const summary = ARMS.map(([arm]) => {
-      const mine = rows.filter((row) => row.arm === arm) as {
-        back_1mm: number;
-        back_2mm: number;
-        from_stated_mm: number;
-        score: number;
-        ms: number;
-        case: string;
-      }[];
+      const every = rows.filter((row) => row.arm === arm) as {
+          back_1mm: number;
+          back_2mm: number;
+          from_stated_mm: number;
+          score: number;
+          ms: number;
+          case: string;
+          refused?: string;
+        }[],
+        mine = every.filter((row) => row.refused === undefined);
       return {
         arm,
-        cases: mine.length,
-        starts: mine.length * LUMBAR.starts,
+        cases: every.length,
+        refused: every
+          .filter((row) => row.refused !== undefined)
+          .map((row) => [row.case, row.refused]),
+        starts: every.length * LUMBAR.starts,
         back_1mm: mine.reduce((sum, row) => sum + row.back_1mm, 0),
         back_2mm: mine.reduce((sum, row) => sum + row.back_2mm, 0),
         cases_with_every_start_back_1mm: mine.filter(
@@ -190,7 +218,18 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
     });
     writeFileSync(
       `${results}/summary.json`,
-      JSON.stringify({ id: LUMBAR.id, set: SET, summary }, null, 1),
+      JSON.stringify(
+        {
+          id: SET === "held_back" ? BONE_LINEUP_PROTOCOL : LUMBAR.id,
+          set: SET,
+          left_out: lumbarCases(SET as string).filter((name) =>
+            left_out.includes(name),
+          ),
+          summary,
+        },
+        null,
+        1,
+      ),
     );
     console.log(JSON.stringify(summary));
   },
