@@ -136,8 +136,16 @@ def parts_below(mask, affine, one, other) -> float | None:
     slab = max(1, SLAB_VOXELS // (mask.shape[0] * mask.shape[1]))
     for first in range(0, mask.shape[2], slab):
         part = mask[:, :, first : first + slab] > 0
-        small[:, :, first // stride[2] : -(-(first + part.shape[2]) // stride[2])] |= (
-            np.pad(part, [(0, -n % s) for n, s in zip(part.shape, stride)])
+        last = first + part.shape[2]
+        small[:, :, first // stride[2] : -(-last // stride[2])] |= (
+            np.pad(
+                part,
+                [
+                    (0, -part.shape[0] % stride[0]),
+                    (0, -part.shape[1] % stride[1]),
+                    (first % stride[2], -last % stride[2]),
+                ],
+            )
             .reshape(
                 small.shape[0],
                 stride[0],

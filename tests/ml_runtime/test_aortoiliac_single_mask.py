@@ -65,6 +65,49 @@ def test_the_mask_alone_says_where_two_points_stop_sharing_a_lumen():
     assert look.parts_below(mask, affine, ends[0], model["branches"][1]["path_ras"][-8]) is None
 
 
+@pytest.mark.parametrize(
+    ("spacing_z", "nz", "bridge_z", "slab_slices"),
+    [
+        # stride_z=2, odd slab=3: slab 9:12 starts inside stride cell 4 and silently shifts z=10
+        (0.5, 18, 10, 3),
+        # stride_z=2, odd slab=5: final slab 15:19 spans 3 stride cells with 4 slices (shape mismatch)
+        (0.5, 19, 10, 5),
+        # stride_z=3, odd slab=5: slab 5:10 starts inside stride cell 1 (shape mismatch)
+        (0.35, 20, 12, 5),
+        # stride_z=3, odd slab=7: slab 7:14 starts inside stride cell 2 and silently shifts z=12
+        (0.35, 21, 12, 7),
+    ],
+)
+def test_parts_below_matches_analytic_phantom_across_chunk_sizes(
+    monkeypatch, spacing_z, nz, bridge_z, slab_slices
+):
+    shape = (12, 10, nz)
+    affine = np.diag([0.5, 0.5, spacing_z, 1.0])
+    affine[:3, 3] = [0.0, 0.0, -5.0]
+    mask = np.zeros(shape, dtype=np.uint8)
+    # Two separated vertical legs joined only at z=bridge_z.
+    mask[2:4, 4:6, : bridge_z + 4] = 1
+    mask[8:10, 4:6, : bridge_z + 4] = 1
+    mask[2:10, 4:6, bridge_z] = 1
+    one = affine[:3, :3] @ np.array([2.5, 4.5, 1.0]) + affine[:3, 3]
+    other = affine[:3, :3] @ np.array([8.5, 4.5, 1.0]) + affine[:3, 3]
+
+    stride_z = max(1, int(np.floor(look.PARTING_GRID_MM / spacing_z)))
+    assert stride_z > 1 and slab_slices % 2 == 1 and slab_slices % stride_z != 0
+    expected_cell = bridge_z // stride_z
+    expected_height = float(
+        affine[2, 2] * ((expected_cell + 0.5) * stride_z - 0.5) + affine[2, 3]
+    )
+
+    monkeypatch.setattr(look, "SLAB_VOXELS", int(mask.size))
+    whole_chunk = look.parts_below(mask, affine, one, other)
+    monkeypatch.setattr(look, "SLAB_VOXELS", int(shape[0] * shape[1] * slab_slices))
+    odd_chunk = look.parts_below(mask, affine, one, other)
+
+    assert whole_chunk == pytest.approx(expected_height, abs=1e-9)
+    assert odd_chunk == pytest.approx(whole_chunk, abs=1e-9)
+
+
 def test_a_look_records_each_case_and_draws_it(tmp_path, monkeypatch, capsys):
     shape, affine = grid()
     prepared = tmp_path / "prepared"
