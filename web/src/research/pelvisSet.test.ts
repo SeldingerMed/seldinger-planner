@@ -5,6 +5,7 @@ import {
   pelvisInputs,
   pelvisMoving,
   pelvisSubjects,
+  pelvisVolume,
   targetErrorMm,
   type PelvisRecord,
 } from "./pelvisSet";
@@ -51,11 +52,26 @@ const pixels = () => {
   return p;
 };
 
+describe("pelvisVolume", () => {
+  it("is the scan on the record's grid, and refuses one that is not", () => {
+    const scan = new Int16Array(96),
+      volume = pelvisVolume(record(), scan);
+    expect(volume.data).toBe(scan);
+    expect(volume.shape).toEqual([4, 4, 6]);
+    expect(volume.affine).toEqual(record().volume_affine);
+    expect(() => pelvisVolume(record(), new Int16Array(5))).toThrow(
+      "Scan does not match its record",
+    );
+    const other = record();
+    other.set = "lspine";
+    expect(() => pelvisVolume(other, scan)).toThrow("Not a pelvis record");
+  });
+});
+
 describe("pelvisInputs", () => {
   it("cuts the collimated margin and reads the stored view", () => {
     const read = pelvisInputs(
       record(),
-      new Int16Array(96),
       new Float32Array([1, 2, 3, -4, 5, 6]),
       "000",
       pixels(),
@@ -82,46 +98,18 @@ describe("pelvisInputs", () => {
   });
 
   it("refuses a record it would have to guess at", () => {
-    const args = () =>
-      [new Int16Array(96), new Float32Array(6), "000", pixels()] as const;
+    const args = () => [new Float32Array(6), "000", pixels()] as const;
     const other = record();
     other.set = "lspine";
     expect(() => pelvisInputs(other, ...args())).toThrow("Not a pelvis record");
     expect(() =>
-      pelvisInputs(
-        record(),
-        new Int16Array(5),
-        new Float32Array(6),
-        "000",
-        pixels(),
-      ),
-    ).toThrow("Scan does not match its record");
-    expect(() =>
-      pelvisInputs(
-        record(),
-        new Int16Array(96),
-        new Float32Array(3),
-        "000",
-        pixels(),
-      ),
+      pelvisInputs(record(), new Float32Array(3), "000", pixels()),
     ).toThrow("Fiducials do not match their record");
     expect(() =>
-      pelvisInputs(
-        record(),
-        new Int16Array(96),
-        new Float32Array(6),
-        "007",
-        pixels(),
-      ),
+      pelvisInputs(record(), new Float32Array(6), "007", pixels()),
     ).toThrow("No such frame: 007");
     expect(() =>
-      pelvisInputs(
-        record(),
-        new Int16Array(96),
-        new Float32Array(6),
-        "000",
-        new Uint16Array(9),
-      ),
+      pelvisInputs(record(), new Float32Array(6), "000", new Uint16Array(9)),
     ).toThrow("Frame does not match its record");
     const uneven = record();
     uneven.frames["000"].stored_width = 82;

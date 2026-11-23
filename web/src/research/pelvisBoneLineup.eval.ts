@@ -20,6 +20,7 @@ import {
   pelvisInputs,
   pelvisMoving,
   pelvisSubjects,
+  pelvisVolume,
   targetErrorMm,
   type PelvisRecord,
 } from "./pelvisSet";
@@ -61,29 +62,34 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
       const record: PelvisRecord = JSON.parse(
           readFileSync(`${prepared}/${name}/subject.json`, "utf8"),
         ),
-        held = whole(`${prepared}/${name}/volume.i16`),
-        scan = new Int16Array(held.buffer, held.byteOffset, held.length / 2),
         marks = new Float32Array(bytes(`${prepared}/${name}/fiducials.f32`));
-      const labels = whole(`${prepared}/${name}/labels.u8`),
-        moving = pelvisMoving(record, labels, labels);
-      let samples: ReturnType<typeof boneSamples> | null = null;
+      // The scan and its labels are held only while the bone is sampled.
+      const samples = (() => {
+        const held = whole(`${prepared}/${name}/volume.i16`),
+          labels = whole(`${prepared}/${name}/labels.u8`);
+        return boneSamples({
+          ...pelvisVolume(
+            record,
+            new Int16Array(held.buffer, held.byteOffset, held.length / 2),
+          ),
+          moving: pelvisMoving(record, labels, labels),
+        });
+      })();
       const random = seeded(PELVIS.seed);
       for (const key of pelvisFrames(Object.keys(record.frames))) {
         const read = pelvisInputs(
           record,
-          scan,
           marks,
           key,
           new Uint16Array(bytes(`${prepared}/${name}/${key}.u16`)),
         );
-        samples ??= boneSamples({ ...read.volume, moving });
         const cam = camera(read.frame.view, read.frame.isocenter),
           axes = [cam.u, cam.v, cam.d];
         const run = (start: number[][]) => {
           const began = performance.now();
           try {
             const found = proposeBoneLineup({
-              samples: samples as NonNullable<typeof samples>,
+              samples,
               frames: [read.frame],
               start,
             });

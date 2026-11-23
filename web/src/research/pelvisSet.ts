@@ -95,14 +95,30 @@ export function pelvisFrames(keys: string[]): string[] {
   );
 }
 
-export function pelvisInputs(
+/** The specimen's scan as the bone line-up takes it. */
+export function pelvisVolume(
   record: PelvisRecord,
   scan: Int16Array,
+): BoneVolume {
+  if (record?.set !== "deepfluoro") throw new Error("Not a pelvis record");
+  const shape = record.volume_shape;
+  if (
+    !Array.isArray(shape) ||
+    shape.length !== 3 ||
+    scan.length !== shape[0] * shape[1] * shape[2]
+  )
+    throw new Error("Scan does not match its record");
+  return { data: scan, shape, affine: record.volume_affine };
+}
+
+/** One frame of a specimen with its stored view and pose. The scan is not
+ * needed for it, so a run can let the scan go once its bone is sampled. */
+export function pelvisInputs(
+  record: PelvisRecord,
   fiducials: Float32Array,
   key: string,
   pixels: Uint16Array,
 ): {
-  volume: BoneVolume;
   frame: BoneFrameInput;
   center: Vec3;
   /** The stored pose: volume RAS to this frame's C-arm RAS. */
@@ -115,11 +131,7 @@ export function pelvisInputs(
   if (record?.set !== "deepfluoro") throw new Error("Not a pelvis record");
   const shape = record.volume_shape,
     block = record.frame_block;
-  if (
-    !Array.isArray(shape) ||
-    shape.length !== 3 ||
-    scan.length !== shape[0] * shape[1] * shape[2]
-  )
+  if (!Array.isArray(shape) || shape.length !== 3)
     throw new Error("Scan does not match its record");
   if (fiducials.length !== 3 * record.fiducial_count)
     throw new Error("Fiducials do not match their record");
@@ -187,7 +199,6 @@ export function pelvisInputs(
     value === 0 ? 0 : value,
   ) as Vec3;
   return {
-    volume: { data: scan, shape, affine: record.volume_affine },
     frame: {
       view: placed.plane.view,
       isocenter: placed.plane.isocenter,
