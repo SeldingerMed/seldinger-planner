@@ -92,8 +92,14 @@ def check_whole_model(model):
     assert model["clinical_validation"] is False
     assert model["spatial_units"] == "mm"
     assert [b["name"] for b in model["branches"]] == ["aorta", "right_iliac", "left_iliac"]
-    fork = np.asarray(model["bifurcation_ras"])
-    assert abs(fork[0]) < 2 and abs(fork[1]) < 3 and abs(fork[2]) < 6
+    # The bifurcation is where the lumen divides: the two iliac tubes part
+    # 13 mm below the point their axes leave from. The three lines meet above
+    # it, in the middle of the aorta.
+    divides = np.asarray(model["bifurcation_ras"])
+    assert abs(divides[0]) < 2 and abs(divides[1] - 1.2) < 3 and -17 < divides[2] < -9
+    meet = np.asarray(branch(model, "aorta")["path_ras"][-1])
+    assert abs(meet[0]) < 2 and abs(meet[1]) < 3 and -9 < meet[2] < 6
+    assert model["bifurcation_below_meeting_mm"] == pytest.approx(meet[2] - divides[2], abs=3)
     for name, capsule, end in (
         ("aorta", AORTA, AORTA_TOP),
         ("right_iliac", RIGHT, RIGHT_END),
@@ -110,7 +116,7 @@ def check_whole_model(model):
         assert 1.8 < steps.min() and steps.max() < 2.2
         # The aorta runs down to the bifurcation; an iliac artery runs away from it.
         far, near = (path[0], path[-1]) if name == "aorta" else (path[-1], path[0])
-        assert near.tolist() == model["bifurcation_ras"], name
+        assert near.tolist() == meet.tolist(), name
         assert np.linalg.norm(far - end) < capsule[2] + 4, name
 
 
@@ -161,15 +167,51 @@ def test_an_aorta_with_an_arch_is_followed_round_to_its_root():
     assert [b["name"] for b in model["branches"]] == ["aorta", "right_iliac", "left_iliac"]
     aorta = np.asarray(branch(model, "aorta")["path_ras"])
     assert np.linalg.norm(aorta[0] - (0.0, 60.0, 190.0)) < 18
-    assert aorta[-1].tolist() == model["bifurcation_ras"]
+    assert aorta[-1].tolist() == branch(model, "right_iliac")["path_ras"][0]
+    assert -17 < model["bifurcation_ras"][2] < -9
     assert branch(model, "aorta")["length_mm"] == pytest.approx(250 + np.pi * 30 + 60, abs=25)
+
+
+def test_a_fork_whose_every_arm_runs_toward_the_feet_is_not_the_bifurcation():
+    # A chest scan: the arch, the ascending and the descending aorta, and a
+    # third wide channel that leaves the arch downward, as a false lumen
+    # does. Two of the three could pass for iliac arteries; the aorta above
+    # them could not, since it runs down as well.
+    centre, radius = np.array([0.0, 30.0, 250.0]), 30.0
+    bend = [
+        centre + radius * np.array([0.0, np.cos(t), np.sin(t)]) for t in np.linspace(np.pi, 0, 9)
+    ]
+    chest = [((0.0, 0.0, 120.0), (0.0, 0.0, 250.0), 11.0)]
+    chest += [
+        (tuple(a), tuple(b), 11.0 if k < 4 else 15.0) for k, (a, b) in enumerate(pairwise(bend))
+    ]
+    chest += [((0.0, 60.0, 250.0), (0.0, 60.0, 190.0), 15.0)]
+    chest += [((0.0, 30.0, 278.0), (40.0, 30.0, 200.0), 9.0)]
+    shape, affine = grid(low=(-62.0, -40.0, 120.0), high=(62.0, 80.0, 300.0))
+    model = propose_aortoiliac_model(tubes(shape, affine, chest), affine)
+    assert [b["name"] for b in model["branches"]] == ["aorta"]
+    assert model["bifurcation_ras"] is None
+
+
+def test_in_a_wide_aorta_the_bifurcation_is_still_where_the_lumen_divides():
+    # An aneurysm that runs down to the bifurcation: the iliac lines come
+    # together high in the sac, and the lumen divides where it did before.
+    sac = ((0.0, 0.0, 60.0), (0.0, 0.0, 12.0), 22.0)
+    shape, affine = grid()
+    model = propose_aortoiliac_model(tubes(shape, affine, [AORTA, RIGHT, LEFT, sac]), affine)
+    assert [b["name"] for b in model["branches"]] == ["aorta", "right_iliac", "left_iliac"]
+    divides = np.asarray(model["bifurcation_ras"])
+    assert abs(divides[0]) < 3 and -20 < divides[2] < -9
+    meet = np.asarray(branch(model, "aorta")["path_ras"][-1])
+    assert meet[2] > divides[2] + 8
+    assert model["bifurcation_below_meeting_mm"] > 8
 
 
 def test_a_scan_that_ends_above_the_pelvis_gives_the_aorta_alone():
     shape, affine = grid(low=(-62.0, -40.0, 20.0))
     model = propose_aortoiliac_model(tubes(shape, affine, [AORTA, *RENALS]), affine)
     assert [b["name"] for b in model["branches"]] == ["aorta"]
-    assert model["bifurcation_ras"] is None
+    assert model["bifurcation_ras"] is None and model["bifurcation_below_meeting_mm"] is None
     path = np.asarray(model["branches"][0]["path_ras"])
     assert path[0][2] > path[-1][2]  # head to foot
     # The scan cuts the aorta flat at z = 20: the line runs down the middle

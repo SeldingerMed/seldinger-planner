@@ -72,9 +72,12 @@ def propose_aortoiliac_model(vessel_mask, affine_ras, *, spatial_units="mm"):
     """Named aorta and iliac centerlines, with radii, from a binary mask.
 
     Returns `branches` (each with `name`, `path_ras`, `radius_mm` and
-    `length_mm`; the aorta runs down to the bifurcation and each iliac artery
-    away from it), `bifurcation_ras` (None when the mask holds no iliac
-    arteries), and the working grid the model was read on.
+    `length_mm`; the aorta runs down to the point the three lines meet at and
+    each iliac artery away from it), `bifurcation_ras` (where the lumen
+    divides; None when the mask holds no iliac arteries),
+    `bifurcation_below_meeting_mm` (how far along the iliac lines that is
+    from the meeting point, which lies above it in the middle of the aorta),
+    and the working grid the model was read on.
     """
     import numpy as np
     from scipy import ndimage
@@ -149,13 +152,14 @@ def propose_aortoiliac_model(vessel_mask, affine_ras, *, spatial_units="mm"):
     to_ras[:3, 3] = affine[:3, :3] @ (low + factor * shift + (factor - 1) / 2) + affine[:3, 3]
     working_spacing = np.full(3, float(limits["working_mm"]))
 
+    del box, occupancy
     labels, count = cast(
         "tuple[Any, int]",
         ndimage.label(working, structure=ndimage.generate_binary_structure(3, 3)),
     )
     if count == 0:
         raise ValueError("Vessel mask is too small to model")
-    sizes = np.bincount(labels.ravel())[1:]
+    sizes = np.bincount(labels[working], minlength=count + 1)[1:]
     largest = int(np.argmax(sizes)) + 1
     apart = int(sizes.sum() - sizes[largest - 1])
     working = labels == largest
@@ -163,18 +167,27 @@ def propose_aortoiliac_model(vessel_mask, affine_ras, *, spatial_units="mm"):
         raise ValueError("Vessel mask is too small to model")
     if int(sizes[largest - 1]) > limits["max_lumen_voxels"]:
         raise ValueError("Vessel mask exceeds the computation budget")
-    inscribed = ndimage.distance_transform_edt(working, sampling=tuple(working_spacing))
-    coords, joined = _centre_tree(working, inscribed, limits)
-    if len(coords) < 4:
+    # From here the lumen is a list of its grid points, not a grid: an
+    # artery is a few thousandths of the box that holds it.
+    flat = np.flatnonzero(working)
+    ijk = np.stack(np.unravel_index(flat, working.shape), axis=1).astype(np.int32)
+    shape = working.shape
+    del working, labels
+    wide = _inscribed(ijk, flat, shape, limits["working_mm"])
+    nodes, joined = _centre_tree(ijk, flat, shape, wide, limits)
+    if len(nodes) < 4:
         raise ValueError("Vessel mask is too small to model")
-    lookup = {ijk: node for node, ijk in enumerate(coords)}
+    lookup = {int(node): at for at, node in enumerate(nodes)}
     # A traced point sits on a grid point. The lumen's middle is read
     # between grid points, from where the inscribed radius is greatest around
     # it, and the radius there is the grid point's own plus its distance
     # from that middle.
-    index = np.asarray(coords, dtype=float)
+    index = ijk[nodes].astype(float)
     reach = np.asarray([*_NEIGHBOURS_26, (0, 0, 0)])
-    around = inscribed[tuple((index[:, None, :] + reach[None]).astype(int).transpose(2, 0, 1))]
+    around = np.zeros((len(nodes), len(reach)))
+    for column, delta in enumerate(reach):
+        found, at = _held(flat, flat[nodes] + _step(delta, shape))
+        around[found, column] = wide[at[found]]
     weight = np.clip(around - (around[:, -1:] - limits["working_mm"]), 0, None)
     shift_to_middle = (weight[:, :, None] * reach[None]).sum(axis=1) / weight.sum(axis=1)[:, None]
     middle = index + shift_to_middle
@@ -183,7 +196,7 @@ def propose_aortoiliac_model(vessel_mask, affine_ras, *, spatial_units="mm"):
         for v in around[:, -1] + np.linalg.norm(shift_to_middle, axis=1) * limits["working_mm"]
     ]
     ras = list(middle @ to_ras[:3, :3].T + to_ras[:3, 3])
-    neighbours: list[list[tuple[int, float]]] = [[] for _ in coords]
+    neighbours: list[list[tuple[int, float]]] = [[] for _ in nodes]
     for one, other in joined:
         a, b = lookup[one], lookup[other]
         length = float(np.linalg.norm(ras[a] - ras[b]))
@@ -191,7 +204,7 @@ def propose_aortoiliac_model(vessel_mask, affine_ras, *, spatial_units="mm"):
         neighbours[b].append((a, length))
     graph = _Graph(neighbours, radius, [float(p[2]) for p in ras], limits)
 
-    seed = max(range(len(coords)), key=lambda node: (radius[node], -node))
+    seed = max(range(len(nodes)), key=lambda node: (radius[node], -node))
     first = graph.tree(seed)
     forks = [node for node in first.order if len(first.arms(node)) + (node != seed) >= 3]
     forks.sort(key=lambda node: (-radius[node], node))
@@ -212,7 +225,7 @@ def propose_aortoiliac_model(vessel_mask, affine_ras, *, spatial_units="mm"):
         if ras[path[0]][2] < ras[path[-1]][2]:
             path.reverse()
         branches.append(_branch("aorta", path, ras, radius, limits, free=(True, True)))
-        bifurcation = None
+        bifurcation = below = None
     else:
         _, tree, fork, trunk, limbs = best
         aorta = [*reversed(tree.follow(trunk)), fork]
@@ -223,23 +236,25 @@ def propose_aortoiliac_model(vessel_mask, affine_ras, *, spatial_units="mm"):
         # RAS: the artery that ends farther along +x is the patient's right.
         branches.append(_branch("right_iliac", sides[0], ras, radius, limits, free=(False, True)))
         branches.append(_branch("left_iliac", sides[1], ras, radius, limits, free=(False, True)))
-        bifurcation = [float(v) for v in ras[fork]]
-        # The three lines meet at one point.
+        # The three lines meet at one point, in the middle of the aorta.
+        meet = [float(v) for v in ras[fork]]
         for line in branches:
             end = -1 if line["name"] == "aorta" else 0
-            line["path_ras"][end] = list(bifurcation)
+            line["path_ras"][end] = list(meet)
             line["length_mm"] = _length(line["path_ras"])
+        bifurcation, below = _divides(branches[1], branches[2])
 
     return {
         "method": METHOD,
         "branches": branches,
         "bifurcation_ras": bifurcation,
+        "bifurcation_below_meeting_mm": below,
         "operator_confirmation_required": True,
         "clinical_validation": False,
         "spatial_units": "mm",
         "working_spacing_mm": [float(v) for v in working_spacing],
-        "working_grid_shape": [int(v) for v in working.shape],
-        "skeleton_voxel_count": len(coords),
+        "working_grid_shape": [int(v) for v in shape],
+        "skeleton_voxel_count": len(nodes),
         "volume_apart_from_the_model_mm3": float(apart * limits["working_mm"] ** 3),
     }
 
@@ -355,11 +370,16 @@ def _bifurcation(tree, radius, limits):
     wide, narrow = tree.onset(limbs[0]), tree.onset(limbs[1])
     if narrow < limits["limb_ratio"] * wide or tree.onset(trunk) < limits["trunk_over_limb"] * wide:
         return None
+    height = tree.graph.height
+    # The aorta ends above its bifurcation. At a fork in the chest, where a
+    # channel leaves the arch downward, every arm runs toward the feet.
+    if height[tree.follow(trunk)[-1]] <= height[fork]:
+        return None
     for limb in limbs:
         end = tree.follow(limb)[-1]
         if tree.along[end] < limits["limb_min_mm"]:
             return None
-        if tree.graph.height[fork] - tree.graph.height[end] < limits["limb_drop_mm"]:
+        if height[fork] - height[end] < limits["limb_drop_mm"]:
             return None
     return tree.onset(trunk), tree, fork, trunk, limbs
 
@@ -407,16 +427,72 @@ def _branch(name, nodes, ras, radius, limits, *, free):
     }
 
 
+def _divides(one, other):
+    """Where the lumen divides below the point the iliac lines meet at.
+
+    The two lines leave that point together, inside the aorta. Followed
+    for the same distance, the spheres inscribed about them overlap for as
+    long as they share a lumen. The bifurcation is midway between the lines
+    where the spheres first stand apart; the distance followed is returned
+    with it. Lines that never part give the meeting point itself.
+    """
+    import numpy as np
+
+    lines = []
+    for line in (one, other):
+        path = np.asarray(line["path_ras"], dtype=float)
+        along = np.r_[0.0, np.cumsum(np.linalg.norm(np.diff(path, axis=0), axis=1))]
+        lines.append((along, path, np.asarray(line["radius_mm"], dtype=float)))
+    for at in np.arange(0.0, min(lines[0][0][-1], lines[1][0][-1]), 0.5):
+        points = [np.array([np.interp(at, a, p[:, i]) for i in range(3)]) for a, p, _ in lines]
+        if np.linalg.norm(points[0] - points[1]) >= sum(np.interp(at, a, r) for a, _, r in lines):
+            return [float(v) for v in (points[0] + points[1]) / 2], float(at)
+    return [float(v) for v in lines[0][1][0]], 0.0
+
+
 def _length(path_ras):
     import numpy as np
 
     return float(np.linalg.norm(np.diff(np.asarray(path_ras, dtype=float), axis=0), axis=1).sum())
 
 
-def _centre_tree(working, inscribed, limits):
+def _step(delta, shape):
+    """The change in a grid point's flat index for a step of `delta`."""
+    return (int(delta[0]) * shape[1] + int(delta[1])) * shape[2] + int(delta[2])
+
+
+def _held(flat, wanted):
+    """Which flat indices are lumen points, and their places in the list.
+    The grid has an empty margin, so a step from a lumen point never wraps
+    round an edge onto another lumen point."""
+    import numpy as np
+
+    at = np.minimum(np.searchsorted(flat, wanted), flat.size - 1)
+    return flat[at] == wanted, at
+
+
+def _inscribed(ijk, flat, shape, size):
+    """For each lumen point the radius of the largest sphere about it that
+    stays in the lumen: its distance to the nearest grid point outside. That
+    point always touches the lumen face to face, so only those are searched."""
+    import numpy as np
+    from scipy.spatial import cKDTree
+
+    outside = []
+    for axis in range(3):
+        for way in (-1, 1):
+            delta = [0, 0, 0]
+            delta[axis] = way
+            found, _ = _held(flat, flat + _step(delta, shape))
+            outside.append(ijk[~found] + np.asarray(delta, dtype=np.int32))
+    outside = np.unique(np.concatenate(outside), axis=0)
+    return cKDTree(outside * size).query(ijk * size)[0]
+
+
+def _centre_tree(ijk, flat, shape, wide, limits):
     """Lines along the middle of the lumen, traced from its far ends.
 
-    Returns the grid points on the lines and the pairs of them that are
+    Returns the lumen points on the lines and the pairs of them that are
     joined. The lines start from the point of the widest lumen. Each line
     begins at the point farthest from there, through the lumen, that no line
     has yet cleared, and runs back until it meets a line already traced.
@@ -425,39 +501,45 @@ def _centre_tree(working, inscribed, limits):
     trunk meet in its middle whichever is traced first.
     """
     import numpy as np
-    from scipy.sparse import coo_matrix
+    from scipy.sparse import csr_matrix
     from scipy.sparse.csgraph import dijkstra
     from scipy.spatial import cKDTree
 
     size = limits["working_mm"]
-    flat = np.flatnonzero(working)
-    number = np.full(working.size, -1, dtype=np.int64)
-    number[flat] = np.arange(flat.size)
-    wide = inscribed.ravel()[flat]
-    ijk = np.stack(np.unravel_index(flat, working.shape), axis=1)
-    rows, cols, plain, narrow = [], [], [], []
-    for delta in _NEIGHBOURS_26[13:]:  # each pair once
-        # The grid has an empty margin, so a step never wraps round an edge.
-        step = int(np.ravel_multi_index(np.asarray(delta) + 1, working.shape)) - int(
-            np.ravel_multi_index((1, 1, 1), working.shape)
-        )
-        other = number[flat + step]
-        here = np.flatnonzero(other >= 0)
-        there = other[here]
-        length = size * float(np.linalg.norm(delta))
-        rows.append(here)
-        cols.append(there)
-        plain.append(np.full(here.size, length))
-        narrow.append(length / np.maximum(np.minimum(wide[here], wide[there]), size / 2) ** 2)
-    rows, cols = np.concatenate(rows), np.concatenate(cols)
     count = flat.size
-    through = coo_matrix((np.concatenate(plain), (rows, cols)), shape=(count, count)).tocsr()
-    widest = coo_matrix((np.concatenate(narrow), (rows, cols)), shape=(count, count)).tocsr()
-
+    # The lumen as a graph, each point joined to its neighbours among the
+    # 26 around it. Each pair is listed once, under the point that comes
+    # first, and the rows are filled in place: the list of steps is the
+    # largest thing this module holds.
+    half = _NEIGHBOURS_26[13:]
+    onward = np.full((len(half), count), -1, dtype=np.int32)
+    for kind, delta in enumerate(half):
+        found, at = _held(flat, flat + _step(delta, shape))
+        onward[kind, found] = at[found]
+    indptr = np.zeros(count + 1, dtype=np.int32)
+    np.cumsum((onward >= 0).sum(axis=0), out=indptr[1:])
+    indices = np.empty(int(indptr[-1]), dtype=np.int32)
+    data = np.empty(int(indptr[-1]), dtype=float)
+    cursor = indptr[:-1].copy()
+    for kind, delta in enumerate(half):
+        here = np.flatnonzero(onward[kind] >= 0)
+        indices[cursor[here]] = onward[kind, here]
+        data[cursor[here]] = size * float(np.linalg.norm(delta))
+        cursor[here] += 1
+    del onward, cursor
+    graph = csr_matrix((data, indices, indptr), shape=(count, count))
     start = int(np.argmax(wide))
-    far = dijkstra(through, directed=False, indices=start)
-    _, before = dijkstra(widest, directed=False, indices=start, return_predecessors=True)
-    where = cKDTree(ijk * size)
+    far = dijkstra(graph, directed=False, indices=start)
+    # The same steps, now costed by how narrow the lumen is across each.
+    rows = np.repeat(np.arange(count, dtype=np.int32), np.diff(indptr))
+    for first in range(0, len(data), 1 << 17):
+        part = slice(first, first + (1 << 17))
+        narrow = np.maximum(np.minimum(wide[rows[part]], wide[indices[part]]), size / 2)
+        data[part] /= narrow * narrow
+    del rows
+    _, before = dijkstra(graph, directed=False, indices=start, return_predecessors=True)
+    del graph, data, indices, indptr
+    place = ijk * size
     on_line = np.zeros(count, dtype=bool)
     cleared = np.zeros(count, dtype=bool)
     on_line[start] = True
@@ -470,22 +552,23 @@ def _centre_tree(working, inscribed, limits):
         line = [end]
         while not on_line[line[-1]]:
             line.append(int(before[line[-1]]))
-        new = np.asarray(line[:-1], dtype=int)
-        if new.size == 0:
+        if len(line) == 1:
             cleared[end] = True
             continue
-        run = float(np.linalg.norm(np.diff(ijk[line] * size, axis=0), axis=1).sum())
+        run = float(np.linalg.norm(np.diff(place[line], axis=0), axis=1).sum())
         if not joined or run >= wide[line[-1]] + limits["line_min_mm"]:
-            on_line[new] = True
+            on_line[line[:-1]] = True
             joined.extend(pairwise(line))
-            near = line
+            near = np.asarray(line)
         else:
-            near = line[:-1]
-        for node in near:
-            reach = limits["clear_radii"] * wide[node] + limits["clear_mm"]
-            cleared[where.query_ball_point(ijk[node] * size, reach)] = True
+            near = np.asarray(line[:-1])
+        # A lumen point is cleared when it lies within reach of the line
+        # point nearest to it.
+        reach = limits["clear_radii"] * wide[near] + limits["clear_mm"]
+        still = np.flatnonzero(~cleared)
+        away, nearest = cKDTree(place[near]).query(place[still], distance_upper_bound=reach.max())
+        within = np.isfinite(away)
+        within[within] = away[within] <= reach[nearest[within]]
+        cleared[still[within]] = True
         cleared[end] = True
-    kept = np.flatnonzero(on_line)
-    as_index = [tuple(int(v) for v in ijk[node]) for node in kept]
-    place = {int(node): at for at, node in enumerate(kept)}
-    return as_index, [(as_index[place[a]], as_index[place[b]]) for a, b in joined]
+    return np.flatnonzero(on_line), joined

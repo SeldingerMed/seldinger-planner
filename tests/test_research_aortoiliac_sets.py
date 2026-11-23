@@ -51,23 +51,26 @@ def fetched(tmp_path, monkeypatch, digest="md5", wrong=False):
 def test_the_three_labels_of_each_case_are_lifted_as_stored(tmp_path, monkeypatch, digest):
     source = fetched(tmp_path, monkeypatch, digest)
     out = tmp_path / "out"
-    records = sets.prepare_totalsegmentator(source, out)
-    assert [r["subject"] for r in records] == ["s0001", "s0002"]
-    assert json.loads((out / "left-out.json").read_text()) == ["s0003"]
-    assert not (out / "s0003").exists()
-    assert sorted(p.name for p in (out / "s0002").iterdir()) == [
-        "aorta.nii.gz",
-        "iliac_artery_left.nii.gz",
-        "iliac_artery_right.nii.gz",
-        "subject.json",
-    ]
-    assert (out / "s0002" / "iliac_artery_right.nii.gz").read_bytes() == b"s0002 iliac_artery_right"
-    record = json.loads((out / "s0002" / "subject.json").read_text())
-    assert record["meta"]["split"] == "test"
-    assert record["meta"]["study_type"] == "ct angiography abdomen-pelvis"
-    assert record["sha256"]["aorta.nii.gz"] == hashlib.sha256(b"s0002 aorta").hexdigest()
-    # A second run finds every case done.
-    assert sets.prepare_totalsegmentator(source, out) == []
+    record = sets.prepare_totalsegmentator(source, out)
+    assert sorted(p.name for p in out.iterdir()) == ["labels.zip", "set.json"]
+    assert record == json.loads((out / "set.json").read_text())
+    assert [case["subject"] for case in record["cases"]] == ["s0001", "s0002"]
+    assert record["left_out"] == ["s0003"]
+    assert record["cases"][1]["meta"]["split"] == "test"
+    assert record["cases"][1]["meta"]["study_type"] == "ct angiography abdomen-pelvis"
+    assert (
+        record["cases"][1]["sha256"]["aorta.nii.gz"] == hashlib.sha256(b"s0002 aorta").hexdigest()
+    )
+    whole = (out / "labels.zip").read_bytes()
+    assert record["labels_zip_sha256"] == hashlib.sha256(whole).hexdigest()
+    with zipfile.ZipFile(out / "labels.zip") as lifted:
+        assert sorted(lifted.namelist()) == sorted(
+            f"{case}/{label}.nii.gz" for case in ("s0001", "s0002") for label in sets.LABELS
+        )
+        assert lifted.read("s0002/iliac_artery_right.nii.gz") == b"s0002 iliac_artery_right"
+    # The same labels give the same file.
+    sets.prepare_totalsegmentator(source, out)
+    assert (out / "labels.zip").read_bytes() == whole
 
 
 def test_an_archive_that_is_not_the_fetched_one_is_refused(tmp_path, monkeypatch):
@@ -86,15 +89,14 @@ def test_an_archive_with_no_recorded_digest_is_refused(tmp_path, monkeypatch):
         sets.prepare_totalsegmentator(source, tmp_path / "out")
 
 
-def test_a_named_case_without_all_three_labels_is_refused(tmp_path, monkeypatch):
+def test_a_run_that_stops_part_way_leaves_no_set_record(tmp_path, monkeypatch):
     source = fetched(tmp_path, monkeypatch)
-    with pytest.raises(PrepareError, match="No such case"):
-        sets.prepare_totalsegmentator(source, tmp_path / "out", ["s0003"])
-    assert [
-        r["subject"] for r in sets.prepare_totalsegmentator(source, tmp_path / "out", ["s0002"])
-    ] == ["s0002"]
-    # A run of named cases does not speak for the whole set.
-    assert not (tmp_path / "out" / "left-out.json").exists()
+    out = tmp_path / "out"
+    sets.prepare_totalsegmentator(source, out)
+    monkeypatch.setattr(sets, "MAX_LABEL_BYTES", 4)
+    with pytest.raises(PrepareError, match="larger than expected"):
+        sets.prepare_totalsegmentator(source, out)
+    assert not (out / "set.json").exists()
 
 
 def test_a_meta_table_that_does_not_name_cases_is_refused():
@@ -104,3 +106,59 @@ def test_a_meta_table_that_does_not_name_cases_is_refused():
         sets.cases_of(b"image_id;split\ns1;train\ns1;test\n")
     with pytest.raises(PrepareError, match="one by one"):
         sets.cases_of(b"image_id;split\n../x;train\n")
+
+
+def test_the_label_file_of_each_avt_case_is_found_by_its_folder():
+    names = [
+        "Rider/",
+        "Rider/R1 (AD)/",
+        "Rider/R1 (AD)/R1.nrrd",
+        "Rider/R1 (AD)/R1.seg.nrrd",
+        "Rider/R1 (AD)/._R1.seg.nrrd",
+        "Rider/R10/R10.seg.nrrd",
+        "__MACOSX/Rider/R10/._R10.seg.nrrd",
+    ]
+    assert sets.avt_cases(names) == {
+        "R1": {"collection": "Rider", "folder": "R1 (AD)", "member": "Rider/R1 (AD)/R1.seg.nrrd"},
+        "R10": {"collection": "Rider", "folder": "R10", "member": "Rider/R10/R10.seg.nrrd"},
+    }
+    for odd in ("Rider/R2/R3.seg.nrrd", "Rider/R2/R 2.seg.nrrd"):
+        with pytest.raises(PrepareError, match="Not a case"):
+            sets.avt_cases([odd])
+    with pytest.raises(PrepareError, match="Not a case"):
+        sets.avt_cases(["Rider/R2/R2.seg.nrrd", "Rider/R2 (AD)/R2.seg.nrrd"])
+
+
+def test_the_avt_label_files_are_lifted_in_case_order(tmp_path, monkeypatch):
+    source = tmp_path / "source"
+    source.mkdir()
+    items = []
+    held = {"Dongyang.zip": ["D10", "D2"], "KiTS.zip": ["K1"], "Rider.zip": ["R1 (AD)"]}
+    for name, folders in held.items():
+        with zipfile.ZipFile(source / name, "w") as archive:
+            for folder in folders:
+                case = folder.split(" ")[0]
+                archive.writestr(f"{name[:-4]}/{folder}/{case}.seg.nrrd", f"label {case}".encode())
+                archive.writestr(f"{name[:-4]}/{folder}/{case}.nrrd", b"scan")
+        data = (source / name).read_bytes()
+        items.append(
+            {"name": name, "size": len(data), "sha256_local": hashlib.sha256(data).hexdigest()}
+        )
+    (source / "SOURCE.json").write_text(json.dumps({"complete": True, "files": items}))
+    monkeypatch.setattr(sets, "outside_repository", lambda path: path)
+    monkeypatch.setattr(
+        sets, "created_outside", lambda path: (path.mkdir(parents=True, exist_ok=True), path)[1]
+    )
+    out = tmp_path / "out"
+    record = sets.prepare_avt(source, out)
+    assert [case["subject"] for case in record["cases"]] == ["D2", "D10", "K1", "R1"]
+    assert record["cases"][3]["meta"]["folder"] == "R1 (AD)"
+    with zipfile.ZipFile(out / "labels.zip") as lifted:
+        assert lifted.namelist() == ["D2.seg.nrrd", "D10.seg.nrrd", "K1.seg.nrrd", "R1.seg.nrrd"]
+        assert lifted.read("R1.seg.nrrd") == b"label R1"
+    assert record["cases"][0]["sha256"] == {"D2.seg.nrrd": hashlib.sha256(b"label D2").hexdigest()}
+    # One archive short of the fetched set: nothing is prepared.
+    (source / "KiTS.zip").unlink()
+    with pytest.raises(PrepareError, match="Not the fetched file"):
+        sets.prepare_avt(source, tmp_path / "other")
+    assert not (tmp_path / "other").exists()
