@@ -97,6 +97,37 @@ describe("pelvisInputs", () => {
     expect(read.residual_px).toEqual([0.5, 0.5]);
   });
 
+  it("holds the scan where the stored poses do, part of a voxel off its header", () => {
+    const read = pelvisInputs(
+      record(),
+      new Float32Array([1, 2, 3, -4, 5, 6]),
+      "001",
+      pixels(),
+    );
+    // The record's grid runs -1, -1 and +1 mm a voxel.
+    const [i, j, k] = PELVIS.grid_offset_voxels,
+      moved = [-i, -j, k];
+    expect(PELVIS.grid_offset_voxels).toEqual([0.5, 0.5, 0.5]);
+    for (const point of [
+      [0, 0, 0],
+      [3, -7, 11],
+    ])
+      for (let r = 0; r < 3; r++) {
+        const at = (m: number[][], p: number[]) =>
+          m[r][0] * p[0] + m[r][1] * p[1] + m[r][2] * p[2] + m[r][3];
+        expect(at(read.reference, point)).toBeCloseTo(
+          at(
+            read.stated,
+            point.map((value, axis) => value + moved[axis]),
+          ),
+          9,
+        );
+      }
+    expect(read.reference[3]).toEqual([0, 0, 0, 1]);
+    // The stored pose itself is kept as its files give it.
+    for (const row of read.stated.slice(0, 3)) expect(row[3]).not.toBeNaN();
+  });
+
   it("refuses a record it would have to guess at", () => {
     const args = () => [new Float32Array(6), "000", pixels()] as const;
     const other = record();

@@ -26,6 +26,12 @@ export const PELVIS = {
    * scan and the frames, and the stored pose is the pelvis's. */
   labels: [0, 1, 2, 3, 4, 5, 6, 7],
   femur_labels: [5, 6],
+  /** Where the stored poses hold the scan: this many voxels along each
+   * index axis from where its header puts it. Measured on the design
+   * specimens without the line-up: a ray-cast picture of the bone at the
+   * stored pose sits a median 0.74 mm from the real frame's bone on the
+   * header's grid, the same way on all 36 frames, and 0.10 mm on this one. */
+  grid_offset_voxels: [0.5, 0.5, 0.5],
   /** Frames taken per specimen, evenly through its frames. */
   frames_per_subject: 12,
   /** Disturbed starts per frame, and how far each may be from the stored
@@ -121,8 +127,12 @@ export function pelvisInputs(
 ): {
   frame: BoneFrameInput;
   center: Vec3;
-  /** The stored pose: volume RAS to this frame's C-arm RAS. */
+  /** The stored pose as its files give it: volume RAS to this frame's C-arm
+   * RAS, the scan on its header's grid. */
   stated: number[][];
+  /** The stored pose with the scan held where the set's poses hold it
+   * (`PELVIS.grid_offset_voxels`). A line-up is measured against this. */
+  reference: number[][];
   /** Landmarks in volume RAS, x y z triples. */
   fiducials: Float32Array;
   /** How far the picture's middle is from the central ray, stored pixels. */
@@ -195,6 +205,25 @@ export function pelvisInputs(
     },
     window,
   );
+  // A point of the scan lies `moved` from where the header puts it, so the
+  // reference takes the header's point there first.
+  const affine = record.volume_affine,
+    moved = [0, 1, 2].map(
+      (r) =>
+        affine[r][0] * PELVIS.grid_offset_voxels[0] +
+        affine[r][1] * PELVIS.grid_offset_voxels[1] +
+        affine[r][2] * PELVIS.grid_offset_voxels[2],
+    ),
+    reference = placed.matrix.map((row, r) =>
+      r === 3
+        ? [0, 0, 0, 1]
+        : [
+            row[0],
+            row[1],
+            row[2],
+            row[3] + row[0] * moved[0] + row[1] * moved[1] + row[2] * moved[2],
+          ],
+    );
   const center = placed.center.map((value) =>
     value === 0 ? 0 : value,
   ) as Vec3;
@@ -208,6 +237,7 @@ export function pelvisInputs(
     },
     center,
     stated: placed.matrix,
+    reference,
     fiducials: storedPoints(fiducials, center),
     residual_px: window.residual_px,
   };

@@ -1,7 +1,9 @@
 // @vitest-environment node
 /** Runs the bone line-up (../boneLineup.ts) on single frames of the prepared
- * DeepFluoro design specimens and scores it against the stored poses. Not
- * part of the test suite:
+ * DeepFluoro design specimens and scores it against the set's reference: the
+ * stored pose with the scan held where the set's poses hold it. The distance
+ * from the stored pose as its files give it is kept beside it. Not part of
+ * the test suite:
  *   PELVIS_PREPARED=<dir> PELVIS_RESULTS=<dir> PELVIS_SUBJECTS=<set> \
  *     npx vitest run --config vitest.research.config.ts \
  *     src/research/pelvisBoneLineup.eval.ts
@@ -94,19 +96,31 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
               start,
             });
             return {
-              start_mm: targetErrorMm(read.fiducials, start, read.stated),
+              start_mm: targetErrorMm(read.fiducials, start, read.reference),
               start_across_mm: targetErrorMm(
                 read.fiducials,
                 start,
-                read.stated,
+                read.reference,
                 cam.d,
               ),
               error_mm: targetErrorMm(
                 read.fiducials,
                 found.matrix,
-                read.stated,
+                read.reference,
               ),
               across_mm: targetErrorMm(
+                read.fiducials,
+                found.matrix,
+                read.reference,
+                cam.d,
+              ),
+              // The same against the stored pose as its files give it.
+              stored_error_mm: targetErrorMm(
+                read.fiducials,
+                found.matrix,
+                read.stated,
+              ),
+              stored_across_mm: targetErrorMm(
                 read.fiducials,
                 found.matrix,
                 read.stated,
@@ -120,14 +134,14 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
                   for (let r = 0; r < 3; r++)
                     sum +=
                       axis[r] *
-                      ((found.matrix[r][0] - read.stated[r][0]) *
+                      ((found.matrix[r][0] - read.reference[r][0]) *
                         read.fiducials[k] +
-                        (found.matrix[r][1] - read.stated[r][1]) *
+                        (found.matrix[r][1] - read.reference[r][1]) *
                           read.fiducials[k + 1] +
-                        (found.matrix[r][2] - read.stated[r][2]) *
+                        (found.matrix[r][2] - read.reference[r][2]) *
                           read.fiducials[k + 2] +
                         found.matrix[r][3] -
-                        read.stated[r][3]);
+                        read.reference[r][3]);
                 return sum / (read.fiducials.length / 3);
               }),
               turn_deg: found.rotation_deg,
@@ -137,23 +151,26 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
             };
           } catch (error) {
             return {
-              start_mm: targetErrorMm(read.fiducials, start, read.stated),
+              start_mm: targetErrorMm(read.fiducials, start, read.reference),
               refused: String(error),
             };
           }
         };
-        const stated = run(read.stated);
+        const reference = run(read.reference);
         // The C-arm frame's origin is the scan's center under the stored pose.
         const starts = Array.from({ length: PELVIS.starts }, () =>
           run(
-            times(disturbedStart(random, axes, [0, 0, 0], PELVIS), read.stated),
+            times(
+              disturbedStart(random, axes, [0, 0, 0], PELVIS),
+              read.reference,
+            ),
           ),
         );
         rows.push({
           subject: name,
           frame: key,
           residual_px: read.residual_px,
-          stated,
+          reference,
           starts,
         });
         writeFileSync(`${results}/runs.json`, JSON.stringify(rows, null, 1));
@@ -163,14 +180,14 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
           [
             name,
             key,
-            "from the stored pose: score",
-            show(stated.start_score && stated.start_score * 100),
+            "from the reference: score",
+            show(reference.start_score && reference.start_score * 100),
             "->",
-            show(stated.score && stated.score * 100),
+            show(reference.score && reference.score * 100),
             "across",
-            show(stated.across_mm),
+            show(reference.across_mm),
             "mm, 3D",
-            show(stated.error_mm),
+            show(reference.error_mm),
             "| disturbed across:",
             starts.map((s) => show(s.across_mm)).join(" "),
           ].join(" "),
@@ -181,26 +198,33 @@ it.skipIf(!PREPARED || !RESULTS || !SET)(
         (row.starts as Record<string, number>[]).map((s) => s),
       ),
       done = all.filter((s) => typeof s.across_mm === "number"),
-      stated = rows
-        .map((row) => row.stated as Record<string, number>)
+      reference = rows
+        .map((row) => row.reference as Record<string, number>)
         .filter((s) => typeof s.across_mm === "number");
+    const across = (runs: Record<string, number>[]) => ({
+      median_across_mm: median(runs.map((s) => s.across_mm)),
+      worst_across_mm: Math.max(...runs.map((s) => s.across_mm)),
+      median_3d_mm: median(runs.map((s) => s.error_mm)),
+      across_under_half_mm: runs.filter((s) => s.across_mm < 0.5).length,
+      across_under_1mm: runs.filter((s) => s.across_mm < 1).length,
+      across_under_2mm: runs.filter((s) => s.across_mm < 2).length,
+      // Against the stored pose as its files give it.
+      stored_median_across_mm: median(runs.map((s) => s.stored_across_mm)),
+      stored_across_under_1mm: runs.filter((s) => s.stored_across_mm < 1)
+        .length,
+    });
     const summary = {
       frames: rows.length,
-      from_stored_pose: {
-        median_across_mm: median(stated.map((s) => s.across_mm)),
-        median_3d_mm: median(stated.map((s) => s.error_mm)),
-        across_under_1mm: stated.filter((s) => s.across_mm < 1).length,
-        across_under_2mm: stated.filter((s) => s.across_mm < 2).length,
-        median_score: median(stated.map((s) => s.score)),
+      grid_offset_voxels: PELVIS.grid_offset_voxels,
+      from_reference: {
+        ...across(reference),
+        median_score: median(reference.map((s) => s.score)),
       },
       disturbed: {
         starts: all.length,
         refused: all.length - done.length,
         median_start_across_mm: median(done.map((s) => s.start_across_mm)),
-        median_across_mm: median(done.map((s) => s.across_mm)),
-        median_3d_mm: median(done.map((s) => s.error_mm)),
-        across_under_1mm: done.filter((s) => s.across_mm < 1).length,
-        across_under_2mm: done.filter((s) => s.across_mm < 2).length,
+        ...across(done),
         across_under_5mm: done.filter((s) => s.across_mm < 5).length,
         median_ms: median(done.map((s) => s.ms)),
       },
