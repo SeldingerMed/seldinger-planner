@@ -322,6 +322,16 @@ def test_lineup_is_tied_to_the_model_and_frames(tmp_path, monkeypatch):
     assert response.status_code == 422
 
 
+def test_frame_absent_from_the_source_is_a_mismatch(tmp_path, monkeypatch):
+    client, case, reference, listed, _ = ready(tmp_path, monkeypatch)
+    model = admit_model(client, case, reference).json()
+    inputs = lineup(listed, model)
+    inputs["planes"][0]["frame_index"] = 9999
+    response = put_lineup(client, case, reference, inputs)
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Line-up does not match the admitted frames or the model"
+
+
 def test_unreadable_store_is_not_reported_as_a_mismatch(tmp_path, monkeypatch):
     client, case, reference, listed, _ = ready(tmp_path, monkeypatch)
     model = admit_model(client, case, reference).json()

@@ -104,10 +104,14 @@ export function sameViewRun(
   saved: number,
   limit: number = CORONARY_MOTION.max_frames,
 ): { lo: number; hi: number } {
+  // An angle the table does not give is not the same view as anything,
+  // so a frame of unread angles stands alone.
   const same = (k: number) =>
     sidecar.kind[k] === sidecar.kind[saved] &&
-    Object.is(sidecar.primary_deg[k], sidecar.primary_deg[saved]) &&
-    Object.is(sidecar.secondary_deg[k], sidecar.secondary_deg[saved]);
+    Number.isFinite(sidecar.primary_deg[k]) &&
+    Number.isFinite(sidecar.secondary_deg[k]) &&
+    sidecar.primary_deg[k] === sidecar.primary_deg[saved] &&
+    sidecar.secondary_deg[k] === sidecar.secondary_deg[saved];
   let lo = saved,
     hi = saved;
   while (hi - lo + 1 < limit) {

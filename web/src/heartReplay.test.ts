@@ -7,8 +7,37 @@ import {
   reduceGray,
   reduceTree,
   reductionOf,
+  sameViewRun,
   toReduced,
 } from "./heartReplay";
+import type { RecordingSidecar } from "./recordingSidecar";
+
+const table = (primary: number[], secondary: number[]): RecordingSidecar =>
+  ({
+    frames: primary.length,
+    kinds: ["Cine"],
+    kind: new Uint8Array(primary.length),
+    primary_deg: Float32Array.from(primary),
+    secondary_deg: Float32Array.from(secondary),
+    field_cm: new Float32Array(primary.length).fill(NaN),
+    read: { angles: primary.length, field: 0 },
+  }) as RecordingSidecar;
+
+describe("the same-view stretch", () => {
+  it("runs while the angles stay as at the saved frame", () => {
+    const sidecar = table([10, 30, 30, 30, 30, 50], [0, 20, 20, 20, 20, 0]);
+    expect(sameViewRun(sidecar, 2)).toEqual({ lo: 1, hi: 4 });
+  });
+
+  it("does not count frames of unread angles as one view", () => {
+    const sidecar = table(
+      [NaN, NaN, NaN, NaN, 30, 30],
+      [NaN, NaN, NaN, NaN, 20, 20],
+    );
+    expect(sameViewRun(sidecar, 1)).toEqual({ lo: 1, hi: 1 });
+    expect(sameViewRun(sidecar, 4)).toEqual({ lo: 4, hi: 5 });
+  });
+});
 
 describe("frames at the tracker's scale", () => {
   it("averages frames above the side limit by a whole factor", () => {

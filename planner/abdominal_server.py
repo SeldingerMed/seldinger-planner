@@ -160,7 +160,12 @@ def register_abdominal_routes(app, db_path, sources, read_case, frames):
         if inputs["second_view"]["status"] == "set_aside":
             named.append(inputs["second_view"])
         for entry in named:
-            plane, frame = find_frame(manifest, entry["plane"], entry["frame_index"])
+            try:
+                plane, frame = find_frame(manifest, entry["plane"], entry["frame_index"])
+            except FileNotFoundError:
+                # A frame the manifest does not list is the line-up's error,
+                # not the store's.
+                raise ValueError("Frame not in the admitted source") from None
             if frame["sha256"] != entry["frame_sha256"]:
                 raise ValueError("Admitted frame changed")
             if "view" in entry:
