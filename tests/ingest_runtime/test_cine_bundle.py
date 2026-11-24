@@ -172,6 +172,65 @@ def test_bright_contrast_is_turned_round():
     assert np.abs(plain.astype(int) + bright.astype(int) - 255).max() <= 1
 
 
+def reference_window(stored: np.ndarray, monochrome1: bool) -> np.ndarray:
+    """The window as first written: one float copy of the whole cine."""
+    values = np.asarray(stored, dtype=np.float64)
+    if monochrome1:
+        values = values.max() - values
+    low, high = np.percentile(values, [0.5, 99.5])
+    scaled = np.clip((values - low) / max(high - low, 1e-9) * 255.0, 0, 255)
+    return np.round(scaled).astype(np.uint8)
+
+
+@pytest.mark.parametrize("bits", [8, 12, 16])
+@pytest.mark.parametrize("photometric", ["MONOCHROME2", "MONOCHROME1"])
+def test_the_window_is_unchanged_to_the_byte(bits, photometric):
+    random = np.random.default_rng(bits)
+    dtype = np.uint8 if bits == 8 else np.uint16
+    stored = random.integers(0, 2**bits, size=(FRAMES, ROWS, COLUMNS)).astype(dtype)
+    stored[1, :8, :8] = 0  # a few values at the ends, as on real frames
+    stored[2, :8, :8] = 2**bits - 1
+    allocated = 8 if bits == 8 else 16
+    data = cine(
+        data=stored,
+        PhotometricInterpretation=photometric,
+        BitsAllocated=allocated,
+        BitsStored=bits,
+        HighBit=bits - 1,
+    )
+    out = read_cine(data)[1]
+    assert np.array_equal(out, reference_window(stored, photometric == "MONOCHROME1"))
+
+
+def test_reading_a_cine_holds_no_float_copy_of_the_whole_cine():
+    import tracemalloc
+
+    frames, rows, columns = 24, 512, 512
+    random = np.random.default_rng(5)
+    stored = random.integers(0, 4096, size=(frames, rows, columns)).astype(np.uint16)
+    ds = classic(9)
+    ds.Rows, ds.Columns, ds.NumberOfFrames = rows, columns, frames
+    ds.BitsAllocated, ds.BitsStored, ds.HighBit = 16, 12, 11
+    ds.PixelData = stored.tobytes()
+    ds.file_meta = pydicom.dataset.FileMetaDataset()
+    ds.file_meta.MediaStorageSOPClassUID = ds.SOPClassUID
+    ds.file_meta.MediaStorageSOPInstanceUID = ds.SOPInstanceUID
+    ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    out = io.BytesIO()
+    pydicom.dcmwrite(out, ds, enforce_file_format=True)
+    data = out.getvalue()
+    del ds, out
+    tracemalloc.start()
+    try:
+        read_cine(data)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    # One float64 copy of the whole cine alone is four times its 16-bit
+    # size; reading stays below five times, everything included.
+    assert peak < 5 * stored.nbytes, peak / stored.nbytes
+
+
 def test_jpeg_lossless_cines_are_decoded_exactly():
     plain = read_cine(cine())
     packed = read_cine(cine(JPEGLosslessSV1))

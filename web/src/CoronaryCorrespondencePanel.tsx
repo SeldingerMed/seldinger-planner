@@ -163,10 +163,11 @@ function FrameView({
   const canvas = useRef<HTMLCanvasElement | null>(null);
   const { width, height } = cine.frames[0];
   useEffect(() => {
-    const context = canvas.current?.getContext?.("2d");
-    if (!context) return;
+    const context = canvas.current?.getContext?.("2d"),
+      picture = cine.frames[frame];
+    if (!context || !picture) return;
     const image = context.createImageData(width, height),
-      pixels = cine.frames[frame].pixels;
+      pixels = picture.pixels;
     for (let i = 0; i < pixels.length; i++) {
       image.data[4 * i] = image.data[4 * i + 1] = image.data[4 * i + 2] = pixels[i];
       image.data[4 * i + 3] = 255;
@@ -222,7 +223,8 @@ export default function CoronaryCorrespondencePanel({ caseState, binding, disabl
   const [saved, setSaved] = useState<SavedRecord | null>(null);
   const [cine, setCine] = useState<CineBundle | null>(null);
   const [pair, setPair] = useState<Pair | null>(null);
-  const [result, setResult] = useState<CorrespondenceResult | null>(null);
+  // Each result names the tree and cine it was made from.
+  const [made, setMade] = useState<{ inputs: string; result: CorrespondenceResult } | null>(null);
   const [frame, setFrame] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -246,11 +248,15 @@ export default function CoronaryCorrespondencePanel({ caseState, binding, disabl
   }, [base]);
 
   const current = tree?.current.status === "current" ? tree.current : null;
+  const inputs = `${current?.body_sha256 ?? ""}/${cine?.bundle_sha256 ?? ""}`;
+  // Only a result made from the tree and cine now loaded is shown, from the
+  // first render with a new one; the effect below then lets it go.
+  const result = made?.inputs === inputs ? made.result : null;
   const proposal = result?.status === "proposed" ? result : null;
   // A new tree or cine ends the proposal made from the old ones.
   useEffect(() => {
     run.current++;
-    setResult(null);
+    setMade(null);
     setFrame(0);
   }, [current?.body_sha256, cine?.bundle_sha256]);
 
@@ -297,7 +303,7 @@ export default function CoronaryCorrespondencePanel({ caseState, binding, disabl
     const mine = ++run.current;
     setBusy(true);
     setError(null);
-    setResult(null);
+    setMade(null);
     try {
       const job = createCorrespondenceJob({
         tree: {
@@ -323,7 +329,7 @@ export default function CoronaryCorrespondencePanel({ caseState, binding, disabl
         if (run.current !== mine) return;
       }
       const found = job.result();
-      setResult(found);
+      setMade({ inputs, result: found });
       if (found.status === "proposed") setFrame(found.phase.frame);
     } catch (e) {
       setError((e as Error).message);

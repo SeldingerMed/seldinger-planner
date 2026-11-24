@@ -200,6 +200,44 @@ test("tree to cine through the studio: one named proposal, replayed and confirme
   expect(sent.length).toBeLessThan(65_536);
 }, 120_000);
 
+test("a shorter cine loaded while a late frame is shown ends the old proposal, without failing", async () => {
+  // A drawing surface, so the frame is really painted.
+  const painted: number[] = [];
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(4 * w * h) }),
+    putImageData: () => painted.push(1),
+  } as unknown as CanvasRenderingContext2D);
+  const failures: unknown[] = [];
+  const onError = (e: ErrorEvent) => failures.push(e.error);
+  window.addEventListener("error", onError);
+  try {
+    server();
+    render(<CoronaryCorrespondencePanel caseState={caseState} binding={binding} />);
+    await screen.findByText("No tree admitted for this scan.");
+    await admit();
+    await screen.findByText(/5 branches/);
+    await load(bundleFile().file);
+    statePair();
+    fireEvent.click(screen.getByText("Propose correspondence"));
+    const proposal = await screen.findByLabelText("Proposal", {}, { timeout: 60_000 });
+    fireEvent.change(within(proposal).getByLabelText("Frame"), { target: { value: "60" } });
+    expect(within(proposal).getByRole("status").textContent).toMatch(/^Frame 61 of 64/);
+    expect(painted.length).toBeGreaterThan(0);
+
+    fireEvent.change(screen.getByLabelText("Load cine bundle"), {
+      target: { files: [bundleFile({ frames: 24 }, {}, "short.bundle").file] },
+    });
+    await screen.findByText(/24 frames, 256 by 256/);
+    // The proposal was made from the other cine: it is gone, not drawn
+    // over this one, and the panel still works.
+    expect(screen.queryByLabelText("Proposal")).toBeNull();
+    expect(screen.getByText("Propose correspondence")).toBeInTheDocument();
+    expect(failures).toEqual([]);
+  } finally {
+    window.removeEventListener("error", onError);
+  }
+}, 120_000);
+
 test("no proposal without the operator's pair, and none for a pair stated for another cine", async () => {
   server();
   render(<CoronaryCorrespondencePanel caseState={caseState} binding={binding} />);

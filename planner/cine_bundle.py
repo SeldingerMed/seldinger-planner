@@ -94,14 +94,22 @@ def read_cine(data: bytes):
         pixels = ds.pixel_array
     except Exception:  # noqa: BLE001 - decoder failures vary by plugin
         _fail(f"Pixel data could not be decoded ({ds.file_meta.TransferSyntaxUID.name})")
-    pixels = np.asarray(pixels, dtype=np.float64)
+    pixels = np.asarray(pixels)
     if pixels.shape != (frames, rows, columns):
         _fail("Pixel data contradicts the frame dimensions")
+    # Stored values stay integers: the percentiles of the whole cine are
+    # taken on them (each order statistic is exact, the interpolation is in
+    # float64), and only one frame at a time is turned into floats. The
+    # bytes are those of a float64 copy of the whole cine, without its memory.
     if str(ds.PhotometricInterpretation) == "MONOCHROME1":
+        pixels = pixels.astype(np.int64 if pixels.dtype.kind == "i" else pixels.dtype)
         pixels = pixels.max() - pixels
-    low, high = np.percentile(pixels, [0.5, 99.5])
-    scaled = np.clip((pixels - low) / max(high - low, 1e-9) * 255.0, 0, 255)
-    out = np.round(scaled).astype(np.uint8)
+    low, high = (float(v) for v in np.percentile(pixels, [0.5, 99.5]))
+    span = max(high - low, 1e-9)
+    out = np.empty(pixels.shape, dtype=np.uint8)
+    for k in range(frames):
+        frame = pixels[k].astype(np.float64)
+        out[k] = np.round(np.clip((frame - low) / span * 255.0, 0, 255))
     times, timing = _times(geometry, frames)
     if timing is None and (
         getattr(ds, "CineRate", None) or getattr(ds, "RecommendedDisplayFrameRate", None)
