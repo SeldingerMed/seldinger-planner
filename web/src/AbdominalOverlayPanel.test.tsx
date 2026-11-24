@@ -18,6 +18,7 @@ import {
 import AbdominalOverlayPanel, { lineupWords } from "./AbdominalOverlayPanel";
 import * as lineups from "./abdominalLineup";
 import * as bone from "./boneLineup";
+import * as corrections from "./vesselCorrection";
 
 afterEach(() => {
   cleanup();
@@ -257,4 +258,87 @@ test("says a second frame was set aside and why", () => {
   expect(lineupWords("two_views", { status: "not_given" })).toBe(
     "Placed in 3D from two frames.",
   );
+});
+
+test("proposes one wire and breathing correction over the saved line-up, drawn once confirmed", async () => {
+  server({ model: true });
+  stubLineup(proposal());
+  panel();
+  await screen.findByText(/Model from this scan/);
+  fireEvent.change(screen.getByLabelText("Frame source"), {
+    target: { value: "phantom-run" },
+  });
+  fireEvent.click(screen.getByText("Open frames"));
+  await screen.findByLabelText("First frame");
+  fireEvent.click(screen.getByText("Line up on bone"));
+  await screen.findByLabelText("Line-up proposal");
+  // Not over an unsaved proposal.
+  expect(screen.queryByLabelText("Wire and breathing correction")).toBeNull();
+  fireEvent.click(
+    screen.getByLabelText("I reviewed the bone and the model on the frame"),
+  );
+  fireEvent.click(screen.getByText("Confirm and save line-up"));
+  await screen.findByText(/Saved operator-confirmed line-up, revision 1/);
+  // Reopened from the server alone.
+  cleanup();
+  panel();
+  fireEvent.click(await screen.findByText("Show saved overlay"));
+  await waitFor(() =>
+    expect(screen.getByText("Show saved overlay")).toBeEnabled(),
+  );
+  const frame = await screen.findByLabelText(
+    "Saved overlay on plane single, frame 12",
+  );
+
+  // One scan point is too few to fit breathing: the line-up stands.
+  fireEvent.click(screen.getByLabelText("The scan point at the cursor"));
+  fireEvent.click(frame, { clientX: 30, clientY: 20 });
+  expect(screen.getByLabelText("Correction marks")).toHaveTextContent(
+    "0 right iliac wire, 0 left iliac wire, 1 scan point marks.",
+  );
+  fireEvent.click(screen.getByText("Propose correction"));
+  expect(screen.getByLabelText("Correction proposal")).toHaveTextContent(
+    /^The line-up stands\. Too few marks/,
+  );
+  expect(screen.queryByText("Confirm correction")).toBeNull();
+
+  // A second mark, and the engine's proposal is shown before it is drawn.
+  const fitted = vi.spyOn(corrections, "proposeCorrection").mockReturnValue({
+    method: corrections.CORRECTION_METHOD,
+    status: "proposed",
+    reason: null,
+    params: { straighten: { right_iliac: 0, left_iliac: 0 }, shift_mm: 6 },
+    rigid_rms_px: 9.2,
+    corrected_rms_px: 1.4,
+    marks: { wire: 0, landmarks: 2 },
+  });
+  fireEvent.click(frame, { clientX: 31, clientY: 40 });
+  fireEvent.click(screen.getByText("Propose correction"));
+  const input = fitted.mock.calls[0][0];
+  expect(input.landmarks).toEqual([
+    { ras: [1, 2, 3], pixel: [30, 20] },
+    { ras: [1, 2, 3], pixel: [31, 40] },
+  ]);
+  // Breathing runs from the aorta's lowest point to its highest.
+  expect(input.breathing).toEqual({ anchor_s: 0, full_s: 20 });
+  expect(input.matrix).toEqual(MOVED);
+  expect(screen.getByLabelText("Correction proposal")).toHaveTextContent(
+    "Marks 9.2 px from the line-up alone, 1.4 px corrected: right iliac straightened 0%, left 0%, breathing 6.0 mm along the body.",
+  );
+  expect(
+    screen.queryByLabelText(/corrected for wire and breathing/),
+  ).toBeNull();
+  fireEvent.click(screen.getByText("Confirm correction"));
+  expect(
+    screen.getByLabelText(
+      "Saved overlay on plane single, frame 12, corrected for wire and breathing",
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Correction proposal")).toHaveTextContent(
+    /Confirmed for this view; not saved with the case\.$/,
+  );
+  fireEvent.click(screen.getByText("Undo correction"));
+  expect(
+    screen.getByLabelText("Saved overlay on plane single, frame 12"),
+  ).toBeInTheDocument();
 });

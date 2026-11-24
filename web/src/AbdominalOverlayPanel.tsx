@@ -4,7 +4,12 @@
  * The model is the raw CTA inference's export for this very scan; the server
  * admits it only when it names this scan's SHA-256. The line-up is the
  * guarded bone line-up (./abdominalLineup.ts). Nothing is saved without the
- * operator's confirmation. */
+ * operator's confirmation.
+ *
+ * Over the saved line-up the operator may mark a wire in an iliac artery and
+ * scan points where they lie on the frame; one wire-and-breathing correction
+ * is proposed from those marks (./vesselCorrection.ts) and drawn only once
+ * confirmed. It is held for this view and not saved with the case. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { NVImage } from "@niivue/niivue";
 import type { CaseState } from "./api";
@@ -18,6 +23,14 @@ import {
 import { BONE_LINEUP, boneSamples } from "./boneLineup";
 import { angleLabel, validateView, type ViewNumbers } from "./carmGeometry";
 import { createNativeSampler } from "./nativeSampling";
+import {
+  correctBranches,
+  proposeCorrection,
+  type Breathing,
+  type CorrectionProposal,
+  type Landmark,
+  type WireMark,
+} from "./vesselCorrection";
 import type { Vec3 } from "./obliqueSlice";
 import {
   FRAME_SOURCE_ID,
@@ -122,6 +135,39 @@ const BRANCH_COLOR: Record<ModelBranch["name"], string> = {
   right_iliac: "rgba(0, 200, 255, 0.9)",
   left_iliac: "rgba(255, 200, 0, 0.9)",
 };
+const MARK_COLOR = "rgba(0, 255, 120, 0.95)";
+type MarkKind = WireMark["branch"] | "landmark";
+const MARK_WORDS: Record<MarkKind, string> = {
+  right_iliac: "Wire in the right iliac",
+  left_iliac: "Wire in the left iliac",
+  landmark: "The scan point at the cursor",
+};
+/** Breathing moves the aorta from nothing at its lowest point, where the
+ * pelvis holds it, to the whole shift at its highest. */
+function breathingOf(branches: readonly ModelBranch[]): Breathing | null {
+  const s = branches
+    .filter((b) => b.name === "aorta")
+    .flatMap((b) => b.path_ras.map((p) => p[2]));
+  if (s.length < 2) return null;
+  const low = Math.min(...s),
+    high = Math.max(...s);
+  return high - low > 1 ? { anchor_s: low, full_s: high } : null;
+}
+type Correction = {
+  wire: WireMark[];
+  landmarks: Landmark[];
+  kind: MarkKind;
+  proposal: CorrectionProposal | null;
+  confirmed: boolean;
+};
+const NO_CORRECTION: Correction = {
+  wire: [],
+  landmarks: [],
+  kind: "right_iliac",
+  proposal: null,
+  confirmed: false,
+};
+
 const IDENTITY = [
   [1, 0, 0, 0],
   [0, 1, 0, 0],
@@ -186,12 +232,16 @@ function Overlay({
   matrix,
   isocenter,
   label,
+  marks = [],
+  onPick,
 }: {
   chosen: Chosen;
   branches: ModelBranch[];
   matrix: number[][];
   isocenter: Vec3;
   label: string;
+  marks?: number[][];
+  onPick?: (pixel: [number, number]) => void;
 }) {
   const canvas = useRef<HTMLCanvasElement | null>(null);
   useEffect(() => {
@@ -218,7 +268,11 @@ function Overlay({
       );
       context.stroke();
     }
-  }, [chosen, branches, matrix, isocenter]);
+    context.fillStyle = MARK_COLOR;
+    const side = Math.max(3, width / 150);
+    for (const [x, y] of marks)
+      context.fillRect(x - side / 2, y - side / 2, side, side);
+  }, [chosen, branches, matrix, isocenter, marks]);
   return (
     <canvas
       ref={canvas}
@@ -226,7 +280,20 @@ function Overlay({
       height={chosen.frame.height}
       role="img"
       aria-label={label}
-      style={{ maxWidth: "100%" }}
+      style={{ maxWidth: "100%", cursor: onPick ? "crosshair" : undefined }}
+      onClick={
+        onPick
+          ? (event) => {
+              const box = event.currentTarget.getBoundingClientRect(),
+                w = box.width || chosen.frame.width,
+                h = box.height || chosen.frame.height;
+              onPick([
+                ((event.clientX - box.left) * chosen.frame.width) / w,
+                ((event.clientY - box.top) * chosen.frame.height) / h,
+              ]);
+            }
+          : undefined
+      }
     />
   );
 }
@@ -255,6 +322,8 @@ export default function AbdominalOverlayPanel({
   const [busy, setBusy] = useState(false);
   const [drawn, setDrawn] = useState<Drawn | null>(null);
   const [reviewed, setReviewed] = useState(false);
+  const [correction, setCorrection] = useState<Correction>(NO_CORRECTION);
+  useEffect(() => setCorrection(NO_CORRECTION), [drawn]);
 
   const reload = async () => {
     const base = `/api/cases/${caseId}`;
@@ -741,16 +810,91 @@ export default function AbdominalOverlayPanel({
               {`Unsaved line-up: ${lineupWords(drawn.proposal.depth, drawn.proposal.second_view)} Bone agreement ${drawn.proposal.frame_scores.map((s) => s.toFixed(2)).join(" and ")}, from ${drawn.proposal.start_score.toFixed(2)} at the start. Review the overlay before confirming.`}
             </p>
           )}
-          {drawn.frames.map((item, k) => (
-            <Overlay
-              key={k}
-              chosen={item}
-              branches={branches}
-              matrix={drawn.matrix}
-              isocenter={drawn.isocenter}
-              label={`${drawn.kind === "saved" ? "Saved" : "Proposed"} overlay on plane ${item.frame.plane}, frame ${item.frame.index}`}
+          {drawn.frames.map((item, k) => {
+            const marking = drawn.kind === "saved" && k === 0,
+              shown =
+                marking && correction.confirmed && correction.proposal
+                  ? (correctBranches(
+                      branches,
+                      correction.proposal.params,
+                      breathingOf(branches)!,
+                    ) as ModelBranch[])
+                  : branches;
+            return (
+              <Overlay
+                key={k}
+                chosen={item}
+                branches={shown}
+                matrix={drawn.matrix}
+                isocenter={drawn.isocenter}
+                label={`${drawn.kind === "saved" ? "Saved" : "Proposed"} overlay on plane ${item.frame.plane}, frame ${item.frame.index}${shown !== branches ? ", corrected for wire and breathing" : ""}`}
+                marks={
+                  marking
+                    ? [
+                        ...correction.wire.map((m) => m.pixel),
+                        ...correction.landmarks.map((m) => m.pixel),
+                      ]
+                    : []
+                }
+                onPick={
+                  marking && !correction.confirmed && !locked
+                    ? (pixel) => {
+                        if (correction.kind === "landmark") {
+                          if (!cursor) {
+                            setMessage(
+                              "Set the cursor on the scan point first, then mark where it lies on the frame.",
+                            );
+                            return;
+                          }
+                          setCorrection({
+                            ...correction,
+                            landmarks: [
+                              ...correction.landmarks,
+                              { ras: [...cursor], pixel },
+                            ],
+                            proposal: null,
+                          });
+                        } else
+                          setCorrection({
+                            ...correction,
+                            wire: [
+                              ...correction.wire,
+                              { branch: correction.kind, pixel },
+                            ],
+                            proposal: null,
+                          });
+                      }
+                    : undefined
+                }
+              />
+            );
+          })}
+          {drawn.kind === "saved" && breathingOf(branches) && (
+            <CorrectionControls
+              correction={correction}
+              locked={locked}
+              onChange={setCorrection}
+              onPropose={() => {
+                const first = drawn.frames[0];
+                setCorrection({
+                  ...correction,
+                  proposal: proposeCorrection({
+                    branches,
+                    wire: correction.wire,
+                    landmarks: correction.landmarks,
+                    breathing: breathingOf(branches)!,
+                    matrix: drawn.matrix,
+                    view: first.view,
+                    isocenter: drawn.isocenter,
+                    size: {
+                      width: first.frame.width,
+                      height: first.frame.height,
+                    },
+                  }),
+                });
+              }}
             />
-          ))}
+          )}
           {drawn.kind === "proposal" && (
             <>
               <label>
@@ -774,5 +918,91 @@ export default function AbdominalOverlayPanel({
         </div>
       )}
     </section>
+  );
+}
+
+const STANDS_WORDS: Record<string, string> = {
+  too_few_marks:
+    "Too few marks: at least two of a kind are needed to fit anything.",
+  no_gain:
+    "The correction does not bring the marks enough nearer than the line-up alone.",
+};
+
+function CorrectionControls({
+  correction,
+  locked,
+  onChange,
+  onPropose,
+}: {
+  correction: Correction;
+  locked: boolean;
+  onChange: (next: Correction) => void;
+  onPropose: () => void;
+}) {
+  const { proposal } = correction,
+    marked = correction.wire.length + correction.landmarks.length;
+  return (
+    <fieldset aria-label="Wire and breathing correction">
+      <legend>Wire and breathing</legend>
+      {!correction.confirmed && (
+        <>
+          <p>Choose what you mark, then click it on the first frame above.</p>
+          {(Object.keys(MARK_WORDS) as MarkKind[]).map((kind) => (
+            <label key={kind}>
+              <input
+                type="radio"
+                name="correction-mark"
+                checked={correction.kind === kind}
+                disabled={locked}
+                onChange={() => onChange({ ...correction, kind })}
+              />
+              {MARK_WORDS[kind]}
+            </label>
+          ))}
+          <p role="status" aria-label="Correction marks">
+            {`${correction.wire.filter((m) => m.branch === "right_iliac").length} right iliac wire, ${correction.wire.filter((m) => m.branch === "left_iliac").length} left iliac wire, ${correction.landmarks.length} scan point marks.`}
+          </p>
+          <button
+            type="button"
+            disabled={locked || !marked}
+            onClick={onPropose}
+          >
+            Propose correction
+          </button>
+          <button
+            type="button"
+            disabled={locked || !marked}
+            onClick={() => onChange(NO_CORRECTION)}
+          >
+            Clear marks
+          </button>
+        </>
+      )}
+      {proposal && (
+        <p role="status" aria-label="Correction proposal">
+          {proposal.status === "proposed"
+            ? `Marks ${proposal.rigid_rms_px.toFixed(1)} px from the line-up alone, ${proposal.corrected_rms_px.toFixed(1)} px corrected: right iliac straightened ${Math.round(100 * proposal.params.straighten.right_iliac)}%, left ${Math.round(100 * proposal.params.straighten.left_iliac)}%, breathing ${proposal.params.shift_mm.toFixed(1)} mm along the body.${correction.confirmed ? " Confirmed for this view; not saved with the case." : ""}`
+            : `The line-up stands. ${STANDS_WORDS[proposal.reason ?? ""] ?? ""} Marks ${proposal.rigid_rms_px.toFixed(1)} px from the line-up.`}
+        </p>
+      )}
+      {proposal?.status === "proposed" && !correction.confirmed && (
+        <button
+          type="button"
+          disabled={locked}
+          onClick={() => onChange({ ...correction, confirmed: true })}
+        >
+          Confirm correction
+        </button>
+      )}
+      {correction.confirmed && (
+        <button
+          type="button"
+          disabled={locked}
+          onClick={() => onChange(NO_CORRECTION)}
+        >
+          Undo correction
+        </button>
+      )}
+    </fieldset>
   );
 }
