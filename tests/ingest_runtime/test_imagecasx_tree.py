@@ -4,16 +4,21 @@ import gzip
 import importlib.util
 import io
 import json
+import os
 import zipfile
 from pathlib import Path
 
-import numpy as np
 import pytest
 
-nib = pytest.importorskip("nibabel")
+if os.environ.get("SELDINGER_RUN_INGEST_TESTS") != "1":
+    pytest.skip("Requires isolated ingest runtime", allow_module_level=True)
+
+import nibabel as nib
+import numpy as np
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "research" / "imagecasx_tree.py"
 spec = importlib.util.spec_from_file_location("imagecasx_tree", SCRIPT)
+assert spec is not None and spec.loader is not None
 tree = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(tree)
 
@@ -59,8 +64,16 @@ def case_zip(points_lps, lines, names, mask_points_lps):
 
 def test_reads_named_branches_in_ras_by_the_mask():
     # LM 0-2, then LAD 3-5 on one line and LCX 6-7 on the other.
-    pts = [[10, 10, 10], [11, 10, 10], [12, 10, 10], [13, 11, 10], [14, 12, 10],
-           [15, 13, 10], [13, 9, 10], [14, 8, 10]]
+    pts = [
+        [10, 10, 10],
+        [11, 10, 10],
+        [12, 10, 10],
+        [13, 11, 10],
+        [14, 12, 10],
+        [15, 13, 10],
+        [13, 9, 10],
+        [14, 8, 10],
+    ]
     lines = [[0, 1, 2, 3, 4, 5], [0, 1, 2, 6, 7]]
     names = ["LM", "LM", "LM", "LAD", "LAD", "LAD", "LCX", "LCX"]
     data = case_zip(pts, lines, names, pts)

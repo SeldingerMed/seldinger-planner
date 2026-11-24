@@ -63,9 +63,7 @@ def read_vtk(blob):
     offsets = np.frombuffer(blob[start : start + 8 * n_offsets], ">i8")
     start, _ = _after(blob, rb"CONNECTIVITY vtktypeint64")
     connectivity = np.frombuffer(blob[start : start + 8 * n_connectivity], ">i8")
-    lines = [
-        connectivity[offsets[i] : offsets[i + 1]].tolist() for i in range(n_offsets - 1)
-    ]
+    lines = [connectivity[offsets[i] : offsets[i + 1]].tolist() for i in range(n_offsets - 1)]
     start, head = _after(blob, rb"segment_name 1")
     names = _strings(blob, start, int(head[2]))
     if len(names) != n:

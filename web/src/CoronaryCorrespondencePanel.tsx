@@ -479,7 +479,8 @@ export default function CoronaryCorrespondencePanel({ caseState, binding, disabl
             phase ({proposal.phase.ct_phase_percent} percent) was matched on frame{" "}
             {proposal.phase.frame + 1}; the same phase recurs on{" "}
             {proposal.phase.quiet_frames.length} frames. Fit {proposal.fit.score.toFixed(2)} (from{" "}
-            {proposal.fit.start_score.toFixed(2)}), vessel evidence, not an accuracy.
+            {proposal.fit.start_score.toFixed(2)}; its mirror image{" "}
+            {proposal.fit.mirror_score.toFixed(2)}), vessel evidence, not an accuracy.
           </p>
           <table>
             <thead>

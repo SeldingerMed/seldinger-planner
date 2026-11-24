@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CORRESPONDENCE,
   CORRESPONDENCE_METHOD,
@@ -64,6 +64,10 @@ function errorAt(
   });
   return d.reduce((a, b) => a + b, 0) / d.length;
 }
+
+// A proposal searches the pose three times (the tree and its two mirror
+// images); on a loaded runner one takes several seconds.
+vi.setConfig({ testTimeout: 120_000 });
 
 describe("CT coronary tree to the same patient's cine", () => {
   const cine = renderCtCine();

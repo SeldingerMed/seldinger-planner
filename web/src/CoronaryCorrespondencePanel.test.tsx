@@ -147,6 +147,11 @@ test("tree to cine through the studio: one named proposal, replayed and confirme
   expect(rows.map((r) => r.getAttribute("data-branch"))).toEqual(ctTree().map((b) => b.id));
   expect(rows.every((r) => r.getAttribute("data-status") === "matched")).toBe(true);
 
+  // The fit is shown beside its mirror image's, which it must clearly beat.
+  expect(proposal.textContent).toMatch(
+    /Fit 0\.\d\d \(from 0\.\d\d; its mirror image 0\.\d\d\), vessel evidence, not an accuracy\./,
+  );
+
   // The anchor frame is counted once: matched there, followed elsewhere.
   expect(proposal.textContent).toMatch(
     /Matched on frame \d+, then followed on \d+ of the other 63 frames;\s+not drawn on \d+\./,
