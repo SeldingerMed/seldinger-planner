@@ -1,0 +1,40 @@
+.coronary-correspondence {
+  font-size: 12px;
+  line-height: 1.45;
+  scroll-margin-top: 58px;
+}
+.coronary-correspondence h4 {
+  margin: 14px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #96adb6;
+}
+.coronary-correspondence p {
+  margin: 4px 0;
+}
+.coronary-correspondence label {
+  display: block;
+  margin: 6px 0;
+}
+.coronary-correspondence table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+}
+.coronary-correspondence th,
+.coronary-correspondence td {
+  text-align: left;
+  padding: 3px 6px 3px 0;
+  border-bottom: 1px solid #28363d;
+  font-weight: normal;
+}
+.coronary-correspondence th {
+  color: #96adb6;
+}
+.coronary-correspondence [role="alert"] {
+  color: #ffb4a8;
+}
+.coronary-correspondence input[type="range"] {
+  width: 100%;
+}

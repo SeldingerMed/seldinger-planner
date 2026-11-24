@@ -15,6 +15,7 @@ import ReformatStudio from "./ReformatStudio";
 import CArmStudio from "./CArmStudio";
 import ProjectionOverlayStudio from "./ProjectionOverlayStudio";
 import AbdominalOverlayPanel from "./AbdominalOverlayPanel";
+import CoronaryCorrespondencePanel from "./CoronaryCorrespondencePanel";
 import {
   findNativeCaseSource,
   type NativeCaseSource,
@@ -1091,6 +1092,14 @@ export default function App() {
                   : null
               }
               cursor={location}
+              disabled={busy || conflict}
+            />
+          )}
+          {caseState && nativeSource && (
+            <CoronaryCorrespondencePanel
+              key={caseState.case_id}
+              caseState={caseState}
+              binding={nativeSource}
               disabled={busy || conflict}
             />
           )}
