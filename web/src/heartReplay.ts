@@ -3,7 +3,11 @@
  * the stretch of the recording around the saved frame where the C-arm
  * stands as it did there; the tree is the axis as it falls on the saved
  * frame. The tracking itself is ./coronaryMotion.ts. */
-import { CORONARY_MOTION, type TreeBranch } from "./coronaryMotion";
+import {
+  CORONARY_MOTION,
+  type CoronaryMotionProposal,
+  type TreeBranch,
+} from "./coronaryMotion";
 import type { RecordingSidecar } from "./recordingSidecar";
 
 export const HEART_REPLAY = {
@@ -13,7 +17,84 @@ export const HEART_REPLAY = {
   break_px: 24,
   /** Least points a branch keeps; shorter runs are left out. */
   min_branch: 3,
+  /** Frames are averaged down to at most this many pixels a side before
+   * the tree is followed, as in the cine evaluation: the tracker's patch
+   * and search are set at this scale, and it bounds what the read holds
+   * (at most max_frames such frames). */
+  max_side_px: 512,
 } as const;
+
+/** Whole-pixel factor the frames are averaged down by. */
+export function reductionOf(width: number, height: number): number {
+  return Math.max(
+    1,
+    Math.ceil(Math.max(width, height) / HEART_REPLAY.max_side_px),
+  );
+}
+
+/** Gray levels averaged over `by` by `by` blocks; a part block at the right
+ * or bottom edge is left out. */
+export function reduceGray(
+  gray: Uint8Array,
+  width: number,
+  height: number,
+  by: number,
+): { pixels: Uint8Array; width: number; height: number } {
+  if (by === 1) return { pixels: gray, width, height };
+  const w = Math.floor(width / by),
+    h = Math.floor(height / by),
+    out = new Uint8Array(w * h),
+    area = by * by;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      let sum = 0;
+      for (let dy = 0; dy < by; dy++)
+        for (let dx = 0; dx < by; dx++)
+          sum += gray[(y * by + dy) * width + x * by + dx];
+      out[y * w + x] = Math.round(sum / area);
+    }
+  return { pixels: out, width: w, height: h };
+}
+
+/** A point of the full frame on the reduced frame, and back: a reduced
+ * pixel's centre is its block's centre. */
+export const toReduced = (v: number, by: number) => (v - (by - 1) / 2) / by,
+  fromReduced = (v: number, by: number) => v * by + (by - 1) / 2;
+
+/** The tree in reduced-frame pixels. */
+export function reduceTree(tree: TreeBranch[], by: number): TreeBranch[] {
+  if (by === 1) return tree;
+  return tree.map((b) => ({
+    ...b,
+    points: b.points.map(([x, y]) => [toReduced(x, by), toReduced(y, by)]),
+  }));
+}
+
+/** The proposal's followed trees back in full-frame pixels. */
+export function enlargeProposal(
+  proposal: CoronaryMotionProposal,
+  by: number,
+): CoronaryMotionProposal {
+  if (by === 1) return proposal;
+  return {
+    ...proposal,
+    frames: proposal.frames.map((f) =>
+      f.status === "refused"
+        ? f
+        : {
+            ...f,
+            moved_px: f.moved_px * by,
+            branches: f.branches.map((b) => ({
+              ...b,
+              points: b.points.map(([x, y]) => [
+                fromReduced(x, by),
+                fromReduced(y, by),
+              ]),
+            })),
+          },
+    ),
+  };
+}
 
 /** The stretch of frames around the saved one where the table gives the
  * same angles and the same kind of frame, at most the tracker's limit:

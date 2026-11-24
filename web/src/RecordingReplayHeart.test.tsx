@@ -156,10 +156,10 @@ const button = (name: string) =>
   frameText = () =>
     screen.getByRole("status", { name: "Replayed frame" }).textContent;
 
-async function ready() {
+async function ready(planes: ReplaySource[] = [source]) {
   render(
     <RecordingReplay
-      planes={[source]}
+      planes={planes}
       isocenter={pivot}
       matrix={truth}
       points={Float32Array.from([0, 0, 0, 1, 1, 1])}
@@ -299,3 +299,20 @@ test("a seek the recording never finishes fails the read and frees the controls"
   expect(alert.textContent).toBe("The recording does not reach this frame.");
   expect(button("Follow the heart").disabled).toBe(false);
 }, 60_000);
+
+test("another plane during the read ends it: no seeks after, no proposal", async () => {
+  const plane = (name: "a" | "b"): ReplaySource => ({
+    ...source,
+    frame: { ...saved, plane: name },
+  });
+  await ready([plane("a"), plane("b")]);
+  fireEvent.click(button("Follow the heart"));
+  await waitFor(() => expect(seeks).toBeGreaterThan(5));
+  fireEvent.click(screen.getByLabelText("Plane B"));
+  const settled = seeks;
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  // Not even the old read's return to its saved frame.
+  expect(seeks).toBe(settled);
+  expect(screen.queryByLabelText("Heart motion proposal")).toBeNull();
+  expect(screen.queryByLabelText("Heart motion progress")).toBeNull();
+}, 120_000);

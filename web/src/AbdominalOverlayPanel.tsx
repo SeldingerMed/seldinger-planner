@@ -261,7 +261,7 @@ function Overlay({
     context.lineWidth = Math.max(1, width / 300);
     for (const line of lines) {
       context.strokeStyle = BRANCH_COLOR[line.name];
-      // The lumen edge on each side of the centerline, and the centerline.
+      // The centerline only; the model's radius at each point is not drawn.
       context.beginPath();
       line.points.forEach(([x, y], i) =>
         i ? context.lineTo(x, y) : context.moveTo(x, y),

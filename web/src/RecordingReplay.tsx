@@ -21,7 +21,15 @@ import {
   type CineFrame,
   type CoronaryMotionProposal,
 } from "./coronaryMotion";
-import { grayOf, sameViewRun, treeFromPixels } from "./heartReplay";
+import {
+  enlargeProposal,
+  grayOf,
+  reduceGray,
+  reductionOf,
+  sameViewRun,
+  toReduced,
+  treeFromPixels,
+} from "./heartReplay";
 import type { Vec3 } from "./obliqueSlice";
 import type { VerifiedFrame } from "./projectionFrames";
 import {
@@ -424,9 +432,19 @@ export default function RecordingReplay({
     const stale = () =>
       video.current !== from || !alive.current || heartRead.current !== token;
     try {
+      // Followed on frames averaged to the tracker's scale, and drawn back
+      // on the full frame.
+      const by = reductionOf(width, height),
+        small = {
+          width: Math.floor(width / by),
+          height: Math.floor(height / by),
+        };
       const drawnTree = overlay.pixels(saved);
       const branches = drawnTree
-        ? treeFromPixels(drawnTree, { width, height })
+        ? treeFromPixels(
+            drawnTree.map((v) => toReduced(v, by)),
+            small,
+          )
         : [];
       if (!branches.length)
         throw new Error("The axis does not fall on the saved frame");
@@ -439,12 +457,15 @@ export default function RecordingReplay({
         if (stale()) return;
         picture(context, from);
         frames.push({
-          pixels: grayOf(
-            context.getImageData(0, 0, width, height).data,
-            width * height,
+          ...reduceGray(
+            grayOf(
+              context.getImageData(0, 0, width, height).data,
+              width * height,
+            ),
+            width,
+            height,
+            by,
           ),
-          width,
-          height,
           time_ms: timeOf(k, seconds, sidecar.frames) * 1000,
         });
       }
@@ -460,7 +481,12 @@ export default function RecordingReplay({
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (stale()) return;
       }
-      setHeart({ target, lo, proposal: job.result(), confirmed: false });
+      setHeart({
+        target,
+        lo,
+        proposal: enlargeProposal(job.result(), by),
+        confirmed: false,
+      });
     } catch (error) {
       if (!stale())
         setHeart({
@@ -582,6 +608,9 @@ export default function RecordingReplay({
                 disabled={disabled}
                 onChange={() => {
                   setChoice(k);
+                  // A read of the other plane's frames ends here.
+                  heartRead.current++;
+                  setHeart(null);
                   forget();
                 }}
               />
