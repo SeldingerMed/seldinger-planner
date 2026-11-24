@@ -37,7 +37,7 @@ import {
 import { detectorToPixel } from "./carmProjection";
 import { validateRigid } from "./rigidFusion";
 
-export const ABDOMINAL_LINEUP_METHOD = "bone_edge_compass_guarded_v2";
+export const ABDOMINAL_LINEUP_METHOD = "bone_edge_compass_guarded_v3";
 export const ABDOMINAL_LINEUP_VERSION = "step-d3-bone-lineup-registration-v1";
 
 export const ABDOMINAL_LINEUP = {

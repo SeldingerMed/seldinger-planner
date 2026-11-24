@@ -479,3 +479,59 @@ def test_propose_aortoiliac_model_from_cta_end_to_end_with_flipped_permuted_grid
     assert set(branches) == {"aorta", "right_iliac", "left_iliac"}
     for branch_name in ("aorta", "right_iliac", "left_iliac"):
         assert branches[branch_name]["length_mm"] > 50.0
+
+
+def _relabelled_runner(cta, labels, affine, keep):
+    """A runner whose segmentation keeps only some of the synthetic labels."""
+    kept = np.where(np.isin(labels, keep), labels, 0).astype(np.uint8)
+
+    def runner(image, **kwargs):
+        return nib.Nifti1Image(kept, affine)
+
+    return runner
+
+
+def test_a_lone_iliac_is_not_proposed_as_the_aorta(tmp_path):
+    # A pelvic scan cut below the aorta: the segmentation holds one iliac
+    # artery and no aorta. The model alone would call the one tube the aorta.
+    cta, labels, affine, _ = _synthetic_aortoiliac_case()
+    path, digest = _write_nifti(tmp_path / "pelvis.nii.gz", cta, affine)
+    runner = _relabelled_runner(cta, labels, affine, keep=(66,))
+    with pytest.raises(ValueError, match=r"named aorta .* iliac_artery_right"):
+        propose_aortoiliac_model_from_cta(path, expected_sha256=digest, runner=runner)
+
+
+def test_an_aorta_stub_over_long_iliacs_is_not_proposed_as_the_aorta(tmp_path):
+    # Only the last few centimetres of the aorta are in the scan: the widest
+    # path is mostly iliac and must not be drawn as the aorta.
+    cta, labels, affine, _ = _synthetic_aortoiliac_case()
+    grid = np.indices(labels.shape, dtype=float).reshape(3, -1).T
+    superior = (grid @ affine[:3, :3].T + affine[:3, 3])[:, 2].reshape(labels.shape)
+    labels = np.where((labels == 52) & (superior > 24.0), 0, labels).astype(np.uint8)
+    cta = np.where(labels > 0, 320, -80).astype(np.int16)
+    path, digest = _write_nifti(tmp_path / "stub.nii.gz", cta, affine)
+
+    def runner(image, **kwargs):
+        return nib.Nifti1Image(labels, affine)
+
+    try:
+        result = propose_aortoiliac_model_from_cta(path, expected_sha256=digest, runner=runner)
+    except ValueError as refusal:
+        assert "named aorta" in str(refusal) or "iliac" in str(refusal)
+        return
+    names = [b["name"] for b in result["proposal"]["branches"]]
+    assert names != ["aorta"]
+
+
+def test_each_name_agrees_with_the_segmentation_on_a_whole_tree(tmp_path):
+    cta, labels, affine, _ = _synthetic_aortoiliac_case()
+    path, digest = _write_nifti(tmp_path / "tree.nii.gz", cta, affine)
+
+    def runner(image, **kwargs):
+        return nib.Nifti1Image(labels, affine)
+
+    result = propose_aortoiliac_model_from_cta(path, expected_sha256=digest, runner=runner)
+    agreement = result["label_agreement"]
+    assert set(agreement) == {"aorta", "right_iliac", "left_iliac"}
+    assert all(share >= 0.5 for share in agreement.values())
+    assert "labels" not in result["segmentation"]

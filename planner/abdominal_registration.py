@@ -42,9 +42,17 @@ from planner.workspace import _connect
 
 MODEL_VERSION = "step-d3-aortoiliac-model-v1"
 VERSION = "step-d3-bone-lineup-registration-v1"
-METHOD = "bone_edge_compass_guarded_v2"
-ENGINE_SINGLE = "bone_edge_compass_v1"
-ENGINE_BIPLANE = "bone_edge_compass_biplane_v1"
+METHOD = "bone_edge_compass_guarded_v3"
+ENGINE_SINGLE = "bone_edge_compass_v2"
+ENGINE_BIPLANE = "bone_edge_compass_biplane_v2"
+# Each guarded method with its engine (one frame, two frames). v2 ran the
+# engine the held-back protocol of 2026-11-22 read; v3 runs the engine that
+# also searches the start from the finer levels. Earlier line-ups still
+# validate under their own pair.
+ENGINES = {
+    "bone_edge_compass_guarded_v2": ("bone_edge_compass_v1", "bone_edge_compass_biplane_v1"),
+    METHOD: (ENGINE_SINGLE, ENGINE_BIPLANE),
+}
 EXPORT_METHOD = "aortoiliac_totalsegmentator_total_v1"
 MODEL_METHOD = "aortoiliac_widest_path_model_v1"
 BRANCH_NAMES = ("aorta", "right_iliac", "left_iliac")
@@ -169,8 +177,13 @@ class BoneLineupInputs(StrictModel):
             raise ValueError("Explicit operator confirmation required")
         return value
 
-    method: Literal["bone_edge_compass_guarded_v2"]
-    engine_method: Literal["bone_edge_compass_v1", "bone_edge_compass_biplane_v1"]
+    method: Literal["bone_edge_compass_guarded_v2", "bone_edge_compass_guarded_v3"]
+    engine_method: Literal[
+        "bone_edge_compass_v1",
+        "bone_edge_compass_biplane_v1",
+        "bone_edge_compass_v2",
+        "bone_edge_compass_biplane_v2",
+    ]
     frame_source_id: str = Field(pattern=r"^[a-z0-9][a-z0-9_-]{1,63}$")
     frame_manifest_revision: str = Field(pattern=_SHA)
     planes: list[UsedPlane] = Field(min_length=1, max_length=2)
@@ -205,7 +218,7 @@ def validate_lineup(inputs):
     value = BoneLineupInputs.model_validate(inputs).model_dump(mode="json")
     planes = value["planes"]
     two = len(planes) == 2
-    if value["engine_method"] != (ENGINE_BIPLANE if two else ENGINE_SINGLE):
+    if value["engine_method"] != ENGINES[value["method"]][1 if two else 0]:
         raise ValueError("The engine does not match the frames used")
     if value["depth"] != ("two_views" if two else "not_determined_single_view"):
         raise ValueError("One frame does not place depth along its beam")
@@ -257,7 +270,7 @@ def summarize(inputs):
     out = {
         "version": VERSION,
         "convention": CONVENTION,
-        "method": METHOD,
+        "method": inputs["method"],
         "engine_method": inputs["engine_method"],
         "status": "operator_confirmed_proposal",
         "validated": False,

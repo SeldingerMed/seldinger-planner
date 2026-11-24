@@ -48,3 +48,9 @@ jobs:
           tests/ml_runtime/test_pose_initializer_views.py
           tests/ml_runtime/test_pose_initializer_frames.py
           tests/ml_runtime/test_pose_initializer_pipeline.py
+          tests/ml_runtime/test_aortoiliac_nnunet.py
+          tests/ml_runtime/test_aortoiliac_raw_cta.py
+          tests/ml_runtime/test_lineup_control.py
+          tests/ml_runtime/test_heldout_control.py
+          tests/ml_runtime/test_aortoiliac_inference.py
+          tests/ml_runtime/test_aortoiliac_model.py

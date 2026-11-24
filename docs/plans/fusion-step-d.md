@@ -78,6 +78,15 @@ Results page: `docs/research/step-d-overlay-correction-heart-motion-results.md`.
   - Synthetic truth: 0.58 px mean error followed, against 5.33 px left still. The contrast-free frames were refused exactly, and the period read 800.9 ms against a true 800 ms.
   - Real CardioSYNTAX cine, 23 cines with no truth: the followed tree lies on darker vessel than the still tree in 23 of 23 cines. 633 of 1277 frames were refused. A period was read in 4 cines. Another patient's frame was refused in 22 of 22.
 
+## Raw CTA to vessel placement: acceptance tests, 2026-11-24
+
+Evidence ledger: `docs/verification/step-d-evidence-ledger.md` (task `t_90a7a29b`).
+
+- Test 1, raw design CTA through the installed segmentation weights to named geometry, scored against the annotators' masks: done on 28 AVT design cases.
+- Test 2, the studio's line-up, confirm, save and reopen on that inferred model, scored on vessel points against a known-pose virtual X-ray: done on one case. The control found the line-up drifting from a right start on abdominal CT; engine v2 (`bone_edge_compass_guarded_v3`) fixes it on design cases. Held-out check under `docs/verification/step-d-heldout-virtual-xray-protocol.md`, one run on 10 unread CTPelvic1K scans: two frames 40 of 40 line-ups within 2 mm in 3D on vessel points (worst 1.4 mm), against 36 of 40 (worst 127 mm) for the earlier engine.
+- The same cohort showed the model calling an iliac artery the aorta on pelvic scans cut near the bifurcation (7 of 10). The product path now refuses a line the segmentation labels otherwise; no AVT design case is refused.
+- Test 3, real same-subject paired vessel placement: no open, legal source of an abdominal or peripheral raw CTA with an acquired angiogram and a vessel reference was found. Not measured; not a negative result.
+
 ## Decisions log
 
 - 2026-11-22: Step D started. All 17 open datasets for Steps D and E are on the research drive, each checked against its checksum.
