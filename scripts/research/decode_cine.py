@@ -1,81 +1,44 @@
-"""Decode one X-ray angiography cine to standard output, for the cine
-evaluation in ``web/src/research/coronaryCine.eval.ts``. Nothing is written
-to disk.
+"""Decode one X-ray angiography cine to standard output, for the research
+evaluations in ``web/src/research``. Nothing is written to disk.
 
-Run with the ingest runtime (pydicom, numpy):
+Run with the ingest runtime (pydicom, numpy, GDCM for JPEG Lossless):
   .runtime/ingest-runtime/bin/python scripts/research/decode_cine.py FILE
 
-Output: one line of JSON (frames, rows, columns, frame times in
-milliseconds from the first frame, C-arm angles and distances where the
-file holds them, the file's SHA-256), a newline, then every frame as rows
-of 8-bit brightness, contrast dark. A cine's stored values are taken to
-8 bits by one window over the whole cine (its 0.5th to 99.5th percentile),
-so a frame's brightness is comparable with its neighbours'. A file stored
-with bright contrast (MONOCHROME1) is turned round.
+Output: one line of JSON, then every frame as rows of 8-bit brightness,
+contrast dark. The frames, times, view and window are exactly those of the
+product's cine bundle (``planner.cine_bundle.read_cine``): one window over
+the whole cine, bright contrast turned round, and no times where the file
+holds only a display rate. The line adds the maker's name and the keys the
+earlier evaluations read (``sha256``, ``primary_deg``, ``secondary_deg``).
 """
 
-import hashlib
 import json
 import sys
+from pathlib import Path
 
-import numpy as np
-import pydicom
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-
-def times_ms(ds, frames):
-    vector = getattr(ds, "FrameTimeVector", None)
-    if vector is not None and len(vector) == frames:
-        steps = [float(v) for v in vector]
-        out, total = [], 0.0
-        for k, step in enumerate(steps):
-            total += step if k else 0.0
-            out.append(total)
-        return out, "frame_time_vector"
-    frame_time = getattr(ds, "FrameTime", None)
-    if frame_time:
-        return [k * float(frame_time) for k in range(frames)], "frame_time"
-    rate = getattr(ds, "CineRate", None) or getattr(ds, "RecommendedDisplayFrameRate", None)
-    if rate:
-        return [k * 1000.0 / float(rate) for k in range(frames)], "cine_rate"
-    return None, None
+from planner.cine_bundle import read_cine
 
 
 def main(path):
+    import pydicom
+
     with open(path, "rb") as handle:
         data = handle.read()
-    ds = pydicom.dcmread(path)
-    frames = int(getattr(ds, "NumberOfFrames", 1) or 1)
-    pixels = ds.pixel_array.astype(np.float64)
-    if frames == 1:
-        pixels = pixels[None]
-    if getattr(ds, "PhotometricInterpretation", "") == "MONOCHROME1":
-        pixels = pixels.max() - pixels
-    low, high = np.percentile(pixels, [0.5, 99.5])
-    scaled = np.clip((pixels - low) / max(high - low, 1e-9) * 255.0, 0, 255)
-    out = np.round(scaled).astype(np.uint8)
-    times, timing = times_ms(ds, frames)
-
-    def number(name):
-        value = getattr(ds, name, None)
-        try:
-            return float(value) if value is not None else None
-        except (TypeError, ValueError):
-            return None
-
-    header = {
-        "frames": frames,
-        "rows": int(ds.Rows),
-        "columns": int(ds.Columns),
-        "times_ms": times,
-        "timing": timing,
-        "primary_deg": number("PositionerPrimaryAngle"),
-        "secondary_deg": number("PositionerSecondaryAngle"),
-        "manufacturer": str(getattr(ds, "Manufacturer", "")),
-        "sha256": hashlib.sha256(data).hexdigest(),
+    header, frames = read_cine(data)
+    maker = str(getattr(pydicom.dcmread(path, stop_before_pixels=True), "Manufacturer", ""))
+    view = header["view"] or {}
+    line = {
+        **header,
+        "manufacturer": maker,
+        "sha256": header["source_sha256"],
+        "primary_deg": view.get("primary_deg"),
+        "secondary_deg": view.get("secondary_deg"),
     }
-    sys.stdout.write(json.dumps(header) + "\n")
+    sys.stdout.write(json.dumps(line) + "\n")
     sys.stdout.flush()
-    sys.stdout.buffer.write(out.tobytes())
+    sys.stdout.buffer.write(frames.tobytes())
 
 
 if __name__ == "__main__":
