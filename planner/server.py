@@ -311,6 +311,9 @@ def build_app(
     from planner.abdominal_server import register_abdominal_routes
 
     register_abdominal_routes(app, db_path, image_sources, read_case, installed_frames)
+    from planner.coronary_server import register_coronary_routes
+
+    register_coronary_routes(app, db_path, image_sources, read_case)
     from planner.vessel_presence_server import register_vessel_presence_routes
 
     read_presence = register_vessel_presence_routes(app, db_path, read_registration)
