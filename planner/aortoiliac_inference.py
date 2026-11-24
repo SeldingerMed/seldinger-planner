@@ -249,7 +249,8 @@ def _extract_same_grid_aortoiliac_mask(
     mask_image.header.set_slope_inter(1.0, 0.0)
     mask_image.set_sform(source_affine.copy(), code=2)
     mask_image.set_qform(source_affine.copy(), code=2)
-    return mask, mask_image, label_voxel_counts, voxel_count, excluded_nonzero_voxel_count
+    named = np.where(mask > 0, raw_labels, 0).astype(np.uint8)
+    return mask, mask_image, label_voxel_counts, voxel_count, excluded_nonzero_voxel_count, named
 
 
 def infer_aortoiliac_mask(
@@ -300,11 +301,15 @@ def infer_aortoiliac_mask(
         label_voxel_counts,
         voxel_count,
         excluded_nonzero_voxel_count,
+        named_labels,
     ) = _extract_same_grid_aortoiliac_mask(seg_image, cta_image.shape, source_affine)
 
     return {
         "method": METHOD,
         "mask": mask,
+        # The segmentation's own label of each vessel voxel (0 elsewhere);
+        # read to check the model's names, never part of an export.
+        "named_labels": named_labels,
         "mask_image": mask_image,
         "affine_ras": source_affine.copy(),
         "spatial_units": "mm",
@@ -358,6 +363,9 @@ def propose_aortoiliac_model_from_cta(
         segmentation["affine_ras"],
         spatial_units=segmentation["spatial_units"],
     )
+    agreement = branch_label_agreement(
+        proposal, segmentation.pop("named_labels"), segmentation["affine_ras"]
+    )
     return {
         "method": METHOD,
         "source_sha256": segmentation["source_sha256"],
@@ -366,4 +374,44 @@ def propose_aortoiliac_model_from_cta(
         "clinical_validation": False,
         "segmentation": segmentation,
         "proposal": proposal,
+        "label_agreement": agreement,
     }
+
+
+# The model names its lines from the shape of the vessel mask alone. On a
+# scan cut low, with little or no aorta in it, the widest path is an iliac
+# artery and the model calls it the aorta. Each named line must therefore run
+# mostly through voxels the segmentation gave the same name.
+BRANCH_LABELS = {"aorta": 52, "right_iliac": 66, "left_iliac": 65}
+MIN_LABEL_AGREEMENT = 0.5
+
+
+def branch_label_agreement(proposal, named_labels, affine_ras) -> dict[str, float]:
+    """Share of each named line's points that lie in a voxel the segmentation
+    labels with that name, among its points in any labelled vessel voxel.
+    Raises ValueError when a share is under MIN_LABEL_AGREEMENT."""
+    import numpy as np
+
+    inverse = np.linalg.inv(np.asarray(affine_ras, dtype=float))
+    shape = np.asarray(named_labels.shape)
+    shares: dict[str, float] = {}
+    for branch in proposal["branches"]:
+        name = branch["name"]
+        path = np.asarray(branch["path_ras"], dtype=float)
+        index = np.rint(path @ inverse[:3, :3].T + inverse[:3, 3]).astype(int)
+        inside = np.all((index >= 0) & (index < shape), axis=1)
+        found = named_labels[tuple(index[inside].T)]
+        found = found[found > 0]
+        if not len(found):
+            raise ValueError(f"The line named {name} lies in no labelled vessel; not proposed")
+        share = float(np.mean(found == BRANCH_LABELS[name]))
+        if share < MIN_LABEL_AGREEMENT:
+            values, counts = np.unique(found, return_counts=True)
+            most = int(values[np.argmax(counts)])
+            label = AORTOILIAC_LABEL_MAP.get(most, str(most))
+            raise ValueError(
+                f"The line named {name} runs mostly through vessel the segmentation "
+                f"labels {label} ({share:.0%} {name}); not proposed"
+            )
+        shares[name] = round(share, 3)
+    return shares
