@@ -116,7 +116,7 @@ const proposal = (
 ): lineups.AbdominalLineupProposal =>
   ({
     method: lineups.ABDOMINAL_LINEUP_METHOD,
-    engine_method: "bone_edge_compass_v1",
+    engine_method: "bone_edge_compass_v2",
     matrix: MOVED,
     used: [0],
     frame_scores: [0.42],
@@ -216,7 +216,7 @@ test("proposes, needs review, saves and reopens a one-frame line-up", async () =
   expect(body.inputs).toMatchObject({
     confirmed: true,
     method: lineups.ABDOMINAL_LINEUP_METHOD,
-    engine_method: "bone_edge_compass_v1",
+    engine_method: "bone_edge_compass_v2",
     frame_source_id: "phantom-run",
     frame_manifest_revision: REVISION,
     depth: "not_determined_single_view",

@@ -24,8 +24,10 @@ import type { Vec3 } from "./obliqueSlice";
 import { orthonormal } from "./projectionRegistration";
 import { validateRigid } from "./rigidFusion";
 
-export const BONE_LINEUP_METHOD = "bone_edge_compass_v1";
-export const BONE_LINEUP_BIPLANE_METHOD = "bone_edge_compass_biplane_v1";
+/** v2 adds one search of the start from the finer levels alone to v1, the
+ * engine the held-back protocol of 2026-11-22 read. */
+export const BONE_LINEUP_METHOD = "bone_edge_compass_v2";
+export const BONE_LINEUP_BIPLANE_METHOD = "bone_edge_compass_biplane_v2";
 
 export const BONE_LINEUP = {
   /** Scan values above this count as bone. */
@@ -41,6 +43,8 @@ export const BONE_LINEUP = {
    * searched at the finest level only: at a coarser one a lateral spine
    * scores as well a vertebral body's depth off as in place. */
   first_levels: [4, 2, 1],
+  /** The start is also searched from these levels alone (method v2). */
+  fine_start_levels: [2, 1],
   both_levels: [1],
   blur_px: 1.5,
   /** Least strength an edge is pressed flat against, as a share of the
@@ -452,7 +456,12 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
   if (two && !planesFarEnough(planeAngleDeg(views[0], views[1])))
     throw new Error("The two frames are too close to parallel");
   const divisors: number[] = [
-    ...new Set([...L.first_levels, ...L.both_levels]),
+    ...new Set([
+      ...L.first_levels,
+      ...L.fine_start_levels,
+      ...L.second_look_levels,
+      ...L.both_levels,
+    ]),
   ];
   const cameras = frames.map((frame, k) => camera(views[k], frame.isocenter));
 
@@ -697,6 +706,12 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
     return next;
   };
   let found = yield* from(zero, L.first_levels);
+  // The coarsest picture can lead away from a start that is already right
+  // (virtual X-rays of abdominal CT angiograms, where the frame holds far
+  // more than bone), so the start is also searched from the finer levels
+  // alone. The finest level decides, as it does between the places below.
+  const fine = yield* from(zero, L.fine_start_levels);
+  if (fine.score > found.score) found = fine;
   for (const p of look(zero, L.first_levels[0])) {
     const next = yield* from(p, L.first_levels);
     if (next.score > found.score) found = next;

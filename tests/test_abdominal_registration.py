@@ -125,7 +125,7 @@ def lineup(listed, model, *, two=False, aside=None, **change):
     return {
         "confirmed": True,
         "method": METHOD,
-        "engine_method": "bone_edge_compass_biplane_v1" if two else "bone_edge_compass_v1",
+        "engine_method": "bone_edge_compass_biplane_v2" if two else "bone_edge_compass_v2",
         "frame_source_id": "abdomen-01",
         "frame_manifest_revision": listed["manifest_revision"],
         "planes": planes,
@@ -233,7 +233,7 @@ def test_single_frame_lineup_saves_and_reopens_with_depth_left_open(tmp_path, mo
     result = current["result"]
     assert result["version"] == VERSION
     assert result["method"] == METHOD
-    assert result["engine_method"] == "bone_edge_compass_v1"
+    assert result["engine_method"] == "bone_edge_compass_v2"
     assert result["depth"] == "not_determined_single_view"
     assert result["second_view"] == "set_aside"
     assert result["validated"] is False
@@ -249,7 +249,8 @@ def test_two_frame_lineup_needs_both_frames_far_apart_and_attested(tmp_path, mon
     for change, why in (
         ({"same_position": False}, "attested"),
         ({"depth": "not_determined_single_view"}, "depth"),
-        ({"engine_method": "bone_edge_compass_v1"}, "engine"),
+        ({"engine_method": "bone_edge_compass_v2"}, "engine"),
+        ({"engine_method": "bone_edge_compass_biplane_v1"}, "older engine under this method"),
     ):
         assert put_lineup(client, case, reference, {**good, **change}).status_code == 422, why
     close = copy.deepcopy(good)
@@ -268,7 +269,7 @@ def test_lone_side_frame_is_refused():
     inputs = {
         "confirmed": True,
         "method": METHOD,
-        "engine_method": "bone_edge_compass_v1",
+        "engine_method": "bone_edge_compass_v2",
         "frame_source_id": "abdomen-01",
         "frame_manifest_revision": sha,
         "planes": [
@@ -352,7 +353,7 @@ def test_summary_is_derived_on_the_server():
     inputs = {
         "confirmed": True,
         "method": METHOD,
-        "engine_method": "bone_edge_compass_v1",
+        "engine_method": "bone_edge_compass_v2",
         "frame_source_id": "abdomen-01",
         "frame_manifest_revision": sha,
         "planes": [
@@ -381,3 +382,30 @@ def test_summary_is_derived_on_the_server():
     assert value["score_source"] == "browser_reported_not_recomputed"
     with pytest.raises(ValueError):
         validate_lineup({**inputs, "confirmed": False})
+
+
+def test_method_names_its_engine_and_earlier_lineups_still_validate(tmp_path, monkeypatch):
+    # The engine gained a search of the start from the finer levels
+    # (bone_edge_compass_v2); the guarded method over it is
+    # bone_edge_compass_guarded_v3. A line-up made with the earlier pair
+    # still validates, and the two pairs do not mix.
+    assert METHOD == "bone_edge_compass_guarded_v3"
+    client, case, reference, listed, _ = ready(tmp_path, monkeypatch)
+    model = admit_model(client, case, reference).json()
+    for two in (False, True):
+        current = lineup(listed, model, two=two)
+        earlier = {
+            **current,
+            "method": "bone_edge_compass_guarded_v2",
+            "engine_method": "bone_edge_compass_biplane_v1" if two else "bone_edge_compass_v1",
+        }
+        assert validate_lineup(earlier)["engine_method"] == earlier["engine_method"]
+        for method, engine in (
+            ("bone_edge_compass_guarded_v2", current["engine_method"]),
+            (METHOD, earlier["engine_method"]),
+        ):
+            with pytest.raises(ValueError):
+                validate_lineup({**current, "method": method, "engine_method": engine})
+    response = put_lineup(client, case, reference, lineup(listed, model))
+    assert response.status_code == 200, response.text
+    assert response.json()["current"]["result"]["method"] == METHOD

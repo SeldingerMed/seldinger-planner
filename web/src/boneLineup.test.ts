@@ -294,6 +294,54 @@ describe("proposeBoneLineup", () => {
     }
   }, 120_000);
 
+  it("keeps a right start when the coarse picture holds a broad shadow", () => {
+    // On virtual X-rays of abdominal CT angiograms the coarsest picture led
+    // away from a start that was already right (the research control in
+    // docs/verification/step-d-virtual-xray-control.md). The start is
+    // therefore also searched from the finer levels alone, and the finest
+    // level decides. This phantom does not reproduce that failure under
+    // either search; the test holds the property on a frame whose coarse
+    // picture carries a broad, soft shadow the bone does not.
+    const frame = render(volume, TRUE, view(0)),
+      pixels = Uint16Array.from(frame.pixels as Uint16Array);
+    for (let y = 0; y < frame.height; y++)
+      for (let x = 0; x < frame.width; x++) {
+        const r2 = ((x - 60) ** 2 + (y - 60) ** 2) / (2 * 40 ** 2);
+        pixels[y * frame.width + x] *= 1 - 0.95 * Math.exp(-r2);
+      }
+    const shadowed = { ...frame, pixels };
+    const beam = camera(view(0), [0, 0, 0]).d;
+    const found = proposeBoneLineup({
+      samples,
+      frames: [shadowed],
+      start: TRUE,
+    });
+    expect(apart(found.matrix, TRUE, beam)).toBeLessThan(1);
+    expect(found.score).toBeGreaterThanOrEqual(found.start_score - 1e-9);
+  }, 120_000);
+
+  it("prepares every level a search reads, whatever the first levels are", () => {
+    // The start search from the finer levels reads level 2 even when the
+    // first levels skip it.
+    const saved = [...BONE_LINEUP.first_levels];
+    (BONE_LINEUP as unknown as { first_levels: number[] }).first_levels = [
+      4, 1,
+    ];
+    try {
+      const frame = render(volume, TRUE, view(0));
+      const beam = camera(view(0), [0, 0, 0]).d;
+      const found = proposeBoneLineup({
+        samples,
+        frames: [frame],
+        start: TRUE,
+      });
+      expect(apart(found.matrix, TRUE, beam)).toBeLessThan(1);
+    } finally {
+      (BONE_LINEUP as unknown as { first_levels: number[] }).first_levels =
+        saved;
+    }
+  }, 120_000);
+
   it("lines up a scan much longer than the frames show", () => {
     // An abdominal CT against a 100 mm field: a fifth of the bone is in
     // the picture. What counts is the bone in the frame, not its share.
