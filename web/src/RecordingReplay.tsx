@@ -425,9 +425,10 @@ export default function RecordingReplay({
   useEffect(() => {
     if (ready && !readingHeart.current && video.current?.paused)
       paint(video.current.currentTime);
-    // Only when the axis is shown or hidden.
+    // Only when the axis is shown or hidden, or the heart motion is
+    // confirmed or dropped: a paused frame shows what was decided.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [axis]);
+  }, [axis, followed]);
   useEffect(() => {
     if (disabled) video.current?.pause();
   }, [disabled]);

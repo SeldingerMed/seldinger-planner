@@ -240,7 +240,7 @@ test("proposes the axis following the heart, and draws it only once confirmed", 
   expect(
     screen.queryByRole("button", { name: "Confirm heart motion" }),
   ).toBeNull();
-  fireEvent(element(), new Event("seeked"));
+  // Paused, the frame shown is redrawn at once with the followed axis.
   expect(offTruth(20)).toBeLessThan(0.5 * still);
   expect(frameText()).toMatch(/· axis follows the heart$/);
 
@@ -252,6 +252,8 @@ test("proposes the axis following the heart, and draws it only once confirmed", 
 
   // Discarded, the still axis is back.
   fireEvent.click(button("Discard heart motion"));
+  // At once, the still axis is back on the washed-out frame shown.
+  expect(marks.length).toBeGreaterThan(0);
   video.time = (20.5 * SECONDS) / FRAMES;
   fireEvent(element(), new Event("seeked"));
   expect(offTruth(20)).toBeCloseTo(still, 6);
