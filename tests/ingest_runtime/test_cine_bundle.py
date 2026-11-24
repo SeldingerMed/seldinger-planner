@@ -6,7 +6,9 @@ import hashlib
 import io
 import json
 import os
+import re
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +21,14 @@ from pydicom.encaps import encapsulate
 from pydicom.uid import ExplicitVRLittleEndian, JPEGLosslessSV1
 from test_projection_ingest import SENTINEL, classic
 
-from planner.cine_bundle import FORMAT, encode_bundle, main, read_cine
+from planner.cine_bundle import (
+    FORMAT,
+    MIN_VIEW_DEPTH_MM,
+    VIEW_LIMITS,
+    encode_bundle,
+    main,
+    read_cine,
+)
 from planner.dicom_ingest import IngestError
 
 ROWS, COLUMNS, FRAMES = 64, 80, 5
@@ -102,8 +111,12 @@ def lossless_jpeg(frame: np.ndarray) -> bytes:
     return bytes(out)
 
 
+# Row and column spacing for a detector the browser admits (56 by 62 mm).
+DETECTOR = {"ImagerPixelSpacing": ["0.88", "0.77"]}
+
+
 def test_a_cine_is_read_with_its_times_and_view():
-    data = cine()
+    data = cine(**DETECTOR)
     header, frames = read_cine(data)
     assert header["format"] == FORMAT
     assert header["source_sha256"] == hashlib.sha256(data).hexdigest()
@@ -115,8 +128,8 @@ def test_a_cine_is_read_with_its_times_and_view():
         "secondary_deg": 20.25,
         "source_detector_mm": 1195.0,
         "source_isocenter_mm": 765.0,
-        "detector_width_mm": pytest.approx(0.154 * COLUMNS),
-        "detector_height_mm": pytest.approx(0.308 * ROWS),
+        "detector_width_mm": pytest.approx(0.77 * COLUMNS),
+        "detector_height_mm": pytest.approx(0.88 * ROWS),
     }
     assert header["geometry"] == "fixed"
     assert header["identifiers"] == "not_carried"
@@ -159,6 +172,42 @@ def test_a_display_rate_is_not_a_time():
 def test_a_cine_without_its_whole_view_has_none(missing):
     header, _ = read_cine(cine(**{missing: None}))
     assert header["view"] is None
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        # Source to isocenter less than 1 mm short of the detector.
+        {"DistanceSourceToDetector": "1195", "DistanceSourceToPatient": "1194.5"},
+        # Source to isocenter under 100 mm.
+        {"DistanceSourceToPatient": "80"},
+        # Source to detector over 2000 mm.
+        {"DistanceSourceToDetector": "2100", "DistanceSourceToPatient": "900"},
+        # A detector over 600 mm wide (2048 columns at 0.3 mm).
+        {"Columns": 2048, "ImagerPixelSpacing": ["0.88", "0.3"]},
+        # A detector under 50 mm high.
+        {"ImagerPixelSpacing": ["0.5", "0.77"]},
+    ],
+)
+def test_a_view_the_browser_would_refuse_is_left_out(given):
+    # Each differs in one way from a view that is written.
+    assert read_cine(cine(**DETECTOR))[0]["view"] is not None
+    shape = (FRAMES, ROWS, given.get("Columns", COLUMNS))
+    data = cine(data=np.zeros(shape, dtype=np.uint8) + 7, **{**DETECTOR, **given})
+    header, _ = read_cine(data)
+    assert header["view"] is None
+
+
+def test_the_view_limits_are_the_browsers():
+    source = (Path(__file__).parents[2] / "web" / "src" / "carmGeometry.ts").read_text()
+    block = source[source.index("export const VIEW_LIMITS") :]
+    block = block[: block.index("} as const;")]
+    stated = {
+        name: (float(low), float(high))
+        for name, low, high in re.findall(r"(\w+): \[(-?\d+), (-?\d+)\]", block)
+    }
+    assert stated == {k: tuple(map(float, v)) for k, v in VIEW_LIMITS.items()}
+    assert f"const MIN_DEPTH_MM = {MIN_VIEW_DEPTH_MM:g};" in source
 
 
 def test_a_moving_or_undeclared_positioner_is_named():

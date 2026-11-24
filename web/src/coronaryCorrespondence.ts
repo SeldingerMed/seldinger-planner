@@ -37,6 +37,7 @@
 import { validateView, viewFrame, type ViewNumbers } from "./carmGeometry";
 import {
   CARDIAC_PERIOD_METHOD,
+  CARDIAC_PERIOD,
   cardiacPeriodSteps,
   type CardiacPeriod,
 } from "./cardiacPeriod";
@@ -151,6 +152,7 @@ export type RefusalReason =
   | "ct_phase_missing"
   | "ct_phase_needs_ecg"
   | "period_not_read"
+  | "period_out_of_range"
   | "no_vessels_at_phase"
   | "tree_not_found"
   | "tree_not_distinct";
@@ -166,6 +168,8 @@ export const REFUSAL_TEXT: Record<RefusalReason, string> = {
   ct_phase_needs_ecg:
     "The CT phase is outside diastasis; finding it in the cine needs an ECG this cine does not carry.",
   period_not_read: "The heart's period could not be read from this cine.",
+  period_out_of_range:
+    "The heart's period read lies outside 333 to 1500 ms, the range a confirmed record holds.",
   no_vessels_at_phase:
     "No contrast-filled vessels were found on the frames at the CT's phase.",
   tree_not_found: "The CT tree is not found in this cine.",
@@ -538,12 +542,17 @@ type Assigned = {
  * neither has pulled the pose onto the vessel.
  * A branch's second course counts against it (ambiguous) only where no
  * other branch lies on it. */
-function assign(
+function* assign(
   placed: number[][][],
   options: Candidate[][],
   shifted: (i: number, c: Candidate) => number[][],
-  apartFrom: (i: number, j: number, ci: number[][], cj: number[][]) => [number, number],
-): Assigned[] {
+  apartFrom: (
+    i: number,
+    j: number,
+    ci: number[][],
+    cj: number[][],
+  ) => Generator<void, [number, number]>,
+): Generator<void, Assigned[]> {
   const L = CORRESPONDENCE,
     n = placed.length;
   const pool = options.map((o) => o.filter((c) => c.score >= L.min_branch));
@@ -567,7 +576,7 @@ function assign(
         const pa = shifted(i, a),
           pb = shifted(j, b);
         if (!together(pa, pb)) continue;
-        const [da, db] = apartFrom(i, j, pa, pb);
+        const [da, db] = yield* apartFrom(i, j, pa, pb);
         const clearly = (near: number, far: number) =>
           near + L.nearer_px <= far && L.nearer_ratio * near <= far;
         if (clearly(da, db))
@@ -627,6 +636,13 @@ function* steps(
   // search.
   const period = yield* cardiacPeriodSteps(frames);
   if (period.status !== "read") return refuse("period_not_read", { period });
+  // A peak at either end of the lag range is refined by up to half a lag
+  // past it; such a period is not proposed for a record that cannot hold it.
+  if (
+    period.period_ms < CARDIAC_PERIOD.period_ms[0] ||
+    period.period_ms > CARDIAC_PERIOD.period_ms[1]
+  )
+    return refuse("period_out_of_range", { period });
   yield;
 
   const { width, height } = frames[0];
@@ -754,11 +770,20 @@ function* steps(
       .map((p) => [p[0] + c.dx, p[1] + c.dy]);
   // Where two branches contest one course, how far each lies from it
   // under the pose fitted to the rest of the tree, which neither pulled.
-  const apartFrom = (i: number, j: number, ci: number[][], cj: number[][]) => {
+  // Each refit level is one slice.
+  function* apartFrom(
+    i: number,
+    j: number,
+    ci: number[][],
+    cj: number[][],
+  ): Generator<void, [number, number]> {
     const rest = ctPoints.filter((_, k) => k !== i && k !== j).flat();
     let p = pose;
     if (rest.length >= 3)
-      for (let level = 1; level < ev!.levels.length; level++) p = refineLevel(p, rest, level);
+      for (let level = 1; level < ev!.levels.length; level++) {
+        p = refineLevel(p, rest, level);
+        yield;
+      }
     const m = matrixOf(p, centre, g);
     const away = (k: number, course: number[][]) => {
       const now = projectAll(ctPoints[k], m, g).filter((q) => Number.isFinite(q[0]));
@@ -772,8 +797,8 @@ function* steps(
       return n ? Math.hypot(x / n, y / n) : Infinity;
     };
     return [away(i, ci), away(j, cj)] as [number, number];
-  };
-  const assigned = assign(placed, options, shifted, apartFrom);
+  }
+  const assigned = yield* assign(placed, options, shifted, apartFrom);
   const branches: BranchMatch[] = tree.branches.map((b, i) => {
     const { status, best, runner } = assigned[i];
     const tx = best?.dx ?? 0,

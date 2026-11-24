@@ -16,8 +16,9 @@ It carries:
   rate gets ``timing`` ``"cine_rate"`` and no times: a display rate is not a
   record of when the frames were taken;
 - the C-arm view where the header holds all of it (angles, source to
-  detector, source to patient, detector pixel spacing), and whether the
-  positioner was declared static;
+  detector, source to patient, detector pixel spacing) and it lies within
+  the limits the browser admits, and whether the positioner was declared
+  static;
 - nothing that names the patient, the study or the date. Pairing a cine
   with a CT is the operator's statement, never read from identifiers.
 
@@ -34,6 +35,7 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import os
 import sys
 import warnings
@@ -63,6 +65,27 @@ def _times(geometry, frames):
     if step is not None:
         return [round(k * step, 6) for k in range(frames)], "frame_time"
     return None, None
+
+
+# The browser's limits (web/src/carmGeometry.ts VIEW_LIMITS, MIN_DEPTH_MM);
+# a test holds the two the same.
+VIEW_LIMITS = {
+    "primary_deg": (-180, 180),
+    "secondary_deg": (-90, 90),
+    "source_detector_mm": (300, 2000),
+    "source_isocenter_mm": (100, 2000),
+    "detector_width_mm": (50, 600),
+    "detector_height_mm": (50, 600),
+}
+MIN_VIEW_DEPTH_MM = 1
+
+
+def _view_admitted(view: dict) -> bool:
+    for name, (low, high) in VIEW_LIMITS.items():
+        value = view[name]
+        if not (isinstance(value, (int, float)) and math.isfinite(value) and low <= value <= high):
+            return False
+    return view["source_detector_mm"] - view["source_isocenter_mm"] >= MIN_VIEW_DEPTH_MM
 
 
 def read_cine(data: bytes):
@@ -123,7 +146,6 @@ def read_cine(data: bytes):
         and geometry["source_detector_mm"] is not None
         and geometry["source_isocenter_mm"] is not None
         and spacing is not None
-        and geometry["source_isocenter_mm"] < geometry["source_detector_mm"]
     ):
         view = {
             "primary_deg": geometry["primary_angle_deg"],
@@ -133,6 +155,10 @@ def read_cine(data: bytes):
             "detector_width_mm": round(spacing[1] * columns, 6),
             "detector_height_mm": round(spacing[0] * rows, 6),
         }
+        # Only a view the browser's bundle reader admits is written; any
+        # other is left out, as a view the header does not hold is.
+        if not _view_admitted(view):
+            view = None
     motion = geometry["positioner_motion"]
     header = {
         "format": FORMAT,

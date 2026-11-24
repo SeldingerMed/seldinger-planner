@@ -259,6 +259,30 @@ describe("refusals", () => {
     expect(slices).toBeGreaterThanOrEqual(600);
   });
 
+  it("settles two branches contesting one vessel in slices", () => {
+    // Settling a contest refits the pose without either branch. The search
+    // takes the same number of slices whatever the tree, so a tree with a
+    // contest must take more: its refits are sliced too.
+    const tree = ctTree();
+    const lad = tree.find((b) => b.id === "lad")!;
+    const side = (dx: number) => lad.path_ras.map(([x, y, z]) => [x + dx, y, z]);
+    const contested = tree.map((b) => (b.id === "lad" ? { ...b, path_ras: side(3) } : b));
+    contested.push({ id: "twin", label: "second branch", parent: "lm", path_ras: side(-3) });
+    const slices = (given: CtBranch[]) => {
+      const job = createCorrespondenceJob(input({}, {}, given));
+      let n = 0;
+      while (!job.advance(() => true)) n++;
+      return { n, result: job.result() };
+    };
+    const plain = slices(tree),
+      contest = slices(contested);
+    expect(plain.result.status).toBe("proposed");
+    expect(contest.result.status === "proposed" && contest.result.branches.map((b) => b.status)).toContain(
+      "conflict",
+    );
+    expect(contest.n).toBeGreaterThan(plain.n);
+  });
+
   it("refuses another patient's tree", () => {
     // A tree of the same kind, laid out otherwise.
     const other: CtBranch[] = ctTree().map((b) => ({
