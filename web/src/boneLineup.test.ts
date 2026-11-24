@@ -297,7 +297,7 @@ describe("proposeBoneLineup", () => {
   it("keeps a right start when the coarse picture holds a broad shadow", () => {
     // On virtual X-rays of abdominal CT angiograms the coarsest picture led
     // away from a start that was already right (the research control in
-    // docs/verification/step-d-virtual-xray-control.md). The start is
+    // docs/verification/step-d-evidence-ledger.md). The start is
     // therefore also searched from the finer levels alone, and the finest
     // level decides. This phantom does not reproduce that failure under
     // either search; the test holds the property on a frame whose coarse
