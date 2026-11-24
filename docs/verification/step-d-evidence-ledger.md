@@ -155,7 +155,9 @@ scans the widest path was an iliac artery named "aorta"; in C0051 the
 segmentation held no aorta voxel at all. The product path
 (`propose_aortoiliac_model_from_cta`) now checks every named line against
 the segmentation's own labels and refuses the proposal, with the reason,
-when under half of the line lies in voxels of its name.
+when under half of the line's points that lie in an aorta or iliac artery
+voxel lie in voxels of its own name. The line is the mask's smoothed centre
+line, so the points left out are smoothing near the vessel wall.
 
 Design check, after the run (these scans are now read):
 

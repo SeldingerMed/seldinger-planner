@@ -31,12 +31,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.threads is not None and args.weights is None:
         parser.error("--threads applies only with --weights")
+    if args.threads is not None and args.threads < 1:
+        parser.error("--threads must be at least 1")
     runner = None
     # Upstream libraries may print progress even when called with quiet=True.
     with contextlib.redirect_stdout(sys.stderr):
         if args.weights is not None:
             runner = installed_weights_runner(
-                args.weights, device=args.device, threads=args.threads or 4
+                args.weights,
+                device=args.device,
+                threads=4 if args.threads is None else args.threads,
             )
             print(json.dumps({"backend": runner.backend}), file=sys.stderr)
         result = propose_aortoiliac_model_from_cta(

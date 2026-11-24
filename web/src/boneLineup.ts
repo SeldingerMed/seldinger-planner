@@ -710,8 +710,12 @@ function* solve(input: BoneLineupInput): Generator<void, BoneLineupProposal> {
   // (virtual X-rays of abdominal CT angiograms, where the frame holds far
   // more than bone), so the start is also searched from the finer levels
   // alone. The finest level decides, as it does between the places below.
-  const fine = yield* from(zero, L.fine_start_levels);
-  if (fine.score > found.score) found = fine;
+  // An empty list (the research comparator for v1) skips the comparison, so
+  // an unmeasured start never stands in for a searched answer.
+  if (L.fine_start_levels.length > 0) {
+    const fine = yield* from(zero, L.fine_start_levels);
+    if (fine.score > found.score) found = fine;
+  }
   for (const p of look(zero, L.first_levels[0])) {
     const next = yield* from(p, L.first_levels);
     if (next.score > found.score) found = next;

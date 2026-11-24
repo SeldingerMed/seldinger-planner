@@ -388,8 +388,11 @@ MIN_LABEL_AGREEMENT = 0.5
 
 def branch_label_agreement(proposal, named_labels, affine_ras) -> dict[str, float]:
     """Share of each named line's points that lie in a voxel the segmentation
-    labels with that name, among its points in any labelled vessel voxel.
-    Raises ValueError when a share is under MIN_LABEL_AGREEMENT."""
+    labels with that name, among its points that lie in any aorta or iliac
+    artery voxel. The line is the mask's own smoothed centre line, so the few
+    points left out are smoothing near the vessel wall; other labels, veins
+    included, are not in the mask. Raises ValueError when a share is under
+    MIN_LABEL_AGREEMENT."""
     import numpy as np
 
     inverse = np.linalg.inv(np.asarray(affine_ras, dtype=float))

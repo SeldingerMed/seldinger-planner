@@ -81,3 +81,12 @@ def test_threads_are_only_for_installed_weights():
 
     with pytest.raises(SystemExit):
         aortoiliac_export.main(["ct.nii.gz", "--sha256", "e" * 64, "--threads", "6"])
+
+
+def test_zero_threads_are_refused_not_replaced(capsys):
+    from planner import aortoiliac_export
+
+    argv = ["ct.nii.gz", "--sha256", "e" * 64, "--weights", "/w", "--threads", "0"]
+    with pytest.raises(SystemExit):
+        aortoiliac_export.main(argv)
+    assert "--threads must be at least 1" in capsys.readouterr().err
