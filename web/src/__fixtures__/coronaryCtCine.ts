@@ -82,6 +82,31 @@ export function ctTree(): CtBranch[] {
   ];
 }
 
+/** A second synthetic patient's tree: the same five branches, other
+ * lengths, directions and branch points. Its cine stands for another
+ * patient's angiogram, which the first tree must not be taken to match. */
+export function otherPatientTree(): CtBranch[] {
+  const lm = smooth(8, (s) => [-30 + 6 * s, 6 * s, 20 - 4 * s]);
+  const e = lm[lm.length - 1];
+  const lad = smooth(40, (s) => [
+    e[0] + 40 * s,
+    e[1] + 30 * s + 8 * Math.sin(5 * s),
+    e[2] - 40 * s,
+  ]);
+  const lcx = smooth(30, (s) => [e[0] - 20 * s, e[1] - 50 * s, e[2] - 20 * s - 10 * s * s]);
+  const ladAt = lad[25],
+    lcxAt = lcx[20];
+  const d1 = smooth(20, (s) => [ladAt[0] + 30 * s, ladAt[1] + 20 * s, ladAt[2] + 10 * s]);
+  const om1 = smooth(18, (s) => [lcxAt[0] - 10 * s, lcxAt[1] - 20 * s, lcxAt[2] - 40 * s]);
+  return [
+    { id: "lm", label: "left main", parent: null, path_ras: lm },
+    { id: "lad", label: "LAD", parent: "lm", path_ras: lad },
+    { id: "lcx", label: "circumflex", parent: "lm", path_ras: lcx },
+    { id: "d1", label: "first diagonal", parent: "lad", path_ras: d1 },
+    { id: "om1", label: "first obtuse marginal", parent: "lcx", path_ras: om1 },
+  ];
+}
+
 /** Contraction over the beat, 0 at end-diastole (the R wave) and 1 at
  * end-systole: a fast systole, rapid filling, a quiet diastasis from about
  * 55 to 85 percent, and the atrial kick. */

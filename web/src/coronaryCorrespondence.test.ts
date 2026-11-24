@@ -9,6 +9,7 @@ import {
 import {
   CT_CINE,
   ctTree,
+  otherPatientTree,
   renderCtCine,
   type CineOptions,
   type CtBranch,
@@ -120,6 +121,11 @@ describe("CT coronary tree to the same patient's cine", () => {
         expect(s).toBeCloseTo(i === j ? 1 : 0, 6);
       }
     expect(m[3]).toEqual([0, 0, 0, 1]);
+    // The tree fits its own cine clearly better than its mirror images.
+    expect(run.fit.mirror_score).toBeGreaterThan(0);
+    expect(run.fit.score - run.fit.mirror_score).toBeGreaterThanOrEqual(
+      CORRESPONDENCE.min_mirror_margin,
+    );
   });
 
   it("matches by place, never by the branches' names", () => {
@@ -219,6 +225,29 @@ describe("refusals", () => {
     expect(found.status === "refused" && found.reason).toBe("tree_not_found");
   });
 
+  it("refuses another patient's tree that the frame holds no better than its mirror image", () => {
+    // Another synthetic patient: its tree lies along enough of this
+    // cine's vessels to pass the fit alone (0.66 against 0.5), but its
+    // own mirror images fit the frame as well, so the frame does not
+    // pin its shape.
+    const foreign = proposeCorrespondence(input({}, {}, otherPatientTree()));
+    if (foreign.status !== "refused") throw new Error("proposed a foreign tree");
+    expect(foreign.reason).toBe("tree_not_distinct");
+    expect(foreign.fit_score).toBeGreaterThanOrEqual(CORRESPONDENCE.min_fit);
+    expect(foreign.fit_score! - foreign.mirror_score!).toBeLessThan(
+      CORRESPONDENCE.min_mirror_margin,
+    );
+    // And the other way round: this tree on the other patient's cine.
+    const back = proposeCorrespondence(input({ tree: otherPatientTree() }));
+    expect(back.status === "refused" && back.reason).toMatch(/^tree_not_(distinct|found)$/);
+    // The other patient's own tree on its own cine is still proposed.
+    const own = proposeCorrespondence(input({ tree: otherPatientTree() }, {}, otherPatientTree()));
+    if (own.status !== "proposed") throw new Error(own.reason);
+    expect(own.fit.score - own.fit.mirror_score).toBeGreaterThanOrEqual(
+      CORRESPONDENCE.min_mirror_margin,
+    );
+  });
+
   it("takes no truth or other extra input", () => {
     const base = input({ frames: 24 }) as CorrespondenceInput & { truth?: unknown };
     expect(() => proposeCorrespondence({ ...base, truth: [] } as CorrespondenceInput)).toThrow(
@@ -294,5 +323,6 @@ describe("branch faults are named, not forced", () => {
 
   it("keeps its limits stated", () => {
     expect(CORRESPONDENCE.diastolic_ct_phase_percent).toEqual([60, 85]);
+    expect(CORRESPONDENCE.min_mirror_margin).toBe(0.25);
   });
 });

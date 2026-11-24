@@ -22,7 +22,8 @@
  *   (6 degrees of freedom), searched coarse to fine over the frame's vessel
  *   evidence and projected through the cine's own C-arm geometry. A tree
  *   the frame does not hold is refused (another patient's tree, or the
- *   wrong cine);
+ *   wrong cine), and so is one the frame holds no better than the tree's
+ *   own mirror images, searched over the same poses;
  * - each CT branch is then looked for near where the pose puts it. It is
  *   matched where one course clearly holds it; not found where none does;
  *   ambiguous where two courses, apart and each with a valley between,
@@ -69,6 +70,15 @@ export const CORRESPONDENCE = {
   score_level: 3,
   /** Least mean evidence along the lined-up tree to call it found. */
   min_fit: 0.5,
+  /** Least lead of the tree's fit over the best fit of its own mirror
+   * images (the tree reflected across the detector's horizontal and
+   * vertical through its centre, each searched over the same poses). A
+   * mirror image has the tree's lengths and bends but not its shape, so
+   * a frame that holds it about as well does not pin this tree: it may be
+   * another patient's, or the wrong cine. Set on design cases: own trees
+   * led by 0.41 to 0.56 on five CT-derived cines of real anatomy, other
+   * patients' trees by at most 0.13. */
+  min_mirror_margin: 0.25,
   /** Least share of branches matched for the tree to be found. */
   min_matched_share: 0.5,
   /** A branch is looked for this far from where the pose puts it. */
@@ -136,7 +146,8 @@ export type RefusalReason =
   | "ct_phase_missing"
   | "ct_phase_needs_ecg"
   | "period_not_read"
-  | "tree_not_found";
+  | "tree_not_found"
+  | "tree_not_distinct";
 
 export const REFUSAL_TEXT: Record<RefusalReason, string> = {
   not_paired: "This cine is not paired with this patient's CT. State the pair first.",
@@ -150,6 +161,8 @@ export const REFUSAL_TEXT: Record<RefusalReason, string> = {
     "The CT phase is outside diastasis; finding it in the cine needs an ECG this cine does not carry.",
   period_not_read: "The heart's period could not be read from this cine.",
   tree_not_found: "The CT tree is not found in this cine.",
+  tree_not_distinct:
+    "The CT tree fits this cine no better than its own mirror image; it may be another patient's tree or another cine.",
 };
 
 export type BranchStatus = "matched" | "not_found" | "ambiguous" | "conflict";
@@ -198,6 +211,8 @@ export type CorrespondenceProposal = {
     ct_to_carm_ras: number[][];
     score: number;
     start_score: number;
+    /** The best fit of the tree's mirror images over the same poses. */
+    mirror_score: number;
   };
   branches: BranchMatch[];
   motion: {
@@ -216,6 +231,7 @@ export type CorrespondenceResult =
       /** What was read before the refusal. */
       period?: CardiacPeriod;
       fit_score?: number;
+      mirror_score?: number;
       matched_share?: number;
     };
 
@@ -574,7 +590,7 @@ function* steps(
     { tree, cine, pair } = input;
   const refuse = (
     reason: RefusalReason,
-    extra: Partial<Record<"period" | "fit_score" | "matched_share", unknown>> = {},
+    extra: Partial<Record<"period" | "fit_score" | "mirror_score" | "matched_share", unknown>> = {},
   ): CorrespondenceResult =>
     ({ method: CORRESPONDENCE_METHOD, status: "refused", reason, ...extra }) as CorrespondenceResult;
   if (!pair) return refuse("not_paired");
@@ -617,31 +633,9 @@ function* steps(
   const ctPoints = tree.branches.map((b, i) => kept[i].map((j) => b.path_ras[j]));
   const all = ctPoints.flat();
   const centre = [0, 1, 2].map((k) => all.reduce((s, p) => s + p[k], 0) / all.length);
-  const coarse = all.filter((_, i) => i % 2 === 0);
   const at = (pose: Pose, pts: number[][], level: number) =>
     scoreOn(ev!, level, projectAll(pts, matrixOf(pose, centre, g), g));
 
-  // Coarse: where in the frame, and how turned in its plane.
-  const found: { pose: Pose; score: number }[] = [];
-  for (const rz of L.turn_range_deg) {
-    for (let a = -L.shift_range_mm; a <= L.shift_range_mm; a += L.shift_step_mm)
-      for (let b = -L.shift_range_mm; b <= L.shift_range_mm; b += L.shift_step_mm) {
-        const pose: Pose = [a, b, 0, 0, 0, rz];
-        found.push({ pose, score: at(pose, coarse, 0) });
-      }
-    yield;
-  }
-  found.sort((p, q) => q.score - p.score);
-  const starts: Pose[] = [];
-  for (const f of found) {
-    if (
-      starts.every(
-        (s) => Math.hypot(s[0] - f.pose[0], s[1] - f.pose[1]) >= 2 * L.shift_step_mm,
-      )
-    )
-      starts.push(f.pose);
-    if (starts.length >= L.starts) break;
-  }
   // Fine: all six, level by level, by a pattern search.
   const limits = [L.shift_range_mm + 10, L.shift_range_mm + 10, L.max_depth_mm, L.max_turn_deg, L.max_turn_deg, L.max_turn_deg];
   const refineLevel = (start: Pose, pts: number[][], level: number): Pose => {
@@ -667,20 +661,60 @@ function* steps(
     }
     return pose;
   };
-  let best: { pose: Pose; score: number } | null = null;
-  for (const start of starts) {
-    let pose = [...start] as Pose;
-    for (let level = 1; level < ev.levels.length; level++) {
-      pose = refineLevel(pose, all, level);
+  // The best pose for a set of CT points: coarse (where in the frame, and
+  // how turned in its plane), then fine from the best few starts.
+  function* search(pts: number[][]): Generator<void, { pose: Pose; score: number }, void> {
+    const coarse = pts.filter((_, i) => i % 2 === 0);
+    const found: { pose: Pose; score: number }[] = [];
+    for (const rz of L.turn_range_deg) {
+      for (let a = -L.shift_range_mm; a <= L.shift_range_mm; a += L.shift_step_mm)
+        for (let b = -L.shift_range_mm; b <= L.shift_range_mm; b += L.shift_step_mm) {
+          const pose: Pose = [a, b, 0, 0, 0, rz];
+          found.push({ pose, score: at(pose, coarse, 0) });
+        }
       yield;
     }
-    const score = at(pose, all, L.score_level);
-    if (!best || score > best.score) best = { pose, score };
+    found.sort((p, q) => q.score - p.score);
+    const starts: Pose[] = [];
+    for (const f of found) {
+      if (
+        starts.every(
+          (s) => Math.hypot(s[0] - f.pose[0], s[1] - f.pose[1]) >= 2 * L.shift_step_mm,
+        )
+      )
+        starts.push(f.pose);
+      if (starts.length >= L.starts) break;
+    }
+    let best: { pose: Pose; score: number } | null = null;
+    for (const start of starts) {
+      let pose = [...start] as Pose;
+      for (let level = 1; level < ev!.levels.length; level++) {
+        pose = refineLevel(pose, pts, level);
+        yield;
+      }
+      const score = at(pose, pts, L.score_level);
+      if (!best || score > best.score) best = { pose, score };
+    }
+    return best!;
   }
-  const pose = best!.pose,
+  const best = yield* search(all);
+  const pose = best.pose,
     matrix = matrixOf(pose, centre, g),
-    fitScore = best!.score;
+    fitScore = best.score;
   if (fitScore < L.min_fit) return refuse("tree_not_found", { period, fit_score: fitScore });
+  // The tree's mirror images, searched the same way: the frame must hold
+  // the tree clearly better than a tree of its lengths and bends laid out
+  // the other way round.
+  let mirrorScore = 0;
+  for (const n of [g.u, g.v]) {
+    const flipped = all.map((p) => {
+      const d = (p[0] - centre[0]) * n[0] + (p[1] - centre[1]) * n[1] + (p[2] - centre[2]) * n[2];
+      return p.map((x, i) => x - 2 * d * n[i]);
+    });
+    mirrorScore = Math.max(mirrorScore, (yield* search(flipped)).score);
+  }
+  if (fitScore - mirrorScore < L.min_mirror_margin)
+    return refuse("tree_not_distinct", { period, fit_score: fitScore, mirror_score: mirrorScore });
 
   // Each branch near where the pose put it.
   const placed = ctPoints.map((pts) => projectAll(pts, matrix, g));
@@ -742,7 +776,12 @@ function* steps(
   const matched = branches.filter((b) => b.status === "matched");
   const share = matched.length / branches.length;
   if (share < L.min_matched_share || matched.reduce((s, b) => s + b.points_px.length, 0) < 3)
-    return refuse("tree_not_found", { period, fit_score: fitScore, matched_share: share });
+    return refuse("tree_not_found", {
+      period,
+      fit_score: fitScore,
+      mirror_score: mirrorScore,
+      matched_share: share,
+    });
   yield;
 
   // Followed over the cine from the phase frame.
@@ -784,6 +823,7 @@ function* steps(
       ct_to_carm_ras: matrix,
       score: fitScore,
       start_score: at([0, 0, 0, 0, 0, 0], all, L.score_level),
+      mirror_score: mirrorScore,
     },
     branches,
     motion: {
