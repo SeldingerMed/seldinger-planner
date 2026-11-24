@@ -96,3 +96,5 @@ CINE_SET=<CardioSYNTAX directory> CINE_PYTHON=$PWD/../.runtime/ingest-runtime/bi
 The held-out splits are spent and are not to be run again.
 
 After the held-out runs, review changed the engine without changing a result: a cine whose frames at the CT's phase hold no vessels is refused (`no_vessels_at_phase`) where it used to end in an error, and the heart period read runs in slices. The design replays of both evaluations gave the same output after the change as before it, every field but run time.
+
+Known limitation of `ct_tree_cine_correspondence_v1`, left as frozen: when two branches contest one vessel, the distance that decides between them pairs the branch's points by order after dropping points that fall off the detector, under two different poses. On a tree that straddles the detector edge the pairing can shift by a point. Every tree in the gated tests and both evaluations lies wholly in frame, so no figure above is affected. A later version should pair by CT point index.

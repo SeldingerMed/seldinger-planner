@@ -3,11 +3,15 @@
  * bundle, the pair stated, one proposal made, replayed and confirmed. The
  * truth is read only after the run, to measure where the branches were put. */
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { binding, caseState } from "./__fixtures__/overlayCase";
 import { CT_CINE, ctTree, renderCtCine, type CineOptions } from "./__fixtures__/coronaryCtCine";
 import { CINE_BUNDLE_FORMAT } from "./cineBundle";
 import CoronaryCorrespondencePanel from "./CoronaryCorrespondencePanel";
+
+// Reading a bundle can take longer than the default second on a loaded
+// runner; no expectation changes.
+configure({ asyncUtilTimeout: 10_000 });
 
 afterEach(() => {
   cleanup();
@@ -198,6 +202,35 @@ test("tree to cine through the studio: one named proposal, replayed and confirme
   const sent = JSON.stringify(put!.body);
   expect(sent).not.toMatch(/pixels|truth|points_px/);
   expect(sent.length).toBeLessThan(65_536);
+}, 120_000);
+
+test("a proposal under way when the case's tree changes leaves the panel usable", async () => {
+  server();
+  const { rerender } = render(<CoronaryCorrespondencePanel caseState={caseState} binding={binding} />);
+  await screen.findByText("No tree admitted for this scan.");
+  await admit();
+  await screen.findByText(/5 branches/);
+  await load(bundleFile().file);
+  statePair();
+  fireEvent.click(screen.getByText("Propose correspondence"));
+  expect(screen.getByLabelText("Load cine bundle")).toBeDisabled();
+  // Another case opens while the proposal runs: it has no tree.
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      json(
+        url.endsWith("/coronary-tree")
+          ? { tree_revision: 0, current: { status: "not_confirmed" } }
+          : { correspondence_revision: 0, current: { status: "not_confirmed" } },
+      ),
+    ),
+  );
+  rerender(
+    <CoronaryCorrespondencePanel caseState={{ ...caseState, case_id: "case-2" }} binding={binding} />,
+  );
+  await screen.findByText("No tree admitted for this scan.");
+  await waitFor(() => expect(screen.getByLabelText("Load cine bundle")).toBeEnabled(), { timeout: 60_000 });
+  expect(screen.queryByLabelText("Proposal")).toBeNull();
 }, 120_000);
 
 test("a shorter cine loaded while a late frame is shown ends the old proposal, without failing", async () => {

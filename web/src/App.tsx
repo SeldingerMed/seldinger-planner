@@ -1097,6 +1097,7 @@ export default function App() {
           )}
           {caseState && nativeSource && (
             <CoronaryCorrespondencePanel
+              key={caseState.case_id}
               caseState={caseState}
               binding={nativeSource}
               disabled={busy || conflict}

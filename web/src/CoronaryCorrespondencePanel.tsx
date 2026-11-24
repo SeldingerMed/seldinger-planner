@@ -254,10 +254,12 @@ export default function CoronaryCorrespondencePanel({ caseState, binding, disabl
   const result = made?.inputs === inputs ? made.result : null;
   const proposal = result?.status === "proposed" ? result : null;
   // A new tree or cine ends the proposal made from the old ones.
+  // The run it ends never clears busy itself.
   useEffect(() => {
     run.current++;
     setMade(null);
     setFrame(0);
+    setBusy(false);
   }, [current?.body_sha256, cine?.bundle_sha256]);
 
   async function admitTree(file: File) {
