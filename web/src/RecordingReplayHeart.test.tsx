@@ -316,3 +316,19 @@ test("another plane during the read ends it: no seeks after, no proposal", async
   expect(screen.queryByLabelText("Heart motion proposal")).toBeNull();
   expect(screen.queryByLabelText("Heart motion progress")).toBeNull();
 }, 120_000);
+
+test("while the heart is read, playback and the frame slider wait", async () => {
+  await ready();
+  // The read holds at its first seek.
+  video.stalls = true;
+  fireEvent.click(button("Follow the heart"));
+  await screen.findByLabelText("Heart motion progress");
+  expect(button("Play").disabled).toBe(true);
+  expect(button("Go to the saved frame").disabled).toBe(true);
+  expect((screen.getByLabelText("Frame") as HTMLInputElement).disabled).toBe(
+    true,
+  );
+  // The stalled seek fails the read, and the controls come back.
+  await screen.findByRole("alert", {}, { timeout: 20_000 });
+  expect(button("Play").disabled).toBe(false);
+}, 60_000);

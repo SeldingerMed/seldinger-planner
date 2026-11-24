@@ -207,8 +207,10 @@ export default function RecordingReplay({
     followed =
       motion && "proposal" in motion && motion.confirmed ? motion : null,
     heartBusy = !!motion && "reading" in motion,
-    shownFollowed = useRef(followed);
+    shownFollowed = useRef(followed),
+    readingHeart = useRef(heartBusy);
   shownFollowed.current = followed;
+  readingHeart.current = heartBusy;
 
   useEffect(() => {
     if (!recording) return;
@@ -398,17 +400,20 @@ export default function RecordingReplay({
     paint(from.currentTime);
     let handle = 0;
     const next: VideoFrameRequestCallback = (_now, metadata) => {
-      paint(metadata.mediaTime, {
-        at_ms: metadata.presentationTime,
-        frames: metadata.presentedFrames,
-      });
+      // The heart read's own seeks are neither drawn nor timed.
+      if (!readingHeart.current)
+        paint(metadata.mediaTime, {
+          at_ms: metadata.presentationTime,
+          frames: metadata.presentedFrames,
+        });
       handle = from.requestVideoFrameCallback(next);
     };
     handle = from.requestVideoFrameCallback(next);
     return () => from.cancelVideoFrameCallback(handle);
   }, [ready, paint]);
   useEffect(() => {
-    if (ready && video.current?.paused) paint(video.current.currentTime);
+    if (ready && !readingHeart.current && video.current?.paused)
+      paint(video.current.currentTime);
     // Only when the axis is shown or hidden.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [axis]);
@@ -729,7 +734,7 @@ export default function RecordingReplay({
       <div className="native-actions">
         <button
           type="button"
-          disabled={disabled || !ready}
+          disabled={disabled || !ready || heartBusy}
           onClick={() => {
             const from = video.current;
             if (!from) return;
@@ -745,7 +750,7 @@ export default function RecordingReplay({
         </button>
         <button
           type="button"
-          disabled={disabled || !ready || playing}
+          disabled={disabled || !ready || playing || heartBusy}
           onClick={() => go(plane.frame.index)}
         >
           Go to the saved frame
@@ -768,7 +773,7 @@ export default function RecordingReplay({
             max={sidecar ? sidecar.frames - 1 : 0}
             step={1}
             defaultValue={0}
-            disabled={disabled || !ready || playing}
+            disabled={disabled || !ready || playing || heartBusy}
             onChange={(event) => go(Number(event.target.value))}
           />
         </label>

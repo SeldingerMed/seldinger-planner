@@ -344,3 +344,66 @@ test("proposes one wire and breathing correction over the saved line-up, drawn o
     screen.getByLabelText("Saved overlay on plane single, frame 12"),
   ).toBeInTheDocument();
 });
+
+test("a line-up in flight when the case changes ends without a proposal", async () => {
+  server({ model: true });
+  let release = false;
+  vi.spyOn(bone, "boneSamples").mockReturnValue({} as never);
+  const job = vi
+    .spyOn(lineups, "createAbdominalLineupJob")
+    .mockImplementation(
+      () => ({ advance: () => release, result: () => proposal() }) as never,
+    );
+  const view = panel();
+  await screen.findByText(/Model from this scan/);
+  fireEvent.change(screen.getByLabelText("Frame source"), {
+    target: { value: "phantom-run" },
+  });
+  fireEvent.click(screen.getByText("Open frames"));
+  await screen.findByLabelText("First frame");
+  fireEvent.click(screen.getByText("Line up on bone"));
+  await waitFor(() => expect(job).toHaveBeenCalled());
+  // The case's artifact changes while the line-up runs.
+  view.rerender(
+    <AbdominalOverlayPanel
+      caseState={{ ...caseState, artifact_version: "2" }}
+      binding={binding}
+      volume={volume as never}
+      cursor={[1, 2, 3]}
+    />,
+  );
+  release = true;
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(screen.queryByLabelText("Line-up proposal")).toBeNull();
+  expect(screen.queryByText("Confirm and save line-up")).toBeNull();
+});
+
+test("showing the saved line-up clears a frame chosen before", async () => {
+  server({ model: true });
+  stubLineup(proposal());
+  panel();
+  await screen.findByText(/Model from this scan/);
+  fireEvent.change(screen.getByLabelText("Frame source"), {
+    target: { value: "phantom-run" },
+  });
+  fireEvent.click(screen.getByText("Open frames"));
+  const first = (await screen.findByLabelText(
+    "First frame",
+  )) as HTMLSelectElement;
+  fireEvent.click(screen.getByText("Line up on bone"));
+  await screen.findByLabelText("Line-up proposal");
+  fireEvent.click(
+    screen.getByLabelText("I reviewed the bone and the model on the frame"),
+  );
+  fireEvent.click(screen.getByText("Confirm and save line-up"));
+  await screen.findByText(/Saved operator-confirmed line-up, revision 1/);
+  const options = Array.from(first.options).map((o) => o.value);
+  expect(options.length).toBeGreaterThan(1);
+  fireEvent.change(first, { target: { value: options.at(-1) } });
+  expect(first.value).toBe(options.at(-1));
+  await waitFor(() =>
+    expect(screen.getByText("Show saved overlay")).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByText("Show saved overlay"));
+  await waitFor(() => expect(first.value).toBe(options[0]));
+});

@@ -334,7 +334,11 @@ export default function AbdominalOverlayPanel({
     setModel(m);
     setLineup(l);
   };
+  // Advanced by anything that changes what a line-up in flight was made
+  // from; the line-up then ends without a proposal.
+  const work = useRef(0);
   useEffect(() => {
+    work.current++;
     setDrawn(null);
     setReviewed(false);
     reload().catch((error) => setMessage(String(error.message ?? error)));
@@ -352,6 +356,7 @@ export default function AbdominalOverlayPanel({
   const locked = disabled || busy;
 
   async function admitModel(file: File) {
+    work.current++;
     setBusy(true);
     setMessage(null);
     try {
@@ -375,6 +380,18 @@ export default function AbdominalOverlayPanel({
     }
   }
 
+  /** A new frame bundle: the frames chosen from the last one are cleared,
+   * so no key of the old bundle is read against the new one. */
+  function install(next: FrameBundle) {
+    work.current++;
+    setBundle(next);
+    setSourceId(next.source_id);
+    const first = next.planes[0];
+    setFirstKey(`${first.plane}:${first.frames[0].index}`);
+    setSecondKey("");
+    setSamePosition(false);
+  }
+
   async function openFrames() {
     setMessage(null);
     if (!FRAME_SOURCE_ID.test(sourceId)) {
@@ -383,11 +400,7 @@ export default function AbdominalOverlayPanel({
     }
     setBusy(true);
     try {
-      const next = await loadFrameBundle(sourceId);
-      setBundle(next);
-      const first = next.planes[0];
-      setFirstKey(`${first.plane}:${first.frames[0].index}`);
-      setSecondKey("");
+      install(await loadFrameBundle(sourceId));
       setDrawn(null);
     } catch (error) {
       setMessage(String((error as Error).message ?? error));
@@ -425,6 +438,8 @@ export default function AbdominalOverlayPanel({
     setBusy(true);
     setMessage(null);
     setReviewed(false);
+    const token = ++work.current;
+    const stale = () => work.current !== token;
     try {
       const chosen = [await choose(firstKey, entered)];
       if (secondKey) chosen.push(await choose(secondKey, secondEntered));
@@ -473,7 +488,9 @@ export default function AbdominalOverlayPanel({
         const until = performance.now() + 40;
         if (job.advance(() => performance.now() > until)) break;
         await new Promise((resolve) => setTimeout(resolve, 0));
+        if (stale()) return;
       }
+      if (stale()) return;
       const proposal = job.result();
       setDrawn({
         frames: proposal.used.map((k) => chosen[k]),
@@ -488,7 +505,7 @@ export default function AbdominalOverlayPanel({
           ? chosen[proposal.second_view.frame]
           : null;
     } catch (error) {
-      setMessage(String((error as Error).message ?? error));
+      if (!stale()) setMessage(String((error as Error).message ?? error));
     } finally {
       setBusy(false);
     }
@@ -560,8 +577,7 @@ export default function AbdominalOverlayPanel({
       const next = await loadFrameBundle(saved.frame_source_id);
       if (next.manifest_revision !== saved.frame_manifest_revision)
         throw new Error("The saved line-up's frames changed.");
-      setBundle(next);
-      setSourceId(next.source_id);
+      install(next);
       const frames = await Promise.all(
         saved.planes.map(async (entry) => ({
           frame: await loadVerifiedFrame(next, entry.plane, entry.frame_index),
