@@ -211,6 +211,17 @@ export default function RecordingReplay({
     readingHeart = useRef(heartBusy);
   shownFollowed.current = followed;
   readingHeart.current = heartBusy;
+  /** Ends a heart read in flight and drops its proposal: its frames and its
+   * axis belong to the recording, table and plane it began with. */
+  const endHeart = () => {
+    heartRead.current++;
+    setHeart(null);
+  };
+  // Whatever places the axis anew (another table, plane or pose) ends a
+  // read of the old one.
+  useEffect(() => {
+    heartRead.current++;
+  }, [overlay]);
 
   useEffect(() => {
     if (!recording) return;
@@ -613,9 +624,7 @@ export default function RecordingReplay({
                 disabled={disabled}
                 onChange={() => {
                   setChoice(k);
-                  // A read of the other plane's frames ends here.
-                  heartRead.current++;
-                  setHeart(null);
+                  endHeart();
                   forget();
                 }}
               />
@@ -634,8 +643,7 @@ export default function RecordingReplay({
             onChange={(event) => {
               const file = event.target.files?.[0] ?? null;
               setRecording(file);
-              heartRead.current++;
-              setHeart(null);
+              endHeart();
               setSeconds(0);
               setBroken(false);
               setChecked(null);
@@ -655,6 +663,7 @@ export default function RecordingReplay({
               const file = event.target.files?.[0],
                 mine = ++reading.current;
               setTable(null);
+              endHeart();
               forget();
               if (!file) return;
               // A character takes at most three bytes, so a file of more
@@ -790,8 +799,7 @@ export default function RecordingReplay({
             }
           }}
           onDiscard={() => {
-            heartRead.current++;
-            setHeart(null);
+            endHeart();
             forget();
           }}
         />

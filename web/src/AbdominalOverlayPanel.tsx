@@ -334,9 +334,23 @@ export default function AbdominalOverlayPanel({
     setModel(m);
     setLineup(l);
   };
-  // Advanced by anything that changes what a line-up in flight was made
-  // from; the line-up then ends without a proposal.
-  const work = useRef(0);
+  // Advanced by every operation and by a change of case: an operation that
+  // is no longer the latest draws, installs and reports nothing. The panel
+  // is busy while any operation runs.
+  const work = useRef(0),
+    running = useRef(0);
+  const begin = () => {
+    const token = ++work.current;
+    running.current++;
+    setBusy(true);
+    return {
+      stale: () => work.current !== token,
+      end: () => {
+        running.current--;
+        if (running.current === 0) setBusy(false);
+      },
+    };
+  };
   useEffect(() => {
     work.current++;
     setDrawn(null);
@@ -356,8 +370,7 @@ export default function AbdominalOverlayPanel({
   const locked = disabled || busy;
 
   async function admitModel(file: File) {
-    work.current++;
-    setBusy(true);
+    const op = begin();
     setMessage(null);
     try {
       const value = JSON.parse(await readText(file));
@@ -367,23 +380,24 @@ export default function AbdominalOverlayPanel({
         model_revision: model?.model_revision ?? 0,
         export: value,
       });
+      if (op.stale()) return;
       await reload();
       setDrawn(null);
     } catch (error) {
-      setMessage(
-        error instanceof SyntaxError
-          ? "The model file is not JSON."
-          : String((error as Error).message ?? error),
-      );
+      if (!op.stale())
+        setMessage(
+          error instanceof SyntaxError
+            ? "The model file is not JSON."
+            : String((error as Error).message ?? error),
+        );
     } finally {
-      setBusy(false);
+      op.end();
     }
   }
 
   /** A new frame bundle: the frames chosen from the last one are cleared,
    * so no key of the old bundle is read against the new one. */
   function install(next: FrameBundle) {
-    work.current++;
     setBundle(next);
     setSourceId(next.source_id);
     const first = next.planes[0];
@@ -398,14 +412,16 @@ export default function AbdominalOverlayPanel({
       setMessage("Enter the name of an admitted frame source.");
       return;
     }
-    setBusy(true);
+    const op = begin();
     try {
-      install(await loadFrameBundle(sourceId));
+      const next = await loadFrameBundle(sourceId);
+      if (op.stale()) return;
+      install(next);
       setDrawn(null);
     } catch (error) {
-      setMessage(String((error as Error).message ?? error));
+      if (!op.stale()) setMessage(String((error as Error).message ?? error));
     } finally {
-      setBusy(false);
+      op.end();
     }
   }
 
@@ -435,11 +451,10 @@ export default function AbdominalOverlayPanel({
 
   async function lineUp() {
     if (!grid || !volume || !branches) return;
-    setBusy(true);
+    const op = begin(),
+      stale = op.stale;
     setMessage(null);
     setReviewed(false);
-    const token = ++work.current;
-    const stale = () => work.current !== token;
     try {
       const chosen = [await choose(firstKey, entered)];
       if (secondKey) chosen.push(await choose(secondKey, secondEntered));
@@ -507,7 +522,7 @@ export default function AbdominalOverlayPanel({
     } catch (error) {
       if (!stale()) setMessage(String((error as Error).message ?? error));
     } finally {
-      setBusy(false);
+      op.end();
     }
   }
   const setAside = useRef<Chosen | null>(null);
@@ -550,7 +565,7 @@ export default function AbdominalOverlayPanel({
       volume_to_carm_ras: p.matrix,
       same_position: two && samePosition,
     };
-    setBusy(true);
+    const op = begin();
     setMessage(null);
     try {
       await send(`/api/cases/${caseId}/bone-lineup-registration`, {
@@ -559,22 +574,25 @@ export default function AbdominalOverlayPanel({
         registration_revision: lineup?.registration_revision ?? 0,
         inputs,
       });
+      if (op.stale()) return;
       await reload();
+      if (op.stale()) return;
       setDrawn({ ...drawn, kind: "saved" });
     } catch (error) {
-      setMessage(String((error as Error).message ?? error));
+      if (!op.stale()) setMessage(String((error as Error).message ?? error));
     } finally {
-      setBusy(false);
+      op.end();
     }
   }
 
   async function showSaved() {
     if (lineup?.current.status !== "current" || !branches) return;
     const saved = lineup.current.inputs;
-    setBusy(true);
+    const op = begin();
     setMessage(null);
     try {
       const next = await loadFrameBundle(saved.frame_source_id);
+      if (op.stale()) return;
       if (next.manifest_revision !== saved.frame_manifest_revision)
         throw new Error("The saved line-up's frames changed.");
       install(next);
@@ -591,6 +609,7 @@ export default function AbdominalOverlayPanel({
         )
       )
         throw new Error("The saved line-up's frames changed.");
+      if (op.stale()) return;
       setDrawn({
         frames,
         matrix: saved.volume_to_carm_ras,
@@ -599,9 +618,9 @@ export default function AbdominalOverlayPanel({
         proposal: null,
       });
     } catch (error) {
-      setMessage(String((error as Error).message ?? error));
+      if (!op.stale()) setMessage(String((error as Error).message ?? error));
     } finally {
-      setBusy(false);
+      op.end();
     }
   }
 

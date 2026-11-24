@@ -68,7 +68,7 @@ const saved: VerifiedFrame = {
   ),
   RECORDING = new File(["video"], "cine.mp4", { type: "video/mp4" });
 
-let video: { time: number; paused: boolean; stalls: boolean },
+let video: { time: number; paused: boolean; stalls: boolean; slow: boolean },
   marks: number[][],
   seeks: number;
 
@@ -77,7 +77,7 @@ const frameNow = () =>
   Math.min(FRAMES - 1, Math.floor((video.time * FRAMES) / SECONDS + 0.01));
 
 beforeEach(() => {
-  video = { time: 0, paused: true, stalls: false };
+  video = { time: 0, paused: true, stalls: false, slow: false };
   marks = [];
   seeks = 0;
   const media = HTMLVideoElement.prototype as unknown as Record<
@@ -99,7 +99,9 @@ beforeEach(() => {
         seeks++;
         // The picture is there at once; the seek ends after this turn,
         // unless the recording stalls.
-        if (!video.stalls)
+        if (video.slow)
+          setTimeout(() => this.dispatchEvent(new Event("seeked")), 20);
+        else if (!video.stalls)
           queueMicrotask(() => this.dispatchEvent(new Event("seeked")));
       },
     ],
@@ -332,3 +334,23 @@ test("while the heart is read, playback and the frame slider wait", async () => 
   await screen.findByRole("alert", {}, { timeout: 20_000 });
   expect(button("Play").disabled).toBe(false);
 }, 60_000);
+
+test("another frame table during the read ends it, and its saved-frame check passes", async () => {
+  await ready();
+  // Seeks that take a while, so the read is still seeking.
+  video.slow = true;
+  fireEvent.click(button("Follow the heart"));
+  await waitFor(() => expect(seeks).toBeGreaterThan(5));
+  fireEvent.change(screen.getByLabelText("Frame table"), {
+    target: { files: [TABLE] },
+  });
+  const settled = seeks;
+  // The new table's check passes: the recording is ready again.
+  await waitFor(() => expect(button("Play").disabled).toBe(false));
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  // Only the check's own seek to the saved frame, none of the old read's.
+  expect(seeks - settled).toBeLessThanOrEqual(1);
+  expect(frameNow()).toBe(SAVED);
+  expect(screen.queryByLabelText("Heart motion proposal")).toBeNull();
+  expect(screen.queryByLabelText("Heart motion progress")).toBeNull();
+}, 120_000);

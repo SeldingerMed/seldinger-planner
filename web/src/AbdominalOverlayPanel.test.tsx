@@ -407,3 +407,54 @@ test("showing the saved line-up clears a frame chosen before", async () => {
   fireEvent.click(screen.getByText("Show saved overlay"));
   await waitFor(() => expect(first.value).toBe(options[0]));
 });
+
+test("a saved overlay still loading when the case changes is not drawn", async () => {
+  server({ model: true });
+  stubLineup(proposal());
+  panel();
+  await screen.findByText(/Model from this scan/);
+  fireEvent.change(screen.getByLabelText("Frame source"), {
+    target: { value: "phantom-run" },
+  });
+  fireEvent.click(screen.getByText("Open frames"));
+  await screen.findByLabelText("First frame");
+  fireEvent.click(screen.getByText("Line up on bone"));
+  await screen.findByLabelText("Line-up proposal");
+  fireEvent.click(
+    screen.getByLabelText("I reviewed the bone and the model on the frame"),
+  );
+  fireEvent.click(screen.getByText("Confirm and save line-up"));
+  await screen.findByText(/Saved operator-confirmed line-up, revision 1/);
+  cleanup();
+  // The frame bundle answers only when let go.
+  const answer = fetch as unknown as (
+    url: string,
+    init?: RequestInit,
+  ) => Promise<Response>;
+  let letGo = () => {};
+  const held = new Promise<void>((resolve) => (letGo = resolve));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/projection-frames/phantom-run") await held;
+      return answer(url, init);
+    }),
+  );
+  const view = panel();
+  await waitFor(() =>
+    expect(screen.getByText("Show saved overlay")).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByText("Show saved overlay"));
+  view.rerender(
+    <AbdominalOverlayPanel
+      caseState={{ ...caseState, artifact_version: "2" }}
+      binding={binding}
+      volume={volume as never}
+      cursor={[1, 2, 3]}
+    />,
+  );
+  letGo();
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(screen.queryByLabelText("Overlay")).toBeNull();
+  expect(screen.queryByRole("alert")).toBeNull();
+});
