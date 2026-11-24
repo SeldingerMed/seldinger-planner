@@ -3,9 +3,33 @@
  * is drawn with the proposal's vessel axis over it, turned with the C-arm
  * by the recording's frame table. The time from each frame's presentation
  * to its overlay being drawn is measured. The recording and the table are
- * read here; neither is sent. */
+ * read here; neither is sent.
+ *
+ * Over a coronary cine the heart moves the vessels under a still axis. On
+ * the operator's asking, the stretch of the recording where the C-arm stands
+ * as at the saved frame is read, and the axis as it falls on the saved frame
+ * is followed over it (./coronaryMotion.ts): one proposal, with the frames
+ * it is refused on, the heart's period from the frames' times, and the
+ * frames at the saved frame's phase. Once the operator confirms it, the
+ * replay draws the followed axis on those frames and no axis on a refused
+ * one. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ViewNumbers } from "./carmGeometry";
+import {
+  CORONARY_MOTION_METHOD,
+  createCoronaryMotionJob,
+  type CineFrame,
+  type CoronaryMotionProposal,
+} from "./coronaryMotion";
+import {
+  enlargeProposal,
+  grayOf,
+  reduceGray,
+  reductionOf,
+  sameViewRun,
+  toReduced,
+  treeFromPixels,
+} from "./heartReplay";
 import type { Vec3 } from "./obliqueSlice";
 import type { VerifiedFrame } from "./projectionFrames";
 import {
@@ -37,6 +61,16 @@ export type ReplaySource = {
   source: { rows: number; columns: number };
   redactions: number[][];
 };
+/** The heart motion proposal for one placed overlay. */
+type Heart =
+  | { target: ReplayOverlay; reading: number; of: number }
+  | {
+      target: ReplayOverlay;
+      lo: number;
+      proposal: CoronaryMotionProposal;
+      confirmed: boolean;
+    }
+  | { target: ReplayOverlay; failure: string };
 type Figures = {
   summary: LatencySummary;
   from_frame: number;
@@ -45,10 +79,32 @@ type Figures = {
 /** Frames between two refreshes of the figures while the recording plays. */
 const REFRESH_FRAMES = 30,
   AXIS_COLOR = "rgba(0, 229, 255, 0.9)",
+  HEART_COLOR = "rgba(255, 196, 0, 0.9)",
   /** The media element's ready state from which it has a picture to show. */
   HAVE_CURRENT_DATA = 2,
   /** Times the recording is taken to the saved frame before that is given up. */
   SAVED_FRAME_SEEKS = 3;
+
+/** Takes the recording to a time and waits for its picture there. A seek
+ * the element never finishes fails after a while rather than holding the
+ * reader for good. */
+const SEEK_MS = 4000;
+const seekTo = (from: HTMLVideoElement, time: number) =>
+  new Promise<void>((resolve, reject) => {
+    const settle = (failed: boolean) => {
+      from.removeEventListener("seeked", seeked);
+      from.removeEventListener("error", errored);
+      window.clearTimeout(guard);
+      if (failed) reject(new Error("The recording does not reach this frame"));
+      else resolve();
+    };
+    const seeked = () => settle(false),
+      errored = () => settle(true),
+      guard = window.setTimeout(errored, SEEK_MS);
+    from.addEventListener("seeked", seeked);
+    from.addEventListener("error", errored);
+    from.currentTime = time;
+  });
 
 const readText = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -95,7 +151,8 @@ export default function RecordingReplay({
     [missed, setMissed] = useState<ReplayOverlay | null>(null),
     [playing, setPlaying] = useState(false),
     [axis, setAxis] = useState(true),
-    [figures, setFigures] = useState<Figures | null>(null);
+    [figures, setFigures] = useState<Figures | null>(null),
+    [heart, setHeart] = useState<Heart | null>(null);
   const video = useRef<HTMLVideoElement | null>(null),
     canvas = useRef<HTMLCanvasElement | null>(null),
     status = useRef<HTMLParagraphElement | null>(null),
@@ -103,7 +160,15 @@ export default function RecordingReplay({
     log = useRef(createLatencyLog()),
     played = useRef<{ from: number; to: number } | null>(null),
     shownAxis = useRef(axis),
-    reading = useRef(0);
+    reading = useRef(0),
+    heartRead = useRef(0),
+    alive = useRef(true);
+  useEffect(
+    () => () => {
+      alive.current = false;
+    },
+    [],
+  );
   shownAxis.current = axis;
 
   const plane = planes[Math.min(choice, planes.length - 1)],
@@ -137,7 +202,26 @@ export default function RecordingReplay({
       "requestVideoFrameCallback" in HTMLVideoElement.prototype,
     open = !!overlay && !!sidecar && seconds > 0 && !broken && supported,
     result = open && checked?.target === overlay ? checked : null,
-    ready = !!result && result.like >= REPLAY_LIMITS.like;
+    ready = !!result && result.like >= REPLAY_LIMITS.like,
+    motion = heart?.target === overlay ? heart : null,
+    followed =
+      motion && "proposal" in motion && motion.confirmed ? motion : null,
+    heartBusy = !!motion && "reading" in motion,
+    shownFollowed = useRef(followed),
+    readingHeart = useRef(heartBusy);
+  shownFollowed.current = followed;
+  readingHeart.current = heartBusy;
+  /** Ends a heart read in flight and drops its proposal: its frames and its
+   * axis belong to the recording, table and plane it began with. */
+  const endHeart = () => {
+    heartRead.current++;
+    setHeart(null);
+  };
+  // Whatever places the axis anew (another table, plane or pose) ends a
+  // read of the old one.
+  useEffect(() => {
+    heartRead.current++;
+  }, [overlay]);
 
   useEffect(() => {
     if (!recording) return;
@@ -193,12 +277,25 @@ export default function RecordingReplay({
       if (!from || !context || !overlay || !sidecar) return;
       const frame = frameAt(media_s, seconds, sidecar.frames);
       picture(context, from);
+      const heartNow = shownFollowed.current,
+        heartFrame =
+          heartNow &&
+          frame >= heartNow.lo &&
+          frame < heartNow.lo + heartNow.proposal.frames.length
+            ? heartNow.proposal.frames[frame - heartNow.lo]
+            : null;
       if (shownAxis.current) {
-        const pixels = overlay.pixels(frame);
+        const pixels = heartFrame
+          ? heartFrame.status === "refused"
+            ? null
+            : Float32Array.from(
+                heartFrame.branches.flatMap((b) => b.points.flat()),
+              )
+          : overlay.pixels(frame);
         if (pixels) {
           const side = Math.max(2, Math.round(width / 256)),
             half = side / 2;
-          context.fillStyle = AXIS_COLOR;
+          context.fillStyle = heartFrame ? HEART_COLOR : AXIS_COLOR;
           for (let i = 0; i < pixels.length; i += 2) {
             const x = pixels[i],
               y = pixels[i + 1];
@@ -230,6 +327,15 @@ export default function RecordingReplay({
           Number.isNaN(p) ? "angles not read" : angleText(p, s),
           ...(Number.isNaN(field) ? [] : [`field ${field} cm`]),
           ...(frame === plane.frame.index ? ["the saved frame"] : []),
+          ...(heartFrame?.status === "refused"
+            ? ["vessels not found: no axis"]
+            : heartFrame?.status === "tracked"
+              ? ["axis follows the heart"]
+              : []),
+          ...(heartNow &&
+          heartNow.proposal.phase_matched.includes(frame - heartNow.lo)
+            ? ["at the saved frame's phase"]
+            : []),
         ].join(" · ");
       }
       if (slider.current) slider.current.value = String(frame);
@@ -295,7 +401,7 @@ export default function RecordingReplay({
     const from = video.current;
     if (!from) return;
     if (checking) settle();
-    else if (ready) paint(from.currentTime);
+    else if (ready && !heartBusy) paint(from.currentTime);
   };
 
   // Every frame the browser presents is drawn, and asks for the next.
@@ -305,23 +411,111 @@ export default function RecordingReplay({
     paint(from.currentTime);
     let handle = 0;
     const next: VideoFrameRequestCallback = (_now, metadata) => {
-      paint(metadata.mediaTime, {
-        at_ms: metadata.presentationTime,
-        frames: metadata.presentedFrames,
-      });
+      // The heart read's own seeks are neither drawn nor timed.
+      if (!readingHeart.current)
+        paint(metadata.mediaTime, {
+          at_ms: metadata.presentationTime,
+          frames: metadata.presentedFrames,
+        });
       handle = from.requestVideoFrameCallback(next);
     };
     handle = from.requestVideoFrameCallback(next);
     return () => from.cancelVideoFrameCallback(handle);
   }, [ready, paint]);
   useEffect(() => {
-    if (ready && video.current?.paused) paint(video.current.currentTime);
-    // Only when the axis is shown or hidden.
+    if (ready && !readingHeart.current && video.current?.paused)
+      paint(video.current.currentTime);
+    // Only when the axis is shown or hidden, or the heart motion is
+    // confirmed or dropped: a paused frame shows what was decided.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [axis]);
+  }, [axis, followed]);
   useEffect(() => {
     if (disabled) video.current?.pause();
   }, [disabled]);
+
+  /** Reads the stretch of the recording where the C-arm stands as at the
+   * saved frame, one frame at a time, and follows the axis over it. */
+  const proposeHeart = async () => {
+    const from = video.current,
+      context = canvas.current?.getContext("2d", { willReadFrequently: true });
+    if (!from || !context || !overlay || !sidecar || !ready) return;
+    const target = overlay,
+      saved = plane.frame.index,
+      { lo, hi } = sameViewRun(sidecar, saved),
+      of = hi - lo + 1;
+    // A new recording or a discard ends this read: its frames belong to
+    // the recording it began on.
+    const token = ++heartRead.current;
+    const stale = () =>
+      video.current !== from || !alive.current || heartRead.current !== token;
+    try {
+      // Followed on frames averaged to the tracker's scale, and drawn back
+      // on the full frame.
+      const by = reductionOf(width, height),
+        small = {
+          width: Math.floor(width / by),
+          height: Math.floor(height / by),
+        };
+      const drawnTree = overlay.pixels(saved);
+      const branches = drawnTree
+        ? treeFromPixels(
+            drawnTree.map((v) => toReduced(v, by)),
+            small,
+          )
+        : [];
+      if (!branches.length)
+        throw new Error("The axis does not fall on the saved frame");
+      if (of < 2) throw new Error("The C-arm moves at the saved frame");
+      from.pause();
+      const frames: CineFrame[] = [];
+      for (let k = lo; k <= hi; k++) {
+        setHeart({ target, reading: k - lo, of });
+        await seekTo(from, timeOf(k, seconds, sidecar.frames));
+        if (stale()) return;
+        picture(context, from);
+        frames.push({
+          ...reduceGray(
+            grayOf(
+              context.getImageData(0, 0, width, height).data,
+              width * height,
+            ),
+            width,
+            height,
+            by,
+          ),
+          time_ms: timeOf(k, seconds, sidecar.frames) * 1000,
+        });
+      }
+      const job = createCoronaryMotionJob({
+        frames,
+        reference: saved - lo,
+        branches,
+      });
+      // In slices, so the page answers between them.
+      for (;;) {
+        const until = performance.now() + 30;
+        if (job.advance(() => performance.now() > until)) break;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (stale()) return;
+      }
+      setHeart({
+        target,
+        lo,
+        proposal: enlargeProposal(job.result(), by),
+        confirmed: false,
+      });
+    } catch (error) {
+      if (!stale())
+        setHeart({
+          target,
+          failure:
+            error instanceof Error ? error.message : "Heart motion failed",
+        });
+    }
+    if (!stale()) {
+      from.currentTime = timeOf(saved, seconds, sidecar.frames);
+    }
+  };
 
   /** The figures are of one stretch of one plane's recording. */
   const forget = () => {
@@ -361,6 +555,24 @@ export default function RecordingReplay({
                   },
                   frame_size: [width, height],
                   axis_points: points.length / 3,
+                  ...(followed
+                    ? {
+                        heart_motion: {
+                          method: CORONARY_MOTION_METHOD,
+                          frames: [
+                            followed.lo,
+                            followed.lo + followed.proposal.frames.length - 1,
+                          ],
+                          refused: followed.proposal.frames.filter(
+                            (f) => f.status === "refused",
+                          ).length,
+                          period_ms: followed.proposal.period_ms,
+                          phase_matched: followed.proposal.phase_matched.map(
+                            (k) => k + followed.lo,
+                          ),
+                        },
+                      }
+                    : {}),
                   played: {
                     from_frame: figures.from_frame,
                     to_frame: figures.to_frame,
@@ -413,6 +625,7 @@ export default function RecordingReplay({
                 disabled={disabled}
                 onChange={() => {
                   setChoice(k);
+                  endHeart();
                   forget();
                 }}
               />
@@ -431,6 +644,7 @@ export default function RecordingReplay({
             onChange={(event) => {
               const file = event.target.files?.[0] ?? null;
               setRecording(file);
+              endHeart();
               setSeconds(0);
               setBroken(false);
               setChecked(null);
@@ -450,6 +664,7 @@ export default function RecordingReplay({
               const file = event.target.files?.[0],
                 mine = ++reading.current;
               setTable(null);
+              endHeart();
               forget();
               if (!file) return;
               // A character takes at most three bytes, so a file of more
@@ -529,7 +744,7 @@ export default function RecordingReplay({
       <div className="native-actions">
         <button
           type="button"
-          disabled={disabled || !ready}
+          disabled={disabled || !ready || heartBusy}
           onClick={() => {
             const from = video.current;
             if (!from) return;
@@ -545,7 +760,7 @@ export default function RecordingReplay({
         </button>
         <button
           type="button"
-          disabled={disabled || !ready || playing}
+          disabled={disabled || !ready || playing || heartBusy}
           onClick={() => go(plane.frame.index)}
         >
           Go to the saved frame
@@ -568,11 +783,28 @@ export default function RecordingReplay({
             max={sidecar ? sidecar.frames - 1 : 0}
             step={1}
             defaultValue={0}
-            disabled={disabled || !ready || playing}
+            disabled={disabled || !ready || playing || heartBusy}
             onChange={(event) => go(Number(event.target.value))}
           />
         </label>
       </div>
+      {ready && (
+        <HeartPanel
+          motion={motion}
+          disabled={disabled || playing || heartBusy}
+          onPropose={() => void proposeHeart()}
+          onConfirm={() => {
+            if (motion && "proposal" in motion) {
+              setHeart({ ...motion, confirmed: true });
+              forget();
+            }
+          }}
+          onDiscard={() => {
+            endHeart();
+            forget();
+          }}
+        />
+      )}
       {measured && (
         <>
           <table className="carm-table" aria-label="Overlay latency">
@@ -612,5 +844,75 @@ export default function RecordingReplay({
         </>
       )}
     </fieldset>
+  );
+}
+
+function HeartPanel({
+  motion,
+  disabled,
+  onPropose,
+  onConfirm,
+  onDiscard,
+}: {
+  motion: Heart | null;
+  disabled: boolean;
+  onPropose: () => void;
+  onConfirm: () => void;
+  onDiscard: () => void;
+}) {
+  const proposal = motion && "proposal" in motion ? motion : null;
+  const tracked = proposal
+      ? proposal.proposal.frames.filter((f) => f.status === "tracked").length
+      : 0,
+    refused = proposal
+      ? proposal.proposal.frames.filter((f) => f.status === "refused").length
+      : 0;
+  return (
+    <section aria-label="Heart motion">
+      <div className="native-actions">
+        {!proposal?.confirmed && (
+          <button type="button" disabled={disabled} onClick={onPropose}>
+            Follow the heart
+          </button>
+        )}
+      </div>
+      {motion && "reading" in motion && (
+        <p role="status" aria-label="Heart motion progress">
+          Reading frame {motion.reading + 1} of {motion.of}…
+        </p>
+      )}
+      {motion && "failure" in motion && <p role="alert">{motion.failure}.</p>}
+      {proposal && (
+        <>
+          <p role="status" aria-label="Heart motion proposal">
+            Frames {proposal.lo} to{" "}
+            {proposal.lo + proposal.proposal.frames.length - 1}: the axis is
+            followed on {tracked}, and not found on {refused}, where no axis is
+            drawn.{" "}
+            {proposal.proposal.period_ms === null
+              ? "No heart period is read from these frames."
+              : `Heart period ${Math.round(proposal.proposal.period_ms)} ms; at the saved frame's phase: ${
+                  proposal.proposal.phase_matched.length
+                    ? proposal.proposal.phase_matched
+                        .map((k) => k + proposal.lo)
+                        .sort((a, b) => a - b)
+                        .join(", ")
+                    : "none"
+                }.`}
+            {proposal.confirmed ? " Confirmed." : ""}
+          </p>
+          <div className="native-actions">
+            {!proposal.confirmed && (
+              <button type="button" disabled={disabled} onClick={onConfirm}>
+                Confirm heart motion
+              </button>
+            )}
+            <button type="button" disabled={disabled} onClick={onDiscard}>
+              Discard heart motion
+            </button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

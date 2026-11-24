@@ -54,6 +54,30 @@ Every result is a proposal the operator confirms. Nothing is accepted automatica
 4. Protocol committed; held-back run; results page.
 5. Bone line-up offered in the overlay studio (with part 3).
 
+## Parts 3 and 4 and Step E: built and measured on design data, 2026-11-24
+
+Results page: `docs/research/step-d-overlay-correction-heart-motion-results.md`. All figures there come from design data or from sets with no truth. None is a held-out test.
+
+- Part 2, the frozen held-back run (`docs/research/aortoiliac-mask-held-back-results.md`, protocol at `0461773`, one run, task `t_1f39cc7d`).
+  - TotalSegmentator held-back: 49 of 58 eligible cases named and sided correctly, and 48 of 58 split within 10 mm of the labelled split.
+  - The aorta was returned alone in 49 of 49 scans with no iliac label.
+  - AVT held-back, whole-tree consistency only: 20 of 21 proposed splits within 10 mm of the mask separation.
+- Part 3 (`bone_edge_compass_guarded_v2`, over the unchanged `bone_edge_compass_v1` engine).
+  - The overlay panel loads the raw CTA aorta and iliac export of this very scan, admitted by its source SHA-256, and lines it up on bone on one or two recorded frames.
+  - The operator reviews and confirms the line-up, and it is saved naming the model's digest and each frame's SHA-256. It reopens from the server.
+  - A second frame that does not hold its bone, or that pulls the first frame off its bone, is set aside with its reason. The single-frame answer then stands, with depth stated as not determined.
+  - On lumbar design cases: the own side frame was kept in 48 of 49 cases. Another patient's frame was set aside in 45 of 49, and a bone-smoothed one in 43 of 49. No kept answer moved the front frame more than 5 mm across its beam.
+  - The floor was set on these cases. A held-out measurement is owed under a new protocol.
+  - The virtual angiograms and TAVI frames named in the table above were not used for this part.
+- Part 4 (`wire_breathing_correction_v1`).
+  - One correction, fitted from wire marks and scan points the operator marks on the frame over the saved line-up. It is proposed only if it beats the line-up by 20 percent. It is drawn once confirmed, for the current view, and not saved with the case.
+  - On synthetic truth it recovers the straightening and the shift.
+  - On the thorax landmarks, Zenodo 1400558 T15 to T17, a single long-axis breathing shift did not beat rigid on left-out landmarks: median 1.46 mm against 1.33 mm at the detector. The correction was proposed for none of the three subjects. This is a negative result for the breathing term on that set.
+- Step E (`coronary_tree_tracking_v1`).
+  - In the replay, the saved axis is followed through the same-view stretch of the cine. Frames where the vessels are not found are refused and drawn without an axis. The period comes from the frame times, and the frames at the saved frame's phase are named. All of this is drawn only once confirmed.
+  - Synthetic truth: 0.58 px mean error followed, against 5.33 px left still. The contrast-free frames were refused exactly, and the period read 800.9 ms against a true 800 ms.
+  - Real CardioSYNTAX cine, 23 cines with no truth: the followed tree lies on darker vessel than the still tree in 23 of 23 cines. 633 of 1277 frames were refused. A period was read in 4 cines. Another patient's frame was refused in 22 of 22.
+
 ## Decisions log
 
 - 2026-11-22: Step D started. All 17 open datasets for Steps D and E are on the research drive, each checked against its checksum.
@@ -119,3 +143,10 @@ Every result is a proposal the operator confirms. Nothing is accepted automatica
   - The protocol is spent. A further run on these specimens and cases needs a new protocol committed first.
 - 2026-11-23, owed to the next method version, to be measured under a new protocol before part 3 offers the line-up in the overlay studio: in the two-frame depth scan a depth where one frame no longer holds its share of the bone scores -1 and is still listed, so a second frame that never holds the bone can replace the first frame's answer with one that has left it. The engine the held-back protocol read is kept as it ran. On the 49 design and 99 held-back lumbar cases every two-frame answer held the bone in both frames: the lowest frame score at an answer was 0.16 and 0.21, and the lowest score any disturbed start ended on was 0.22.
 - 2026-11-23: the lumbar archive is checked against the SHA-256 its fetch recorded before a case is read, as every other fetched file is. A fetch checked by the source's MD5 records its own SHA-256 under `sha256_local`, and the format step reads either. Cases 1 and 93 prepared again after the change give the same output hashes as the prepared set the evaluations read.
+- 2026-11-24, part 3: the line-up offered in the overlay is a new method, `bone_edge_compass_guarded_v2`. It runs the held-back engine unchanged: the front frame alone first, then the two-frame search, kept only when both frames hold their bone (frame score at least 0.25) and the front frame keeps 0.8 of its score alone. This settles the item owed on 2026-11-23 at the method level. The guard's measurement covers design cases only.
+- 2026-11-24, part 3: the line-up record is separate from the C1 to C4 registrations (`planner/abdominal_registration.py`). It is bound to the scan's SHA-256, the admitted model's digest and each frame's SHA-256. A lone frame must face front within 60 degrees. A second frame must be the other plane of the same biplane acquisition.
+- 2026-11-24, part 4: breathing runs from nothing at the aorta's lowest model point, where the pelvis holds it, to the whole shift at its highest. This comes from the model, not from an operator choice. Each parameter needs two marks of its own kind.
+- 2026-11-24, Step E: the heart's period is read from the tree's centre-removed shape, so breathing and table drift do not hide the beat. Along a vessel, a found point counts less than across it, because a vessel looks alike along its length.
+- 2026-11-24, Step E: the real-cine evaluation decodes each DICOM cine to memory with `scripts/research/decode_cine.py`. Seven Siemens cines in JPEG Lossless could not be opened by the decoding runtime and are counted as not read.
+- 2026-11-24, part 3: a lone frame must face front within 60 degrees at the pose found as well as at the start. The browser refuses it before review, and the server checks the saved pose. Before this, the engine's 20-degree turn could carry a frame that started near 60 degrees past the limit, and the server would refuse a line-up the operator had already reviewed. The lumbar front frames start near 0 degrees, so the guard's design figures are unaffected.
+- 2026-11-24, part 3: at save, a line-up that does not match the admitted frames or the model is refused as the operator's to fix (422). A store that cannot be read at that moment is reported as "could not be confirmed; reload" (503).
