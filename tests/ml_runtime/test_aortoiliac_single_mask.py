@@ -95,9 +95,7 @@ def test_parts_below_matches_analytic_phantom_across_chunk_sizes(
     stride_z = max(1, int(np.floor(look.PARTING_GRID_MM / spacing_z)))
     assert stride_z > 1 and slab_slices % 2 == 1 and slab_slices % stride_z != 0
     expected_cell = bridge_z // stride_z
-    expected_height = float(
-        affine[2, 2] * ((expected_cell + 0.5) * stride_z - 0.5) + affine[2, 3]
-    )
+    expected_height = float(affine[2, 2] * ((expected_cell + 0.5) * stride_z - 0.5) + affine[2, 3])
 
     monkeypatch.setattr(look, "SLAB_VOXELS", int(mask.size))
     whole_chunk = look.parts_below(mask, affine, one, other)

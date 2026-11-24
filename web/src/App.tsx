@@ -14,6 +14,7 @@ import TerritoryStudio from "./TerritoryStudio";
 import ReformatStudio from "./ReformatStudio";
 import CArmStudio from "./CArmStudio";
 import ProjectionOverlayStudio from "./ProjectionOverlayStudio";
+import AbdominalOverlayPanel from "./AbdominalOverlayPanel";
 import {
   findNativeCaseSource,
   type NativeCaseSource,
@@ -1078,6 +1079,19 @@ export default function App() {
               }
               onDirtyChange={setOverlayDirty}
               onBusy={overlayBusyChanged}
+            />
+          )}
+          {caseState && nativeSource && (
+            <AbdominalOverlayPanel
+              caseState={caseState}
+              binding={nativeSource}
+              volume={
+                nativeVolume?.file === file && digest === caseState.image_sha256
+                  ? nativeVolume.image
+                  : null
+              }
+              cursor={location}
+              disabled={busy || conflict}
             />
           )}
           {territoryWorkspace && caseState && nativeSource && (

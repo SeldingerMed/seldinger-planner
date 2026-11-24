@@ -299,14 +299,18 @@ def build_app(
 
     read_projection = register_projection_routes(app, db_path, image_sources, read_case)
     register_projection_series_routes(app, projection_series_store)
+    installed_frames = register_projection_frame_routes(app, projection_frame_store)
     read_registration = register_projection_registration_routes(
         app,
         db_path,
         image_sources,
         read_case,
-        register_projection_frame_routes(app, projection_frame_store),
+        installed_frames,
         lambda case_id: segmentations.current(case_id, role="vessel"),
     )
+    from planner.abdominal_server import register_abdominal_routes
+
+    register_abdominal_routes(app, db_path, image_sources, read_case, installed_frames)
     from planner.vessel_presence_server import register_vessel_presence_routes
 
     read_presence = register_vessel_presence_routes(app, db_path, read_registration)
