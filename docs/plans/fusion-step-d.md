@@ -58,6 +58,10 @@ Every result is a proposal the operator confirms. Nothing is accepted automatica
 
 Results page: `docs/research/step-d-overlay-correction-heart-motion-results.md`. All figures there come from design data or from sets with no truth. None is a held-out test.
 
+- Part 2, the frozen held-back run (`docs/research/aortoiliac-mask-held-back-results.md`, protocol at `0461773`, one run, task `t_1f39cc7d`).
+  - TotalSegmentator held-back: 49 of 58 eligible cases named and sided correctly, and 48 of 58 split within 10 mm of the labelled split.
+  - The aorta was returned alone in 49 of 49 scans with no iliac label.
+  - AVT held-back, whole-tree consistency only: 20 of 21 proposed splits within 10 mm of the mask separation.
 - Part 3 (`bone_edge_compass_guarded_v2`, over the unchanged `bone_edge_compass_v1` engine).
   - The overlay panel loads the raw CTA aorta and iliac export of this very scan, admitted by its source SHA-256, and lines it up on bone on one or two recorded frames.
   - The operator reviews and confirms the line-up, and it is saved naming the model's digest and each frame's SHA-256. It reopens from the server.
