@@ -195,9 +195,11 @@ def register_abdominal_routes(app, db_path, sources, read_case, frames):
                 inputs = validate_lineup(payload.inputs.model_dump(mode="json"))
             except (ValueError, TypeError, KeyError, OverflowError):
                 raise HTTPException(422, "Invalid confirmed line-up") from None
+            # A mismatch is the operator's to fix; a store that cannot be
+            # read now is not, and falls through to "could not be confirmed".
             try:
                 evidence(identity, grid, inputs)
-            except _FAILURES:
+            except (ValueError, TypeError, KeyError, OverflowError):
                 raise HTTPException(
                     422, "Line-up does not match the admitted frames or the model"
                 ) from None

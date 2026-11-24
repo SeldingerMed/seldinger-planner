@@ -2,6 +2,7 @@
 
 import copy
 import math
+import sqlite3
 
 import pytest
 from test_frame_source import manifest, png_plane
@@ -12,6 +13,7 @@ from planner import frame_source
 from planner.abdominal_registration import (
     METHOD,
     VERSION,
+    ModelLedger,
     beam_from_front_deg,
     summarize,
     validate_lineup,
@@ -318,6 +320,21 @@ def test_lineup_is_tied_to_the_model_and_frames(tmp_path, monkeypatch):
     model = client.get(f"/api/cases/{case['case_id']}/aortoiliac-model").json()
     response = put_lineup(client, case, reference, lineup(listed, model), revision=1)
     assert response.status_code == 422
+
+
+def test_unreadable_store_is_not_reported_as_a_mismatch(tmp_path, monkeypatch):
+    client, case, reference, listed, _ = ready(tmp_path, monkeypatch)
+    model = admit_model(client, case, reference).json()
+    inputs = lineup(listed, model)
+
+    def locked(self, identity):
+        raise sqlite3.OperationalError("database is locked")
+
+    # The model ledger cannot be read at the save-time check.
+    monkeypatch.setattr(ModelLedger, "current", locked)
+    response = put_lineup(client, case, reference, inputs)
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Line-up save could not be confirmed; reload"
 
 
 def test_summary_is_derived_on_the_server():

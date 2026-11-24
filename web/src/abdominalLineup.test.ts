@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ABDOMINAL_LINEUP_METHOD,
   createAbdominalLineupJob,
+  fromFrontDeg,
+  loneFrameHolds,
   projectBranches,
   proposeAbdominalLineup,
 } from "./abdominalLineup";
@@ -179,6 +181,27 @@ describe("abdominal line-up, guarded", () => {
     },
     SLOW,
   );
+});
+
+describe("a lone frame at the pose found", () => {
+  it("holds within 60 degrees of the front, and not once the pose turns it past", () => {
+    const frame = {
+      view: view(55),
+      isocenter: [0, 0, 0] as [number, number, number],
+    };
+    expect(fromFrontDeg(frame, IDENTITY)).toBeCloseTo(55, 6);
+    expect(loneFrameHolds(frame, IDENTITY)).toBe(true);
+    // The search may turn the scan about its long axis by up to 20 degrees.
+    const turned = [rigid(10, 0, [0, 0, 0]), rigid(-10, 0, [0, 0, 0])].map(
+      (m) => fromFrontDeg(frame, m),
+    );
+    expect(Math.max(...turned)).toBeGreaterThan(60);
+    expect(
+      [rigid(10, 0, [0, 0, 0]), rigid(-10, 0, [0, 0, 0])].some(
+        (m) => !loneFrameHolds(frame, m),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("projectBranches", () => {

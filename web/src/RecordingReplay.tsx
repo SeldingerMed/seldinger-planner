@@ -77,14 +77,24 @@ const REFRESH_FRAMES = 30,
   /** Times the recording is taken to the saved frame before that is given up. */
   SAVED_FRAME_SEEKS = 3;
 
-/** Takes the recording to a time and waits for its picture there. */
+/** Takes the recording to a time and waits for its picture there. A seek
+ * the element never finishes fails after a while rather than holding the
+ * reader for good. */
+const SEEK_MS = 4000;
 const seekTo = (from: HTMLVideoElement, time: number) =>
-  new Promise<void>((resolve) => {
-    const done = () => {
-      from.removeEventListener("seeked", done);
-      resolve();
+  new Promise<void>((resolve, reject) => {
+    const settle = (failed: boolean) => {
+      from.removeEventListener("seeked", seeked);
+      from.removeEventListener("error", errored);
+      window.clearTimeout(guard);
+      if (failed) reject(new Error("The recording does not reach this frame"));
+      else resolve();
     };
-    from.addEventListener("seeked", done);
+    const seeked = () => settle(false),
+      errored = () => settle(true),
+      guard = window.setTimeout(errored, SEEK_MS);
+    from.addEventListener("seeked", seeked);
+    from.addEventListener("error", errored);
     from.currentTime = time;
   });
 
@@ -143,6 +153,7 @@ export default function RecordingReplay({
     played = useRef<{ from: number; to: number } | null>(null),
     shownAxis = useRef(axis),
     reading = useRef(0),
+    heartRead = useRef(0),
     alive = useRef(true);
   useEffect(
     () => () => {
@@ -407,7 +418,11 @@ export default function RecordingReplay({
       saved = plane.frame.index,
       { lo, hi } = sameViewRun(sidecar, saved),
       of = hi - lo + 1;
-    const stale = () => video.current !== from || !alive.current;
+    // A new recording or a discard ends this read: its frames belong to
+    // the recording it began on.
+    const token = ++heartRead.current;
+    const stale = () =>
+      video.current !== from || !alive.current || heartRead.current !== token;
     try {
       const drawnTree = overlay.pixels(saved);
       const branches = drawnTree
@@ -585,6 +600,7 @@ export default function RecordingReplay({
             onChange={(event) => {
               const file = event.target.files?.[0] ?? null;
               setRecording(file);
+              heartRead.current++;
               setHeart(null);
               setSeconds(0);
               setBroken(false);
@@ -740,6 +756,7 @@ export default function RecordingReplay({
             }
           }}
           onDiscard={() => {
+            heartRead.current++;
             setHeart(null);
             forget();
           }}

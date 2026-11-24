@@ -805,7 +805,7 @@ export default function AbdominalOverlayPanel({
       {message && <p role="alert">{message}</p>}
       {drawn && branches && (
         <div aria-label="Overlay">
-          {drawn.proposal && (
+          {drawn.kind === "proposal" && drawn.proposal && (
             <p role="status" aria-label="Line-up proposal">
               {`Unsaved line-up: ${lineupWords(drawn.proposal.depth, drawn.proposal.second_view)} Bone agreement ${drawn.proposal.frame_scores.map((s) => s.toFixed(2)).join(" and ")}, from ${drawn.proposal.start_score.toFixed(2)} at the start. Review the overlay before confirming.`}
             </p>

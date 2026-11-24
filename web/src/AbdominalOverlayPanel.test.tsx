@@ -207,6 +207,8 @@ test("proposes, needs review, saves and reopens a one-frame line-up", async () =
   );
   fireEvent.click(save);
   await screen.findByText(/Saved operator-confirmed line-up, revision 1/);
+  // Saved, it is no longer an unsaved proposal.
+  expect(screen.queryByLabelText("Line-up proposal")).toBeNull();
   const body = calls.find(
     (c) =>
       c.key === `PUT /api/cases/${caseState.case_id}/bone-lineup-registration`,

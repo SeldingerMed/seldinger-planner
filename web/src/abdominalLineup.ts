@@ -100,6 +100,16 @@ export function fromFrontDeg(
   return Math.acos(Math.min(1, Math.abs(along))) / rad;
 }
 
+/** A lone frame places the bone only while its beam stays within the
+ * engine's angle of the front at the pose found, as well as at the start:
+ * the search may turn the scan, and the server checks the saved pose. */
+export function loneFrameHolds(
+  frame: Pick<BoneFrameInput, "view" | "isocenter">,
+  matrix: number[][],
+): boolean {
+  return fromFrontDeg(frame, matrix) <= BONE_LINEUP.lone_frame_from_front_deg;
+}
+
 export function createAbdominalLineupJob(input: {
   samples: BoneSamples;
   frames: BoneFrameInput[];
@@ -135,18 +145,24 @@ export function createAbdominalLineupJob(input: {
 
   const finish = (): AbdominalLineupProposal => {
     const alone = single as BoneLineupProposal;
-    const keepSingle = (second_view: SecondView): AbdominalLineupProposal => ({
-      method: ABDOMINAL_LINEUP_METHOD,
-      engine_method: BONE_LINEUP_METHOD,
-      matrix: alone.matrix,
-      used: [first],
-      frame_scores: [alone.score],
-      start_score: alone.start_score,
-      depth: "not_determined_single_view",
-      second_view,
-      single: alone,
-      both,
-    });
+    const keepSingle = (second_view: SecondView): AbdominalLineupProposal => {
+      if (!loneFrameHolds(frames[first], alone.matrix))
+        throw new Error(
+          "Lined up alone, the frame turns past 60 degrees from the front: add a frame from the front",
+        );
+      return {
+        method: ABDOMINAL_LINEUP_METHOD,
+        engine_method: BONE_LINEUP_METHOD,
+        matrix: alone.matrix,
+        used: [first],
+        frame_scores: [alone.score],
+        start_score: alone.start_score,
+        depth: "not_determined_single_view",
+        second_view,
+        single: alone,
+        both,
+      };
+    };
     if (second < 0) return keepSingle({ status: "not_given" });
     if (tooClose)
       return keepSingle({

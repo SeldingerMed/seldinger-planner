@@ -68,14 +68,16 @@ const saved: VerifiedFrame = {
   ),
   RECORDING = new File(["video"], "cine.mp4", { type: "video/mp4" });
 
-let video: { time: number; paused: boolean }, marks: number[][], seeks: number;
+let video: { time: number; paused: boolean; stalls: boolean },
+  marks: number[][],
+  seeks: number;
 
 /** The frame the stand-in recording shows at its time. */
 const frameNow = () =>
   Math.min(FRAMES - 1, Math.floor((video.time * FRAMES) / SECONDS + 0.01));
 
 beforeEach(() => {
-  video = { time: 0, paused: true };
+  video = { time: 0, paused: true, stalls: false };
   marks = [];
   seeks = 0;
   const media = HTMLVideoElement.prototype as unknown as Record<
@@ -95,8 +97,10 @@ beforeEach(() => {
       function (this: HTMLVideoElement, value: number) {
         video.time = value;
         seeks++;
-        // The picture is there at once; the seek ends after this turn.
-        queueMicrotask(() => this.dispatchEvent(new Event("seeked")));
+        // The picture is there at once; the seek ends after this turn,
+        // unless the recording stalls.
+        if (!video.stalls)
+          queueMicrotask(() => this.dispatchEvent(new Event("seeked")));
       },
     ],
   ] as [string, () => unknown, ((value: number) => void)?][])
@@ -267,3 +271,31 @@ test("a new recording drops the proposal", async () => {
     screen.queryByRole("status", { name: "Heart motion proposal" }),
   ).toBeNull();
 }, 120_000);
+
+test("a new recording during the read ends it: no proposal from the old frames", async () => {
+  await ready();
+  fireEvent.click(button("Follow the heart"));
+  await waitFor(() => expect(seeks).toBeGreaterThan(5));
+  fireEvent.change(screen.getByLabelText("Recording"), {
+    target: {
+      files: [new File(["other"], "other.mp4", { type: "video/mp4" })],
+    },
+  });
+  fireEvent(element(), new Event("loadedmetadata"));
+  await waitFor(() => expect(button("Play").disabled).toBe(false));
+  // Long enough for the old read to have finished, had it gone on.
+  const settled = seeks;
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+  expect(seeks - settled).toBeLessThan(3);
+  expect(screen.queryByLabelText("Heart motion proposal")).toBeNull();
+  expect(screen.queryByLabelText("Heart motion progress")).toBeNull();
+}, 120_000);
+
+test("a seek the recording never finishes fails the read and frees the controls", async () => {
+  await ready();
+  video.stalls = true;
+  fireEvent.click(button("Follow the heart"));
+  const alert = await screen.findByRole("alert", {}, { timeout: 20_000 });
+  expect(alert.textContent).toBe("The recording does not reach this frame.");
+  expect(button("Follow the heart").disabled).toBe(false);
+}, 60_000);
