@@ -37,7 +37,7 @@
 import { validateView, viewFrame, type ViewNumbers } from "./carmGeometry";
 import {
   CARDIAC_PERIOD_METHOD,
-  cardiacPeriod,
+  cardiacPeriodSteps,
   type CardiacPeriod,
 } from "./cardiacPeriod";
 import {
@@ -47,7 +47,11 @@ import {
   type CineFrame,
   type CoronaryMotionJob,
 } from "./coronaryMotion";
-import { vesselEvidenceSteps, type VesselEvidence } from "./vesselEvidence2d";
+import {
+  VESSEL_EVIDENCE_LIMITS,
+  vesselEvidenceSteps,
+  type VesselEvidence,
+} from "./vesselEvidence2d";
 
 export const CORRESPONDENCE_METHOD = "ct_tree_cine_correspondence_v1";
 export const CORRESPONDENCE = {
@@ -57,8 +61,9 @@ export const CORRESPONDENCE = {
   /** CT points are kept at least this far apart, millimeters. */
   min_spacing_mm: 1,
   max_points: CORONARY_MOTION.max_points,
-  max_branches: 40,
-  max_path_points: 4000,
+  // The same as the confirmed record's on the server.
+  max_branches: 32,
+  max_path_points: 2000,
   /** The coarse search for where the tree lies, millimeters and degrees. */
   shift_range_mm: 80,
   shift_step_mm: 5,
@@ -146,6 +151,7 @@ export type RefusalReason =
   | "ct_phase_missing"
   | "ct_phase_needs_ecg"
   | "period_not_read"
+  | "no_vessels_at_phase"
   | "tree_not_found"
   | "tree_not_distinct";
 
@@ -160,6 +166,8 @@ export const REFUSAL_TEXT: Record<RefusalReason, string> = {
   ct_phase_needs_ecg:
     "The CT phase is outside diastasis; finding it in the cine needs an ECG this cine does not carry.",
   period_not_read: "The heart's period could not be read from this cine.",
+  no_vessels_at_phase:
+    "No contrast-filled vessels were found on the frames at the CT's phase.",
   tree_not_found: "The CT tree is not found in this cine.",
   tree_not_distinct:
     "The CT tree fits this cine no better than its own mirror image; it may be another patient's tree or another cine.",
@@ -274,7 +282,7 @@ function validate(input: CorrespondenceInput) {
     tree.branches.length < 1 ||
     tree.branches.length > L.max_branches
   )
-    throw new Error("A tree of 1 to 40 branches is required");
+    throw new Error("A tree of 1 to 32 branches is required");
   const ids = new Set<string>();
   for (const b of tree.branches) {
     exactKeys(b, ["id", "label", "parent", "path_ras"], "branch");
@@ -302,6 +310,15 @@ function validate(input: CorrespondenceInput) {
     throw new Error("Invalid timing");
   if (!["fixed", "moving", "unknown"].includes(cine.geometry))
     throw new Error("Invalid geometry");
+  // Checked here so that the one failure left to the vessel evidence of a
+  // frame is a frame with no vessels in it.
+  const first = Array.isArray(cine.frames) ? cine.frames[0] : null;
+  if (
+    first &&
+    (Math.min(first.width, first.height) < VESSEL_EVIDENCE_LIMITS.min_side_px ||
+      Math.max(first.width, first.height) > VESSEL_EVIDENCE_LIMITS.max_side_px)
+  )
+    throw new Error("Frame size is outside the supported range");
 }
 
 /** Each branch's CT points, kept at an even spacing so the whole tree
@@ -606,7 +623,9 @@ function* steps(
   if (ct_phase < L.diastolic_ct_phase_percent[0] || ct_phase > L.diastolic_ct_phase_percent[1])
     return refuse("ct_phase_needs_ecg");
   const frames = cine.frames;
-  const period = cardiacPeriod(frames);
+  // In slices: a long cine's period read is the costliest step before the
+  // search.
+  const period = yield* cardiacPeriodSteps(frames);
   if (period.status !== "read") return refuse("period_not_read", { period });
   yield;
 
@@ -616,18 +635,26 @@ function* steps(
   let ev: VesselEvidence | null = null,
     frame = period.quiet_frames[0];
   for (const k of period.quiet_frames) {
+    // Frame size and polarity are checked above, and every frame matches the
+    // first, so a frame that fails here holds no vessels (contrast not yet
+    // in, or washed out): it is passed over.
     const it = vesselEvidenceSteps(frames[k].pixels, width, height, "dark");
-    let next = it.next();
-    while (!next.done) {
-      yield;
+    let next: IteratorResult<void, VesselEvidence>;
+    try {
       next = it.next();
+      while (!next.done) {
+        yield;
+        next = it.next();
+      }
+    } catch {
+      continue;
     }
     if (!ev || next.value.strong.length > ev.strong.length) {
       ev = next.value;
       frame = k;
     }
   }
-  if (!ev) return refuse("period_not_read", { period });
+  if (!ev) return refuse("no_vessels_at_phase", { period });
 
   const kept = sample(tree.branches);
   const ctPoints = tree.branches.map((b, i) => kept[i].map((j) => b.path_ras[j]));

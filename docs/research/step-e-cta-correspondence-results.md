@@ -94,3 +94,5 @@ CINE_SET=<CardioSYNTAX directory> CINE_PYTHON=$PWD/../.runtime/ingest-runtime/bi
 ```
 
 The held-out splits are spent and are not to be run again.
+
+After the held-out runs, review changed the engine without changing a result: a cine whose frames at the CT's phase hold no vessels is refused (`no_vessels_at_phase`) where it used to end in an error, and the heart period read runs in slices. The design replays of both evaluations gave the same output after the change as before it, every field but run time.

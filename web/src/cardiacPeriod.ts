@@ -89,14 +89,15 @@ function validate(frames: readonly CineFrame[]) {
 }
 
 /** Each frame on the small grid with its slow shading taken off. */
-function edgeFrames(frames: readonly CineFrame[]): Float64Array[] {
+function* edgeFrames(frames: readonly CineFrame[]): Generator<void, Float64Array[]> {
   const L = CARDIAC_PERIOD,
     { width, height } = frames[0],
     by = Math.max(1, Math.ceil(Math.max(width, height) / L.grid_px)),
     w = Math.floor(width / by),
     h = Math.floor(height / by),
     r = L.shading_px;
-  return frames.map((f) => {
+  const edges: Float64Array[] = [];
+  for (const f of frames) {
     const small = new Float64Array(w * h);
     for (let y = 0; y < h; y++)
       for (let x = 0; x < w; x++) {
@@ -119,16 +120,18 @@ function edgeFrames(frames: readonly CineFrame[]): Float64Array[] {
           }
         out[y * w + x] = small[y * w + x] - s / n;
       }
-    return out;
-  });
+    edges.push(out);
+    yield;
+  }
+  return edges;
 }
 
 /** Leading eigenvectors of a symmetric matrix by power iteration with
  * deflation; each with its eigenvalue. */
-function leading(
+function* leading(
   G: Float64Array[],
   count: number,
-): { value: number; vector: Float64Array }[] {
+): Generator<void, { value: number; vector: Float64Array }[]> {
   const n = G.length,
     found: { value: number; vector: Float64Array }[] = [];
   for (let k = 0; k < count; k++) {
@@ -166,6 +169,7 @@ function leading(
       v = next;
       value = norm;
       if (change < 1e-10) break;
+      yield;
     }
     found.push({ value, vector: v });
   }
@@ -237,7 +241,13 @@ function repeatAt(c: Float64Array, lag: number): number {
   return aa > 0 && bb > 0 ? ab / Math.sqrt(aa * bb) : 0;
 }
 
-export function cardiacPeriod(frames: readonly CineFrame[]): CardiacPeriod {
+/** The period read in steps: it yields after each frame's edges, each row
+ * of the frames' cross products and each power iteration, so a caller can
+ * keep a long cine's read in short slices. The arithmetic is the same as
+ * `cardiacPeriod`'s, which runs it to the end. */
+export function* cardiacPeriodSteps(
+  frames: readonly CineFrame[],
+): Generator<void, CardiacPeriod> {
   validate(frames);
   const L = CARDIAC_PERIOD,
     n = frames.length;
@@ -263,22 +273,26 @@ export function cardiacPeriod(frames: readonly CineFrame[]): CardiacPeriod {
   const duration = frames[n - 1].time_ms - frames[0].time_ms;
   if (duration < L.min_periods * L.period_ms[0]) return notRead("too_short");
 
-  const edges = edgeFrames(frames),
+  const edges = yield* edgeFrames(frames),
     size = edges[0].length;
   const mean = new Float64Array(size);
   for (const e of edges) for (let i = 0; i < size; i++) mean[i] += e[i] / n;
   const centred = edges.map((e) => Float64Array.from(e, (v, i) => v - mean[i]));
-  const G = centred.map((a) =>
-    Float64Array.from(centred, (b) => {
-      let s = 0;
-      for (let i = 0; i < size; i++) s += a[i] * b[i];
-      return s;
-    }),
-  );
+  const G: Float64Array[] = [];
+  for (const a of centred) {
+    G.push(
+      Float64Array.from(centred, (b) => {
+        let s = 0;
+        for (let i = 0; i < size; i++) s += a[i] * b[i];
+        return s;
+      }),
+    );
+    yield;
+  }
   let total = 0;
   for (let i = 0; i < n; i++) total += G[i][i];
   if (!(total > 1e-9)) return notRead("no_rhythm");
-  const modes = leading(G, Math.min(L.modes, n - 1));
+  const modes = yield* leading(G, Math.min(L.modes, n - 1));
 
   const lo = Math.max(1, Math.ceil(L.period_ms[0] / step)),
     hi = Math.min(
@@ -370,4 +384,11 @@ export function cardiacPeriod(frames: readonly CineFrame[]): CardiacPeriod {
     quiet_frames,
     step_ms: step,
   };
+}
+
+export function cardiacPeriod(frames: readonly CineFrame[]): CardiacPeriod {
+  const steps = cardiacPeriodSteps(frames);
+  let next = steps.next();
+  while (!next.done) next = steps.next();
+  return next.value;
 }

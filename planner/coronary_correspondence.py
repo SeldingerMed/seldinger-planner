@@ -35,10 +35,14 @@ TREE_METHOD = "coronary_centerline_tree_v1"
 METHOD = "ct_tree_cine_correspondence_v1"
 PERIOD_METHOD = "cine_heart_period_v2"
 MOTION_METHOD = "coronary_tree_tracking_v1"
-MAX_TREE_BYTES = 1_000_000
 MAX_CORRESPONDENCE_BYTES = 65_536
 MAX_BRANCHES = 32
 MAX_POINTS = 2000
+# The largest tree the schema admits fits, as the browser writes it
+# (JSON.stringify, no spaces): a coordinate is at most 25 characters (signed,
+# 17 significant digits in fixed notation), so a point is at most 79 bytes;
+# 256 bytes covers a branch's id, label and parent.
+MAX_TREE_BYTES = MAX_BRANCHES * (MAX_POINTS * 80 + 256) + 4096
 MAX_FRAMES = 600
 # A tree point may sit this far outside the scan's voxel centers.
 TREE_MARGIN_VOXELS = 1.0

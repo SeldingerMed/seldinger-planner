@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { cardiacPeriod } from "./cardiacPeriod";
 import {
   CORRESPONDENCE,
   CORRESPONDENCE_METHOD,
+  createCorrespondenceJob,
   proposeCorrespondence,
   type CorrespondenceInput,
   type CorrespondenceProposal,
@@ -219,6 +221,44 @@ describe("refusals", () => {
     expect(found.status === "refused" && found.reason).toBe("period_not_read");
   });
 
+  it("refuses, rather than fails, when the frames at the CT's phase show no vessels", () => {
+    // Before contrast: the heart's shadow beats, a soft dark disc that
+    // moves with each beat, so the period reads; no vessel is filled.
+    const empty = renderCtCine({ omit: ctTree().map((b) => b.id) }).frames;
+    const frames = empty.map((f) => {
+      const turn = (2 * Math.PI * f.time_ms) / 860,
+        cx = 128 + 10 * Math.sin(turn),
+        cy = 128 + 6 * Math.cos(turn);
+      return {
+        ...f,
+        pixels: Uint8Array.from(f.pixels, (v, i) => {
+          const d = Math.hypot((i % f.width) - cx, Math.floor(i / f.width) - cy) - 60;
+          return Math.max(0, Math.round(v - 40 / (1 + Math.exp(d / 3))));
+        }),
+      };
+    });
+    expect(cardiacPeriod(frames).status).toBe("read");
+    const base = input();
+    const found = proposeCorrespondence({ ...base, cine: { ...base.cine, frames } });
+    expect(found.status === "refused" && found.reason).toBe("no_vessels_at_phase");
+  });
+
+  it("reads a long cine's heart period in slices, not in one", () => {
+    // 600 still frames: the period read covers every frame and every pair
+    // of frames before it can refuse. Each slice here is one step.
+    const { frames } = renderCtCine({ still: true, frames: 600 });
+    const job = createCorrespondenceJob({
+      ...input({ frames: 2 }),
+      cine: { ...input({ frames: 2 }).cine, frames },
+    });
+    let slices = 0;
+    while (!job.advance(() => true)) slices++;
+    expect(job.result().status === "refused" && job.result()).toMatchObject({
+      reason: "period_not_read",
+    });
+    expect(slices).toBeGreaterThanOrEqual(600);
+  });
+
   it("refuses another patient's tree", () => {
     // A tree of the same kind, laid out otherwise.
     const other: CtBranch[] = ctTree().map((b) => ({
@@ -327,6 +367,9 @@ describe("branch faults are named, not forced", () => {
 
   it("keeps its limits stated", () => {
     expect(CORRESPONDENCE.diastolic_ct_phase_percent).toEqual([60, 85]);
+    // The same as the confirmed record's on the server.
+    expect(CORRESPONDENCE.max_branches).toBe(32);
+    expect(CORRESPONDENCE.max_path_points).toBe(2000);
     expect(CORRESPONDENCE.min_mirror_margin).toBe(0.25);
   });
 });

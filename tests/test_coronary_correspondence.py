@@ -2,6 +2,7 @@
 on a generated native source."""
 
 import copy
+import json
 import math
 
 import pytest
@@ -183,6 +184,43 @@ def test_branch_names_are_each_once_and_parents_are_in_the_tree():
     loop["branches"][0]["parent"] = "lad"
     with pytest.raises(ValueError, match="The tree has one root and no loop"):
         validate_tree(loop, "a" * 64)
+
+
+def test_the_largest_tree_the_schema_allows_is_within_the_byte_bound(tmp_path, monkeypatch):
+    """32 branches of 2000 points, each coordinate at its longest JSON text
+    (as a browser writes it), is admitted, not refused for its size."""
+    from planner.coronary_correspondence import MAX_BRANCHES, MAX_POINTS
+
+    client, case, reference = configured(tmp_path, monkeypatch)
+    # 25 characters: 17 significant digits in the fixed notation that
+    # JSON.stringify keeps down to 1e-7; still inside the scan's margin.
+    longest = "-0.0000012345678901234567"
+    stand_in = 12.5  # written as "12.5", then swapped for the longest text
+    request = {
+        "artifact_version": case["artifact_version"],
+        "reference_revision": reference,
+        "tree_revision": 0,
+        "export": tree(
+            case["image_sha256"],
+            branches=[
+                {
+                    "id": f"b{k:02d}",
+                    "label": "a" * 64,
+                    "parent": None if k == 0 else "b00",
+                    "path_ras": [[stand_in] * 3] * MAX_POINTS,
+                }
+                for k in range(MAX_BRANCHES)
+            ],
+        ),
+    }
+    body = json.dumps(request, separators=(",", ":")).replace("12.5", longest)
+    assert body.count(longest) == 3 * MAX_POINTS * MAX_BRANCHES
+    saved = client.put(
+        f"/api/cases/{case['case_id']}/coronary-tree",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+    assert saved.status_code == 200, saved.text[:200]
 
 
 def test_a_tree_leaving_the_scan_is_refused(tmp_path, monkeypatch):
