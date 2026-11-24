@@ -44,11 +44,12 @@ export const ABDOMINAL_LINEUP = {
   /** Least frame score at a two-frame answer for that frame to count as
    * holding its bone. Set on the C-ArmLSpine design cases (1 to 49 only):
    * with the case's own side frame the lowest side-frame score at the
-   * two-frame answer was 0.26 over cases 1 to 38, while a bone-smoothed side
-   * frame or another patient's scored 0.02 to 0.31. 0.25 keeps every own
-   * frame seen and sets aside most of the wrong ones; it does not separate
-   * them all, and the held-back cases are spent, so this floor has no
-   * held-out measurement. */
+   * two-frame answer was 0.250 (case 43), while a bone-smoothed side frame
+   * or another patient's scored 0.02 to 0.31. 0.25 keeps every own frame
+   * seen and sets aside most of the wrong ones; it does not separate them
+   * all, and the held-back cases are spent, so this floor has no held-out
+   * measurement. Measured: docs/research/
+   * step-d-overlay-correction-heart-motion-results.md. */
   held_floor: 0.25,
   /** Least share of its own single-frame score the first frame keeps at a
    * two-frame answer. */
