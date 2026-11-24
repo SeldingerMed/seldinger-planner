@@ -179,6 +179,13 @@ describe("refusals", () => {
       cine: { ...base.cine, geometry: "moving" },
     });
     expect(moving.status === "refused" && moving.reason).toBe("moving_geometry");
+    // A file that does not say whether the C-arm stood still is not taken
+    // as standing still.
+    const unsaid = proposeCorrespondence({
+      ...base,
+      cine: { ...base.cine, geometry: "unknown" },
+    });
+    expect(unsaid.status === "refused" && unsaid.reason).toBe("geometry_not_declared");
   });
 
   it("refuses a tree with no CT phase, and a phase only ECG could find", () => {

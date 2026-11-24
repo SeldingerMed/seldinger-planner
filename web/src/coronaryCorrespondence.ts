@@ -115,7 +115,8 @@ export type CorrespondenceInput = {
     /** Where the frame times came from. A display rate is not a time. */
     timing: "frame_time_vector" | "frame_time" | "cine_rate" | null;
     view: ViewNumbers | null;
-    geometry: "fixed" | "moving";
+    /** Whether the file declares the C-arm static over the cine. */
+    geometry: "fixed" | "moving" | "unknown";
   };
   /** The operator's statement that the cine is this patient's. */
   pair: {
@@ -131,6 +132,7 @@ export type RefusalReason =
   | "no_frame_times"
   | "no_geometry"
   | "moving_geometry"
+  | "geometry_not_declared"
   | "ct_phase_missing"
   | "ct_phase_needs_ecg"
   | "period_not_read"
@@ -142,6 +144,7 @@ export const REFUSAL_TEXT: Record<RefusalReason, string> = {
   no_frame_times: "The cine has no recorded frame times; a display rate is not a time.",
   no_geometry: "The cine has no C-arm angles and distances.",
   moving_geometry: "The C-arm moved during this cine.",
+  geometry_not_declared: "The cine does not say whether the C-arm stood still.",
   ct_phase_missing: "The CT tree does not state its cardiac phase.",
   ct_phase_needs_ecg:
     "The CT phase is outside diastasis; finding it in the cine needs an ECG this cine does not carry.",
@@ -281,7 +284,7 @@ function validate(input: CorrespondenceInput) {
       throw new Error("A branch's parent must be another branch of the tree");
   if (!["frame_time_vector", "frame_time", "cine_rate", null].includes(cine.timing))
     throw new Error("Invalid timing");
-  if (cine.geometry !== "fixed" && cine.geometry !== "moving")
+  if (!["fixed", "moving", "unknown"].includes(cine.geometry))
     throw new Error("Invalid geometry");
 }
 
@@ -580,7 +583,8 @@ function* steps(
   if (cine.timing !== "frame_time_vector" && cine.timing !== "frame_time")
     return refuse("no_frame_times");
   if (!cine.view) return refuse("no_geometry");
-  if (cine.geometry !== "fixed") return refuse("moving_geometry");
+  if (cine.geometry === "moving") return refuse("moving_geometry");
+  if (cine.geometry !== "fixed") return refuse("geometry_not_declared");
   const ct_phase = tree.ct_phase_percent;
   if (ct_phase === null) return refuse("ct_phase_missing");
   if (ct_phase < L.diastolic_ct_phase_percent[0] || ct_phase > L.diastolic_ct_phase_percent[1])
