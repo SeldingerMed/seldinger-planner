@@ -78,7 +78,7 @@ def build_app(
     anatomy_runner=None,
     projection_series_store=None,
     projection_frame_store=None,
-    occlusion_model=None,
+    occlusion_model: OcclusionModel | Literal["installed"] | None = "installed",
 ):
     app = create_app(db_path, planning_context_provider=lambda case: planning_for_brief(case))
     allowed_origins = {
@@ -133,12 +133,16 @@ def build_app(
             case["image_source"] = image_sources.calibrated_metadata_for_case(case)
         return case
 
-    if occlusion_model is None:
+    # "installed" loads the model file if present; None disables the estimate tool explicitly.
+    estimator: OcclusionModel | None = None
+    if occlusion_model == "installed":
         try:
-            occlusion_model = OcclusionModel.load()
+            estimator = OcclusionModel.load()
         except (OSError, ValueError, OcclusionModelError, TypeError, AttributeError):
             # A damaged model file disables the estimate tool; the discussion route still works.
-            occlusion_model = None
+            estimator = None
+    elif isinstance(occlusion_model, OcclusionModel):
+        estimator = occlusion_model
 
     register_reference_routes(app, references, read_case)
     register_image_source_routes(app, image_sources, read_case)
@@ -189,10 +193,10 @@ def build_app(
         )
         tools = [tool, sources_tool]
         occlusion_results = []
-        if occlusion_model is not None:
+        if estimator is not None:
 
             def estimate_occlusion(context, args):
-                result = occlusion_model.estimate(args)
+                result = estimator.estimate(args)
                 occlusion_results.append(result)
                 return result
 
@@ -234,7 +238,7 @@ def build_app(
                 result = BoundedAgent(
                     model,
                     tools,
-                    max_model_calls=5 if occlusion_model is not None else 4,
+                    max_model_calls=5 if estimator is not None else 4,
                     max_tool_calls=4,
                 ).run(question, CaseContext(case_id, payload.artifact_version))
         except (AgentError, ProviderError):
@@ -272,7 +276,7 @@ def build_app(
             ]
             if "read_planning_sources" in result.tool_names
             else [],
-            "occlusion_estimates": occlusion_results[-1] if occlusion_results else None,
+            "occlusion_estimates": occlusion_results,
         }
 
     from planner.device_inputs_server import register_device_input_routes

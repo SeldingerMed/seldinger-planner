@@ -159,6 +159,21 @@ def test_small_dome_to_neck_ratio_counts_as_wide_neck():
         ({"tau": float("nan")}, "tau must contain finite numbers"),
         ({"gh_weights": [0.5, 0.5, 0.5]}, "Quadrature nodes and weights are inconsistent"),
         ({"family": {}}, "Model does not cover coil"),
+        ({"tau": -0.1}, "tau must be non-negative"),
+        ({"t_ref_months": -1}, "t_ref_months must be positive"),
+        (
+            {
+                "ref": {
+                    "log_size": "log(7)",
+                    "ruptured": 0,
+                    "posterior": 0,
+                    "wide_neck": 0.5,
+                    "bifurcation": 0.3,
+                }
+            },
+            "ref log_size must contain finite numbers",
+        ),
+        ({"evidence": {"FD": {"studies": "many"}}}, "evidence counts must be non-negative numbers"),
     ],
 )
 def test_damaged_model_files_are_refused(override, message):
@@ -167,11 +182,45 @@ def test_damaged_model_files_are_refused(override, message):
 
 
 def test_load_returns_none_when_no_model_is_installed(tmp_path, monkeypatch):
-    monkeypatch.delenv("SELDINGER_OCCLUSION_MODEL", raising=False)
-    assert OcclusionModel.load(tmp_path / "absent.json") is None
     path = tmp_path / "model.json"
     path.write_text(json.dumps(synthetic_spec()))
-    assert OcclusionModel.load(path).studies == 300
+    monkeypatch.setenv("SELDINGER_OCCLUSION_MODEL", str(path))
+    # An explicit path wins over the environment.
+    assert OcclusionModel.load(tmp_path / "absent.json") is None
+    assert OcclusionModel.load().studies == 300
+
+
+def test_damaged_installed_model_disables_only_the_tool(tmp_path, monkeypatch):
+    path = tmp_path / "model.json"
+    path.write_text(json.dumps(synthetic_spec(t_ref_months=-1)))
+    monkeypatch.setenv("SELDINGER_OCCLUSION_MODEL", str(path))
+    seen = {}
+
+    class Model:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def complete(self, messages, tools, **limits):
+            if "tools" not in seen:
+                seen["tools"] = [t["function"]["name"] for t in tools]
+                return _call(1, "read_case_plan", {})
+            return Completion({"role": "assistant", "content": "ok"}, "stop", {})
+
+    client = TestClient(build_app(tmp_path / "workspace.sqlite3", client_factory=Model))
+    case = _case(client)
+    response = client.post(
+        f"/api/cases/{case['case_id']}/agent",
+        json={
+            "artifact_version": case["artifact_version"],
+            "question": "Options?",
+            "public_data_confirmed": True,
+        },
+    )
+    assert response.status_code == 200
+    assert seen["tools"] == ["read_case_plan", "read_planning_sources"]
 
 
 def _case(client):
@@ -250,8 +299,8 @@ def test_discussion_offers_the_estimate_tool_and_returns_its_numbers(tmp_path):
     assert "estimate_occlusion_by_treatment" in seen["prompt"]
     assert "Do not rank or recommend" not in seen["prompt"]
     assert body["tool_names"] == ["read_case_plan", "estimate_occlusion_by_treatment"]
-    assert body["occlusion_estimates"] == seen["tool_result"]
-    assert body["occlusion_estimates"]["inputs"]["max_size_mm"] == 8
+    assert body["occlusion_estimates"] == [seen["tool_result"]]
+    assert body["occlusion_estimates"][0]["inputs"]["max_size_mm"] == 8
 
 
 def test_discussion_without_an_installed_model_keeps_the_old_rules(tmp_path, monkeypatch):
@@ -285,7 +334,79 @@ def test_discussion_without_an_installed_model_keeps_the_old_rules(tmp_path, mon
     assert response.status_code == 200, response.text
     assert seen["tools"] == ["read_case_plan", "read_planning_sources"]
     assert "Do not rank or recommend" in seen["prompt"]
-    assert response.json()["occlusion_estimates"] is None
+    assert response.json()["occlusion_estimates"] == []
+
+
+def test_every_estimate_call_is_returned_in_order(tmp_path):
+    class Model:
+        def __enter__(self):
+            self.step = 0
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def complete(self, messages, tools, **limits):
+            self.step += 1
+            if self.step == 1:
+                return _call(1, "read_case_plan", {})
+            if self.step in (2, 3):
+                months = 12 if self.step == 2 else 60
+                return _call(self.step, "estimate_occlusion_by_treatment", {"months": months})
+            return Completion({"role": "assistant", "content": "Both horizons."}, "stop", {})
+
+    client = TestClient(
+        build_app(
+            tmp_path / "workspace.sqlite3",
+            client_factory=Model,
+            occlusion_model=OcclusionModel(synthetic_spec()),
+        )
+    )
+    case = _case(client)
+    response = client.post(
+        f"/api/cases/{case['case_id']}/agent",
+        json={
+            "artifact_version": case["artifact_version"],
+            "question": "Durability at one and five years?",
+            "public_data_confirmed": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert [e["months_after_treatment"] for e in response.json()["occlusion_estimates"]] == [12, 60]
+
+
+def test_none_disables_the_tool_even_when_a_model_is_installed(tmp_path, monkeypatch):
+    path = tmp_path / "model.json"
+    path.write_text(json.dumps(synthetic_spec()))
+    monkeypatch.setenv("SELDINGER_OCCLUSION_MODEL", str(path))
+    seen = {}
+
+    class Model:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            pass
+
+        def complete(self, messages, tools, **limits):
+            if "tools" not in seen:
+                seen["tools"] = [t["function"]["name"] for t in tools]
+                return _call(1, "read_case_plan", {})
+            return Completion({"role": "assistant", "content": "ok"}, "stop", {})
+
+    client = TestClient(
+        build_app(tmp_path / "workspace.sqlite3", client_factory=Model, occlusion_model=None)
+    )
+    case = _case(client)
+    client.post(
+        f"/api/cases/{case['case_id']}/agent",
+        json={
+            "artifact_version": case["artifact_version"],
+            "question": "Options?",
+            "public_data_confirmed": True,
+        },
+    )
+    assert seen["tools"] == ["read_case_plan", "read_planning_sources"]
 
 
 def test_invalid_estimate_arguments_are_rejected_before_the_tool_runs(tmp_path):

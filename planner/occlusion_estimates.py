@@ -109,6 +109,8 @@ class OcclusionModel:
         if len(self.beta) != len(self.names):
             raise OcclusionModelError("beta length does not match names")
         self.tau = _finite([spec.get("tau")], "tau")[0]
+        if self.tau < 0:
+            raise OcclusionModelError("tau must be non-negative")
         self.nodes = _finite(spec.get("gh_nodes"), "gh_nodes")
         self.weights = _finite(spec.get("gh_weights"), "gh_weights")
         if len(self.nodes) != len(self.weights) or abs(sum(self.weights) - 1) > 1e-6:
@@ -118,10 +120,15 @@ class OcclusionModel:
             b = _finite(d.get("beta"), "bootstrap beta")
             if len(b) != len(self.names):
                 raise OcclusionModelError("bootstrap beta length does not match names")
-            self.draws.append((b, _finite([d.get("tau")], "bootstrap tau")[0]))
+            t = _finite([d.get("tau")], "bootstrap tau")[0]
+            if t < 0:
+                raise OcclusionModelError("bootstrap tau must be non-negative")
+            self.draws.append((b, t))
         self.family = spec.get("family") or {}
         self.ref = spec.get("ref") or {}
-        self.t_ref = float(spec.get("t_ref_months", 12.0))
+        self.t_ref = _finite([spec.get("t_ref_months", 12.0)], "t_ref_months")[0]
+        if self.t_ref <= 0:
+            raise OcclusionModelError("t_ref_months must be positive")
         self.imputation = spec.get("imputation_means") or {}
         self.evidence = spec.get("evidence") or {}
         self.validation = spec.get("validation")
@@ -129,7 +136,7 @@ class OcclusionModel:
         self.sha256 = spec.get("sha256")
         self.studies = spec.get("studies")
         needed = ["log_size", "ruptured", "posterior", "wide_neck", "bifurcation"]
-        for technique in {t for ts in TECHNIQUES.values() for t in ts}:
+        for technique in [t for ts in TECHNIQUES.values() for t in ts]:
             fam = self.family.get(technique)
             if (
                 fam is None
@@ -142,11 +149,30 @@ class OcclusionModel:
                 raise OcclusionModelError(f"Model does not cover {technique}")
         if any(c not in self.ref for c in needed) or any(c not in self.index for c in needed[1:]):
             raise OcclusionModelError("Model covariate references are incomplete")
+        # Normalise every value the evaluator reads so a damaged file fails here, not per request.
+        self.ref = {c: _finite([self.ref[c]], f"ref {c}")[0] for c in needed}
+        self.imputation = {
+            fam: {c: _finite([means[c]], f"imputation {fam} {c}")[0] for c in needed}
+            for fam, means in self.imputation.items()
+            if fam in set(self.family.values())
+        }
+        evidence = {}
+        for technique, entry in self.evidence.items():
+            if not isinstance(entry, dict):
+                raise OcclusionModelError("evidence entries must be objects")
+            counts = {}
+            for key in ("studies", "aneurysms_weighted"):
+                value = entry.get(key, 0)
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+                    raise OcclusionModelError("evidence counts must be non-negative numbers")
+                counts[key] = int(value)
+            evidence[technique] = counts
+        self.evidence = evidence
 
     @classmethod
     def load(cls, path: Path | None = None):
         """Return the installed model, or None when no model file is installed."""
-        path = Path(os.environ.get("SELDINGER_OCCLUSION_MODEL") or path or DEFAULT_PATH)
+        path = Path(path or os.environ.get("SELDINGER_OCCLUSION_MODEL") or DEFAULT_PATH)
         if not path.is_file():
             return None
         return cls(json.loads(path.read_text()))

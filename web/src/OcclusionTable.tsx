@@ -27,7 +27,9 @@ export default function OcclusionTable({
     <div className="occlusion-estimates">
       <h4>
         Complete occlusion{" "}
-        {months === 0 ? "at end of procedure" : `at ${months} months`}
+        {months === 0
+          ? "at end of procedure"
+          : `at ${months} month${months === 1 ? "" : "s"}`}
       </h4>
       <table>
         <thead>

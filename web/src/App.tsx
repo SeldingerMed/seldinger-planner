@@ -159,7 +159,7 @@ export default function App() {
       population: string;
       section: string;
     }[];
-    occlusion_estimates?: OcclusionEstimates | null;
+    occlusion_estimates?: OcclusionEstimates[];
   } | null>(null);
   const planEdited = useCallback((dirty: boolean) => {
     setPlanDirty(dirty);
@@ -1480,9 +1480,9 @@ export default function App() {
                     </small>
                   </div>
                 )}
-                {answer.occlusion_estimates && (
-                  <OcclusionTable estimates={answer.occlusion_estimates} />
-                )}
+                {answer.occlusion_estimates?.map((estimates, index) => (
+                  <OcclusionTable key={index} estimates={estimates} />
+                ))}
               </div>
             )}
           </section>

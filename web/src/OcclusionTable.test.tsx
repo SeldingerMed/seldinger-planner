@@ -50,6 +50,15 @@ describe("OcclusionTable", () => {
     expect(screen.getByText(/procedural complications/)).toBeTruthy();
   });
 
+  it("uses the singular for one month", () => {
+    render(
+      <OcclusionTable
+        estimates={{ ...estimates, months_after_treatment: 1 }}
+      />,
+    );
+    expect(screen.getByText("Complete occlusion at 1 month")).toBeTruthy();
+  });
+
   it("labels the end-of-procedure result", () => {
     render(
       <OcclusionTable
