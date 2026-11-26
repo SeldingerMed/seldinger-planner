@@ -23,6 +23,7 @@ import {
 import DeviceReference from "./DeviceReference";
 import DeviceSizingInputs from "./DeviceSizingInputs";
 import DeviceSizingPanel from "./DeviceSizingPanel";
+import OcclusionTable, { type OcclusionEstimates } from "./OcclusionTable";
 import type { SegmentationEntry } from "./segmentation";
 import type { AneurysmPlan } from "./planning";
 import type { Point3 } from "./geometry";
@@ -158,6 +159,7 @@ export default function App() {
       population: string;
       section: string;
     }[];
+    occlusion_estimates?: OcclusionEstimates[];
   } | null>(null);
   const planEdited = useCallback((dirty: boolean) => {
     setPlanDirty(dirty);
@@ -1478,6 +1480,9 @@ export default function App() {
                     </small>
                   </div>
                 )}
+                {answer.occlusion_estimates?.map((estimates, index) => (
+                  <OcclusionTable key={index} estimates={estimates} />
+                ))}
               </div>
             )}
           </section>

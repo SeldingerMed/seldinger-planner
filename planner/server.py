@@ -15,6 +15,11 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from planner.agent import AgentError, BoundedAgent, CaseContext, ToolSpec
+from planner.occlusion_estimates import (
+    TOOL_DESCRIPTION as OCCLUSION_TOOL_DESCRIPTION,
+)
+from planner.occlusion_estimates import TOOL_SCHEMA as OCCLUSION_TOOL_SCHEMA
+from planner.occlusion_estimates import OcclusionModel, OcclusionModelError
 from planner.planning_sources import PLANNING_SOURCE_BUNDLE
 from planner.providers import ModelClient, ProviderError, ProviderSettings
 from planner.reference_server import ReferenceStore, register_reference_routes
@@ -73,6 +78,7 @@ def build_app(
     anatomy_runner=None,
     projection_series_store=None,
     projection_frame_store=None,
+    occlusion_model: OcclusionModel | Literal["installed"] | None = "installed",
 ):
     app = create_app(db_path, planning_context_provider=lambda case: planning_for_brief(case))
     allowed_origins = {
@@ -127,6 +133,17 @@ def build_app(
             case["image_source"] = image_sources.calibrated_metadata_for_case(case)
         return case
 
+    # "installed" loads the model file if present; None disables the estimate tool explicitly.
+    estimator: OcclusionModel | None = None
+    if occlusion_model == "installed":
+        try:
+            estimator = OcclusionModel.load()
+        except (OSError, ValueError, OcclusionModelError, TypeError, AttributeError):
+            # A damaged model file disables the estimate tool; the discussion route still works.
+            estimator = None
+    elif isinstance(occlusion_model, OcclusionModel):
+        estimator = occlusion_model
+
     register_reference_routes(app, references, read_case)
     register_image_source_routes(app, image_sources, read_case)
 
@@ -174,6 +191,36 @@ def build_app(
             schema,
             lambda context, args: deepcopy(PLANNING_SOURCE_BUNDLE),
         )
+        tools = [tool, sources_tool]
+        occlusion_results = []
+        if estimator is not None:
+
+            def estimate_occlusion(context, args):
+                result = estimator.estimate(args)
+                occlusion_results.append(result)
+                return result
+
+            tools.append(
+                ToolSpec(
+                    "estimate_occlusion_by_treatment",
+                    OCCLUSION_TOOL_DESCRIPTION,
+                    OCCLUSION_TOOL_SCHEMA,
+                    estimate_occlusion,
+                )
+            )
+            treatment_rule = (
+                "When the user asks about treatment options, expected occlusion or durability, call "
+                "estimate_occlusion_by_treatment with values taken only from the case plan, computed "
+                "context or the question. Report its rates with their confidence intervals, name the inputs "
+                "it set to the published average, and note that complications are not part of the estimate. "
+                "You may say which option the published series favour for occlusion; the treatment decision "
+                "rests with the treating team. Do not invent device sizes, IFU claims or references. "
+            )
+        else:
+            treatment_rule = (
+                "Compare the selected options' evidence needs and unresolved questions, not individual suitability. "
+                "Do not rank or recommend a treatment, estimate individual risk, or invent device sizes, IFU claims or references. "
+            )
         sources_required = bool((snapshot.get("aneurysm_plan") or {}).get("options"))
         question = (
             "Read the case plan tool before answering. Distinguish user-provided notes from measured facts. "
@@ -182,14 +229,17 @@ def build_app(
             "The aneurysm worksheet is operator-entered, not inferred anatomy or diagnosis. "
             "Read read_planning_sources before discussing selected options; cite only supplied sources for clinical comparisons. "
             "Respect each source's population and coverage limits; if rupture status is unknown, do not assume an unruptured or ruptured pathway. "
-            "Compare the selected options' evidence needs and unresolved questions, not individual suitability. "
-            "Do not rank or recommend a treatment, estimate individual risk, or invent device sizes, IFU claims or references. "
-            "User question: " + payload.question
+            + treatment_rule
+            + "User question: "
+            + payload.question
         )
         try:
             with (client_factory or default_client)() as model:
                 result = BoundedAgent(
-                    model, [tool, sources_tool], max_model_calls=4, max_tool_calls=4
+                    model,
+                    tools,
+                    max_model_calls=5 if estimator is not None else 4,
+                    max_tool_calls=4,
                 ).run(question, CaseContext(case_id, payload.artifact_version))
         except (AgentError, ProviderError):
             raise HTTPException(
@@ -226,6 +276,7 @@ def build_app(
             ]
             if "read_planning_sources" in result.tool_names
             else [],
+            "occlusion_estimates": occlusion_results,
         }
 
     from planner.device_inputs_server import register_device_input_routes
