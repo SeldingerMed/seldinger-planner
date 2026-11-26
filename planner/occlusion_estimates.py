@@ -132,9 +132,20 @@ class OcclusionModel:
         self.imputation = spec.get("imputation_means") or {}
         self.evidence = spec.get("evidence") or {}
         self.validation = spec.get("validation")
+        # The evaluator and its answer describe complete occlusion only; seldinger-outcomes can also export
+        # an "adequate occlusion" fit, which must be refused rather than shown under the wrong label.
         self.outcome = spec.get("outcome")
+        if self.outcome != "complete":
+            raise OcclusionModelError(f"Model outcome must be 'complete', got {self.outcome!r}")
         self.sha256 = spec.get("sha256")
         self.studies = spec.get("studies")
+        if (
+            isinstance(self.studies, bool)
+            or not isinstance(self.studies, (int, float))
+            or self.studies < 0
+        ):
+            raise OcclusionModelError("studies must be a non-negative number")
+        self.studies = int(self.studies)
         needed = ["log_size", "ruptured", "posterior", "wide_neck", "bifurcation"]
         for technique in [t for ts in TECHNIQUES.values() for t in ts]:
             fam = self.family.get(technique)

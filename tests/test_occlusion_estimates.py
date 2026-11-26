@@ -174,6 +174,13 @@ def test_small_dome_to_neck_ratio_counts_as_wide_neck():
             "ref log_size must contain finite numbers",
         ),
         ({"evidence": {"FD": {"studies": "many"}}}, "evidence counts must be non-negative numbers"),
+        # seldinger-outcomes also exports an "adequate occlusion" fit; it must not be shown as complete occlusion
+        ({"outcome": "adequate"}, "Model outcome must be 'complete'"),
+        ({"outcome": None}, "Model outcome must be 'complete'"),
+        ({"studies": None}, "studies must be a non-negative number"),
+        ({"studies": "many"}, "studies must be a non-negative number"),
+        ({"studies": True}, "studies must be a non-negative number"),
+        ({"studies": -3}, "studies must be a non-negative number"),
     ],
 )
 def test_damaged_model_files_are_refused(override, message):
